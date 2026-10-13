@@ -189,7 +189,13 @@ test("actions use independent tools and errors recover", async ({ page }) => {
   await ui.getByRole("button", { name: "Mark conversation read" }).click();
   expect(await calls(page, "translate_message")).toHaveLength(1);
   expect(await calls(page, "react_to_message")).toHaveLength(1);
-  expect(await calls(page, "mark_conversation_read")).toHaveLength(1);
+  // The click completes before the host bridge necessarily receives tools/call.
+  await expect
+    .poll(() => calls(page, "mark_conversation_read"))
+    .toHaveLength(1);
+  expect((await calls(page, "mark_conversation_read"))[0].args).toEqual({
+    contact_id: "alice@s.whatsapp.net",
+  });
 });
 test("deep link opens authorised target and narrow layout navigates back", async ({
   page,

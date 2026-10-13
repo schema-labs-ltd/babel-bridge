@@ -65,6 +65,77 @@ summary:focus-visible {
   border-right: 1px solid var(--line);
   min-width: 0;
 }
+.chat-navigation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.view-nav {
+  display: flex;
+  gap: 5px;
+  margin: 0 20px 13px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--hover);
+}
+.view-nav button {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 36px;
+}
+.view-nav button.active {
+  background: var(--surface);
+  color: var(--deep);
+  box-shadow: 0 1px 5px #0000000a;
+}
+.view-button {
+  font-size: 12px;
+  color: var(--deep);
+  padding: 0 10px;
+}
+.feed-description {
+  flex: 1;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.9;
+  margin: 14px 23px;
+}
+.feed-source {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  color: var(--deep);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  min-height: 34px;
+  margin: 10px 0 5px;
+  padding: 4px 8px;
+}
+.source-name {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.source-icon,
+.source-arrow {
+  flex-shrink: 0;
+}
+.quoted-sender {
+  display: block;
+  color: var(--deep);
+  font-size: 11px;
+}
+.media-placeholder {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 5px !important;
+}
+.feed-open .messages {
+  overflow-anchor: none;
+}
 .brand {
   display: flex;
   align-items: center;
@@ -635,10 +706,12 @@ dialog details p {
   .conversation {
     display: none;
   }
-  .workspace.chat-open .inbox {
+  .workspace.chat-open .inbox,
+  .workspace.feed-open .inbox {
     display: none;
   }
-  .workspace.chat-open .conversation {
+  .workspace.chat-open .conversation,
+  .workspace.feed-open .conversation {
     display: flex;
   }
   .back {

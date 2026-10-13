@@ -63,6 +63,40 @@ remain errors rather than sending untranslated fallback text. Read-only tokens
 hide action controls and are also enforced on the server. Existing tool annotations
 are preserved and openers are annotated as read-only, non-destructive and idempotent.
 
+## Unified Messages
+
+Choose **Messages** in the view navigation or conversation header to read the
+latest stored messages across individuals and groups. The timeline shows source
+conversation headings, direction, group senders, timestamps, stored translations
+and originals, quotes, delivery state and media placeholders. Source names fall
+back to the stored phone or exact conversation ID even when that contact is
+outside the loaded Chats pages. A source heading opens its exact conversation
+through `open_chat`.
+
+Messages is view only, including with a send-enabled connection. It has no
+composer, replies, reactions, translation action, read-receipt tracking, media
+playback or uploads. Feed reads, refresh, paging, original-text disclosures and
+source navigation do not share model context. Entering Messages invalidates a
+prepared chat message while retaining its draft. Existing actions remain in
+Chats, where normal selected-chat navigation retains its existing context sharing.
+
+The app-only `read_unified_messages` tool requires `whatsapp.read` and uses the
+existing account's storage query directly; it does not invoke the REST feed
+handler, which can queue translations. No new opener, resource, scope or
+credential is needed. `WA-FEED-CONTRACT-v1` accepts `limit` (1–100, default 50)
+and paired optional `before_timestamp` / `before_message_id` fields. It returns
+`messages` ordered by ascending timestamp and opaque message ID, `hasMore`, and
+`nextCursor: { beforeTimestamp, beforeMessageId }` for the oldest retained row
+when earlier messages exist, otherwise `null`. Each message includes its own
+`contactId`, nullable `contactName` / `contactPhone`, and `chatType`, alongside
+the stored message presentation fields. Feed responses have no `view` field;
+the UI keeps its own explicit navigation state.
+
+**Load earlier messages** preserves a visible bubble's pixel position and open
+original-text disclosures. **Refresh messages** starts a new latest-page window.
+There is no background polling. Delayed reads, source navigation, deep links,
+errors and retries are guarded against newer navigation and requests.
+
 ## Design reference
 
 The UI follows `ios/WhatsAppTranslator/Design/TranslatorTheme.swift`,
@@ -117,6 +151,15 @@ Rust tests also cover real HTTP MCP registration, missing/invalid/expired OAuth,
 read versus send scopes, separate-instance isolation and sparse/equal-timestamp
 pagination. Tests never launch a WhatsApp bridge, link an account or send real
 messages.
+
+The unified-feed browser cases assert equal-timestamp paging, off-page source
+identity and exact navigation, stored text/quotes/media/direction, zero write
+tools or model-context updates during feed operations, stale successes and
+failures, interrupted reads, repeated paging clicks, refresh/older-page races,
+and pixel anchoring through the final page in desktop and narrow layouts. The
+local host fixture uses small synthetic pages to make pagination assertions
+explicit. Feed screenshots are saved as
+`output/playwright/extension-feed-{desktop,narrow,dark,empty,loading,error}.png`.
 
 Local browser verification is **not** verification inside ChatGPT. Before release,
 use the existing plugin in an authorised ChatGPT test host to verify sidebar and

@@ -5,6 +5,7 @@ import {
 } from "@modelcontextprotocol/ext-apps";
 import { OpenAIExtensions } from "@openai/mcp-extensions/app";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { renderFeed, feedKey, type FeedMessage, type FeedPage } from "./feed";
 
 type Contact = {
   id: string;
@@ -58,6 +59,16 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   return element as T;
 };
 const state = {
+  view: "chats" as "chats" | "messages",
+  viewGeneration: 0,
+  feedGeneration: 0,
+  feedMessages: [] as FeedMessage[],
+  feedCursor: null as Cursor | null,
+  feedHasMore: false,
+  feedFailed: false,
+  loadingFeed: false,
+  loadingOlderFeed: false,
+  feedExpanded: new Set<string>(),
   contacts: [] as Contact[],
   selected: null as Contact | null,
   messages: [] as Message[],
@@ -117,10 +128,13 @@ function payload(
     throw Error("The server did not return conversation data.");
   return result.structuredContent as Payload;
 }
-async function call(name: string, args: Record<string, unknown> = {}) {
+async function call<T = Payload>(
+  name: string,
+  args: Record<string, unknown> = {},
+) {
   return payload(
     await app.callServerTool({ name, arguments: args }, { timeout: 60000 }),
-  );
+  ) as T;
 }
 const displayName = (contact: Contact) =>
   contact.name || contact.phone || contact.id;
@@ -196,6 +210,7 @@ function drawContacts() {
   ($("more-chats") as HTMLButtonElement).disabled = state.loadingList;
 }
 async function loadContacts(append = false) {
+  if (state.view !== "chats") return;
   if (append && (state.loadingList || state.chatCursor === null)) return;
   const generation = ++state.listGeneration;
   state.loadingList = true;
@@ -239,7 +254,7 @@ async function loadContacts(append = false) {
   }
 }
 function controls() {
-  const selected = !!state.selected;
+  const selected = state.view === "chats" && !!state.selected;
   $("composer").hidden = !selected || !state.send;
   $("readonly").hidden = !selected || state.send;
   $("read").hidden = !selected || !state.send;
@@ -250,11 +265,13 @@ function controls() {
     state.busy ||
     state.sending ||
     !$<HTMLTextAreaElement>("draft").value.trim();
-  $("reply").hidden = !state.reply;
+  $("reply").hidden = !selected || !state.reply;
+  $("feed-note").hidden = state.view !== "messages";
   $("reply-text").textContent =
     state.reply?.text || state.reply?.originalText || "Message";
 }
 function drawMessages(scroll = false) {
+  if (state.view !== "chats") return;
   const container = $("messages");
   const oldHeight = container.scrollHeight;
   const oldTop = container.scrollTop;
@@ -392,15 +409,220 @@ function rememberDraft() {
   if (state.selected)
     state.drafts.set(state.selected.id, $<HTMLTextAreaElement>("draft").value);
 }
-async function selectChat(contact: Contact, initial?: Payload) {
+function changeView(view: "chats" | "messages") {
+  ++state.viewGeneration;
+  ++state.chatGeneration;
+  ++state.actionGeneration;
+  ++state.listGeneration;
+  ++state.feedGeneration;
+  ++state.linkGeneration;
+  ++state.draftRevision;
+  clearTimeout(searchTimer);
+  state.loadingChat = false;
+  state.loadingList = false;
+  state.loadingFeed = false;
+  state.loadingOlderFeed = false;
+  state.feedFailed = false;
+  state.busy = false;
+  state.reply = null;
+  invalidatePreparation();
+  clearError();
+  state.view = view;
+  $("workspace").classList.toggle("feed-open", view === "messages");
+  $("chat-navigation").hidden = view !== "chats";
+  $("feed-description").hidden = view !== "messages";
+  $("show-messages").hidden = view === "messages";
+  $("refresh").hidden = view === "messages";
+  $("refresh-feed").hidden = view !== "messages";
+  $("messages").setAttribute(
+    "aria-label",
+    view === "messages" ? "Unified messages" : "Chat messages",
+  );
+  for (const button of document.querySelectorAll<HTMLButtonElement>(
+    "[data-view]",
+  )) {
+    const active = button.dataset.view === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  controls();
+}
+function chatHeader() {
+  const contact = state.selected;
+  $("chat-name").textContent = contact
+    ? displayName(contact)
+    : "Your conversations, understood.";
+  $("chat-avatar").textContent = contact ? initials(contact) : "▤";
+  $("chat-subtitle").textContent = contact
+    ? contact.type === "group"
+      ? "Group conversation"
+      : "WhatsApp conversation"
+    : "Choose a chat to get started";
+}
+function showChats() {
+  if (state.sending) return;
+  rememberDraft();
+  changeView("chats");
+  $("workspace").classList.remove("chat-open");
+  chatHeader();
+  if (state.selected) drawMessages();
+  else
+    $("messages").replaceChildren(
+      node("p", "empty", "Choose a chat to get started."),
+    );
+  drawContacts();
+  if (!state.contacts.length) void loadContacts();
+}
+async function showFeed() {
+  if (state.sending) {
+    error("Wait for the current send to finish before switching views.");
+    return;
+  }
+  if (state.view === "messages") return;
+  rememberDraft();
+  changeView("messages");
+  $("chat-name").textContent = "Messages";
+  $("chat-avatar").textContent = "▤";
+  $("chat-subtitle").textContent = "Recent messages from your conversations";
+  drawFeed();
+  await loadFeed();
+}
+function drawFeed(latest = false) {
+  if (state.view !== "messages") return;
+  $("messages").setAttribute("aria-busy", String(state.loadingFeed));
+  $<HTMLButtonElement>("refresh-feed").disabled =
+    state.loadingFeed && !state.loadingOlderFeed;
+  renderFeed(
+    $("messages"),
+    {
+      messages: state.feedMessages,
+      hasMore: state.feedHasMore,
+      loading: state.loadingFeed,
+      failed: state.feedFailed,
+      expanded: state.feedExpanded,
+    },
+    {
+      older: () => void loadFeed(true),
+      openChat: (message) => void openFeedChat(message),
+    },
+    latest,
+  );
+}
+async function loadFeed(older = false) {
+  if (
+    state.view !== "messages" ||
+    (older && (state.loadingFeed || !state.feedCursor)) ||
+    (!older && state.loadingFeed && !state.loadingOlderFeed)
+  )
+    return;
+  const view = state.viewGeneration;
+  const generation = ++state.feedGeneration;
+  ++state.linkGeneration;
+  state.loadingFeed = true;
+  state.loadingOlderFeed = older;
+  state.feedFailed = false;
+  clearError();
+  drawFeed();
+  try {
+    const cursor = older ? state.feedCursor : null;
+    const result = await call<FeedPage>("read_unified_messages", {
+      limit: 50,
+      ...(cursor
+        ? {
+            before_timestamp: cursor.beforeTimestamp,
+            before_message_id: cursor.beforeMessageId,
+          }
+        : {}),
+    });
+    if (
+      view !== state.viewGeneration ||
+      generation !== state.feedGeneration ||
+      state.view !== "messages"
+    )
+      return;
+    state.feedMessages = older
+      ? [
+          ...new Map(
+            [...result.messages, ...state.feedMessages].map((message) => [
+              feedKey(message),
+              message,
+            ]),
+          ).values(),
+        ]
+      : result.messages;
+    state.feedCursor = result.nextCursor;
+    state.feedHasMore = result.hasMore;
+    state.loadingFeed = false;
+    drawFeed(!older);
+  } catch (reason) {
+    if (
+      view === state.viewGeneration &&
+      generation === state.feedGeneration &&
+      state.view === "messages"
+    ) {
+      state.feedFailed = true;
+      error(reason, async () => {
+        if (
+          view === state.viewGeneration &&
+          generation === state.feedGeneration
+        )
+          await loadFeed(older);
+      });
+    }
+  } finally {
+    if (
+      view === state.viewGeneration &&
+      generation === state.feedGeneration &&
+      state.view === "messages"
+    ) {
+      state.loadingFeed = false;
+      drawFeed();
+    }
+  }
+}
+async function openFeedChat(message: FeedMessage) {
+  if (state.view !== "messages" || state.sending) return;
+  const view = state.viewGeneration;
+  const generation = ++state.linkGeneration;
+  clearError();
+  try {
+    const result = await call("open_chat", { contact_id: message.contactId });
+    if (
+      view !== state.viewGeneration ||
+      generation !== state.linkGeneration ||
+      state.view !== "messages"
+    )
+      return;
+    if (!result.contact || result.contact.id !== message.contactId)
+      throw Error("The source conversation could not be verified.");
+    await selectChat(result.contact, result, false);
+  } catch (reason) {
+    if (
+      view === state.viewGeneration &&
+      generation === state.linkGeneration &&
+      state.view === "messages"
+    )
+      error(reason, async () => {
+        if (
+          view === state.viewGeneration &&
+          generation === state.linkGeneration
+        )
+          await openFeedChat(message);
+      });
+  }
+}
+async function selectChat(
+  contact: Contact,
+  initial?: Payload,
+  shareSelection = true,
+) {
   if (state.sending) {
     error("Wait for the current send to finish before switching chats.");
     return;
   }
   rememberDraft();
-  ++state.chatGeneration;
-  ++state.actionGeneration;
-  ++state.draftRevision;
+  changeView("chats");
+  const view = state.viewGeneration;
   state.selected = contact;
   state.reply = null;
   state.messages = [];
@@ -410,10 +632,7 @@ async function selectChat(contact: Contact, initial?: Payload) {
   invalidatePreparation();
   clearError();
   $("workspace").classList.add("chat-open");
-  $("chat-name").textContent = displayName(contact);
-  $("chat-avatar").textContent = initials(contact);
-  $("chat-subtitle").textContent =
-    contact.type === "group" ? "Group conversation" : "WhatsApp conversation";
+  chatHeader();
   $<HTMLTextAreaElement>("draft").value = state.drafts.get(contact.id) || "";
   controls();
   drawContacts();
@@ -428,6 +647,13 @@ async function selectChat(contact: Contact, initial?: Payload) {
     drawMessages();
     await loadMessages();
   }
+  if (
+    !shareSelection ||
+    view !== state.viewGeneration ||
+    state.view !== "chats" ||
+    state.selected?.id !== contact.id
+  )
+    return;
   // Share only the selected identifier; message contents stay out of model context until requested.
   void app
     .updateModelContext({
@@ -439,6 +665,7 @@ async function selectChat(contact: Contact, initial?: Payload) {
     .catch(() => {});
 }
 async function loadMessages(older = false) {
+  if (state.view !== "chats") return;
   const contact = state.selected;
   if (!contact || (older && state.loadingChat)) return;
   const generation = ++state.chatGeneration;
@@ -487,7 +714,14 @@ async function loadMessages(older = false) {
 }
 async function messageAction(name: string, args: Record<string, unknown>) {
   const contact = state.selected;
-  if (!contact || state.busy || state.sending || !state.send) return;
+  if (
+    state.view !== "chats" ||
+    !contact ||
+    state.busy ||
+    state.sending ||
+    !state.send
+  )
+    return;
   const action = ++state.actionGeneration;
   state.busy = true;
   controls();
@@ -511,7 +745,14 @@ async function messageAction(name: string, args: Record<string, unknown>) {
   }
 }
 async function prepare() {
-  if (!state.selected || state.busy || state.sending || !state.send) return;
+  if (
+    state.view !== "chats" ||
+    !state.selected ||
+    state.busy ||
+    state.sending ||
+    !state.send
+  )
+    return;
   const contact = state.selected;
   const text = $<HTMLTextAreaElement>("draft").value.trim();
   if (!text) return;
@@ -569,7 +810,8 @@ async function prepare() {
 }
 async function send() {
   const prepared = state.prepared;
-  if (!prepared || state.sending || !state.send) return;
+  if (state.view !== "chats" || !prepared || state.sending || !state.send)
+    return;
   if ((prepared.expiresAt ?? 0) <= Date.now()) {
     $("send-error").textContent =
       "This preview expired. Cancel and prepare the message again.";
@@ -631,18 +873,31 @@ function hostContext() {
       const match = /^\/chats\/([^/]+)$/.exec(url.pathname);
       if (match) {
         const id = decodeURIComponent(match[1]);
-        if (id !== state.selected?.id) {
+        if (state.view !== "chats" || id !== state.selected?.id) {
           const generation = state.chatGeneration;
+          const view = state.viewGeneration;
           void call("open_chat", { contact_id: id })
             .then((result) => {
               if (
                 generation === state.chatGeneration &&
+                view === state.viewGeneration &&
                 linkGeneration === state.linkGeneration &&
-                result.contact
+                result.contact?.id === id
               )
-                return selectChat(result.contact, result);
+                return selectChat(
+                  result.contact,
+                  result,
+                  state.view === "chats",
+                );
             })
-            .catch((reason) => error(reason));
+            .catch((reason) => {
+              if (
+                generation === state.chatGeneration &&
+                view === state.viewGeneration &&
+                linkGeneration === state.linkGeneration
+              )
+                error(reason);
+            });
         }
       }
     } catch (reason) {
@@ -651,10 +906,21 @@ function hostContext() {
   }
 }
 $("refresh").onclick = act(async () => {
+  if (state.view !== "chats") return;
+  const view = state.viewGeneration;
   clearError();
   await loadContacts();
-  if (state.selected) await loadMessages();
+  if (view === state.viewGeneration && state.selected) await loadMessages();
 });
+$("refresh-feed").onclick = () => void loadFeed();
+$("show-messages").onclick = act(showFeed);
+for (const button of document.querySelectorAll<HTMLButtonElement>(
+  "[data-view]",
+))
+  button.onclick = () => {
+    if (button.dataset.view === "messages") void showFeed();
+    else showChats();
+  };
 $("more-chats").onclick = act(() => loadContacts(true));
 $("retry").onclick = act(async () => {
   const retry = state.retry;
@@ -664,6 +930,7 @@ $("retry").onclick = act(async () => {
 $("dismiss-error").onclick = clearError;
 let searchTimer: ReturnType<typeof setTimeout>;
 $<HTMLInputElement>("search").oninput = () => {
+  if (state.view !== "chats") return;
   state.query = $<HTMLInputElement>("search").value.trim();
   ++state.listGeneration;
   clearTimeout(searchTimer);
@@ -673,6 +940,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(
   "[data-filter]",
 ))
   button.onclick = act(async () => {
+    if (state.view !== "chats") return;
     state.filter = button.dataset.filter ?? "all";
     for (const item of document.querySelectorAll("[data-filter]")) {
       const active = (item as HTMLElement).dataset.filter === state.filter;
@@ -681,16 +949,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(
     }
     await loadContacts();
   });
-$("back").onclick = () => {
-  if (state.sending) return;
-  rememberDraft();
-  ++state.chatGeneration;
-  ++state.actionGeneration;
-  ++state.draftRevision;
-  state.busy = false;
-  invalidatePreparation();
-  $("workspace").classList.remove("chat-open");
-};
+$("back").onclick = showChats;
 $("cancel-reply").onclick = () => {
   state.reply = null;
   ++state.draftRevision;
@@ -714,6 +973,7 @@ $<HTMLDialogElement>("confirmation").oncancel = (event) => {
   else invalidatePreparation();
 };
 $("read").onclick = act(async () => {
+  if (state.view !== "chats") return;
   await messageAction("mark_conversation_read", {});
   await loadContacts();
 });
@@ -729,6 +989,7 @@ app.ontoolresult = (result) => {
       if (state.selected) drawMessages();
     }
     if (initial.contact) {
+      if (state.view === "messages") return;
       void selectChat(initial.contact, initial).catch((reason) =>
         error(reason),
       );
@@ -750,6 +1011,9 @@ app.ontoolresult = (result) => {
   }
 };
 app.ontoolcancelled = () => {
+  ++state.viewGeneration;
+  ++state.feedGeneration;
+  ++state.linkGeneration;
   ++state.chatGeneration;
   ++state.actionGeneration;
   ++state.listGeneration;
@@ -757,20 +1021,32 @@ app.ontoolcancelled = () => {
   state.busy = false;
   state.loadingChat = false;
   state.loadingList = false;
+  state.loadingFeed = false;
   invalidatePreparation();
   controls();
-  error("The request was interrupted. Refresh to reconnect.", () =>
-    loadContacts(),
-  );
+  if (state.view === "messages") {
+    state.feedFailed = true;
+    drawFeed();
+  }
+  const view = state.viewGeneration;
+  error("The request was interrupted. Refresh to reconnect.", async () => {
+    if (view === state.viewGeneration)
+      await (state.view === "messages" ? loadFeed() : loadContacts());
+  });
 };
 app.addEventListener("hostcontextchanged", hostContext);
 app.onteardown = async () => {
+  ++state.viewGeneration;
+  ++state.feedGeneration;
+  ++state.linkGeneration;
   ++state.chatGeneration;
   ++state.actionGeneration;
   ++state.listGeneration;
   clearTimeout(searchTimer);
   state.drafts.clear();
   state.prepared = null;
+  state.feedMessages = [];
+  state.feedExpanded.clear();
   return {};
 };
 void app
