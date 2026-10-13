@@ -26,6 +26,8 @@ const CHAT_RESOURCE_URI: &str = "ui://whatsapp-translator/chats";
 const CHAT_MIME_TYPE: &str = "text/html;profile=mcp-app";
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
+const FEED_MAX_LIMIT: u32 = 100;
+const JS_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const PREPARATION_TTL_MILLIS: i64 = 10 * 60 * 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +146,172 @@ impl From<StoredMessage> for MessageInfo {
             reply_context,
         }
     }
+}
+
+/// WA-FEED-CONTRACT-v1: carry source identity independently of loaded contacts.
+/// The existing chat DTO and its text selection semantics remain unchanged.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedMessage {
+    id: String,
+    contact_id: String,
+    contact_name: Option<String>,
+    contact_phone: Option<String>,
+    chat_type: String,
+    timestamp: i64,
+    timestamp_iso: Option<String>,
+    is_from_me: bool,
+    sender_name: Option<String>,
+    sender_phone: Option<String>,
+    text: Option<String>,
+    original_text: Option<String>,
+    translated_text: Option<String>,
+    is_translated: bool,
+    source_language: Option<String>,
+    content_type: String,
+    delivery_status: Option<String>,
+    reply_context: Option<FeedQuote>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedQuote {
+    message_id: Option<String>,
+    sender_name: Option<String>,
+    text: Option<String>,
+}
+
+impl From<StoredMessage> for FeedMessage {
+    fn from(message: StoredMessage) -> Self {
+        let contact_name = message.contact_name.clone();
+        let contact_phone = message.contact_phone.clone();
+        let chat_type = message.chat_type.clone();
+        let is_translated = message.is_translated;
+        let source_language = message.source_language.clone();
+        let info = MessageInfo::from(message);
+        let reply_context = info
+            .reply_context
+            .as_ref()
+            .filter(|quote| quote.is_object())
+            .map(|quote| FeedQuote {
+                message_id: quote["messageId"].as_str().map(str::to_owned),
+                sender_name: quote["senderName"].as_str().map(str::to_owned),
+                text: quote["text"].as_str().map(str::to_owned),
+            });
+        Self {
+            id: info.id,
+            contact_id: info.contact_id,
+            contact_name,
+            contact_phone,
+            chat_type,
+            timestamp: info.timestamp,
+            timestamp_iso: info.timestamp_iso,
+            is_from_me: info.is_from_me,
+            sender_name: info.sender_name,
+            sender_phone: info.sender_phone,
+            text: info.text,
+            original_text: info.original_text,
+            translated_text: info.translated_text,
+            is_translated,
+            source_language,
+            content_type: info.content_type,
+            delivery_status: info.delivery_status,
+            reply_context,
+        }
+    }
+}
+
+struct FeedArguments {
+    limit: u32,
+    before_timestamp: Option<i64>,
+    before_message_id: Option<String>,
+}
+
+impl FeedArguments {
+    fn parse(args: &Value) -> Result<Self, McpError> {
+        let object = args
+            .as_object()
+            .ok_or_else(|| McpError::invalid_params("Feed arguments must be an object", None))?;
+        if object.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "limit" | "before_timestamp" | "before_message_id"
+            )
+        }) {
+            return Err(McpError::invalid_params("Unknown feed argument", None));
+        }
+        let integer = |value: &Value, maximum: i64, name: &str| {
+            // JSON Schema integers also include numbers such as 2.0. Check
+            // bounds before conversion, including the JavaScript-safe cursor.
+            value
+                .as_f64()
+                .filter(|number| {
+                    number.is_finite()
+                        && *number >= 0.0
+                        && *number <= maximum as f64
+                        && number.fract() == 0.0
+                })
+                .map(|number| number as i64)
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!("{name} must be an integer from 0 to {maximum}"),
+                        None,
+                    )
+                })
+        };
+        let limit = match object.get("limit") {
+            Some(value) => {
+                let limit = integer(value, i64::from(FEED_MAX_LIMIT), "limit")?;
+                if limit == 0 {
+                    return Err(McpError::invalid_params(
+                        "limit must be from 1 to 100",
+                        None,
+                    ));
+                }
+                limit as u32
+            }
+            None => DEFAULT_LIMIT as u32,
+        };
+        let (before_timestamp, before_message_id) = match (
+            object.get("before_timestamp"),
+            object.get("before_message_id"),
+        ) {
+            (None, None) => (None, None),
+            (Some(timestamp), Some(id)) => {
+                let timestamp = integer(timestamp, JS_SAFE_INTEGER, "before_timestamp")?;
+                let id = id.as_str().filter(|id| !id.is_empty()).ok_or_else(|| {
+                    McpError::invalid_params("before_message_id must be a nonempty string", None)
+                })?;
+                (Some(timestamp), Some(id.to_owned()))
+            }
+            _ => {
+                return Err(McpError::invalid_params(
+                    "Feed cursor fields must be supplied together",
+                    None,
+                ))
+            }
+        };
+        Ok(Self {
+            limit,
+            before_timestamp,
+            before_message_id,
+        })
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedCursor {
+    before_timestamp: i64,
+    before_message_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedPage {
+    messages: Vec<FeedMessage>,
+    has_more: bool,
+    next_cursor: Option<FeedCursor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -407,6 +575,68 @@ impl WhatsAppMcpServer {
             ),
             Self::read_annotations("Read WhatsApp messages"),
         )
+    }
+
+    fn feed_object_schema(properties: Value) -> Value {
+        let required: Vec<&str> = properties
+            .as_object()
+            .expect("feed schema properties")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        json!({"type":"object", "required":required,
+            "properties":properties, "additionalProperties":false})
+    }
+
+    fn read_unified_messages_tool() -> Tool {
+        let nullable_string = json!({"type":["string","null"]});
+        let quote = Self::feed_object_schema(json!({
+            "messageId":nullable_string, "senderName":nullable_string, "text":nullable_string
+        }));
+        let message = Self::feed_object_schema(json!({
+            "id":{"type":"string"}, "contactId":{"type":"string"},
+            "contactName":nullable_string, "contactPhone":nullable_string,
+            "chatType":{"type":"string"}, "timestamp":{"type":"integer"},
+            "timestampIso":nullable_string, "isFromMe":{"type":"boolean"},
+            "senderName":nullable_string, "senderPhone":nullable_string,
+            "text":nullable_string, "originalText":nullable_string,
+            "translatedText":nullable_string, "isTranslated":{"type":"boolean"},
+            "sourceLanguage":nullable_string, "contentType":{"type":"string"},
+            "deliveryStatus":nullable_string,
+            "replyContext":{"anyOf":[{"type":"null"},quote]}
+        }));
+        let cursor = Self::feed_object_schema(json!({
+            "beforeTimestamp":{"type":"integer"}, "beforeMessageId":{"type":"string"}
+        }));
+        let mut tool = Self::tool(
+            "read_unified_messages",
+            "Read unified WhatsApp messages",
+            "Read the latest stored messages across conversations, with source chat identity and stable older-page cursors. Returns saved translations only; never queues translation, marks messages read or sends anything.",
+            json!({
+                "type":"object",
+                "properties":{
+                    "limit":{"type":"integer","minimum":1,"maximum":FEED_MAX_LIMIT,"default":DEFAULT_LIMIT},
+                    "before_timestamp":{"type":"integer","minimum":0,"maximum":JS_SAFE_INTEGER,"description":"Unix milliseconds; supply with before_message_id"},
+                    "before_message_id":{"type":"string","minLength":1,"description":"Opaque oldest-retained message ID; supply with before_timestamp"}
+                },
+                "dependentRequired":{
+                    "before_timestamp":["before_message_id"],
+                    "before_message_id":["before_timestamp"]
+                },
+                "additionalProperties":false
+            }),
+            Self::feed_object_schema(json!({
+                "messages":{"type":"array","items":message},
+                "hasMore":{"type":"boolean"},
+                "nextCursor":{"anyOf":[{"type":"null"},cursor]}
+            })),
+            Self::read_annotations("Read unified WhatsApp messages").open_world(false),
+        );
+        tool.meta = Some(
+            serde_json::from_value(json!({"ui":{"visibility":["app"]}}))
+                .expect("static feed metadata"),
+        );
+        tool
     }
 
     fn search_messages_tool() -> Tool {
@@ -806,6 +1036,42 @@ impl WhatsAppMcpServer {
             "nextCursor": next_cursor,
             "totalMatched": total_matched,
         })))
+    }
+
+    async fn handle_read_unified_messages(&self, args: Value) -> Result<CallToolResult, McpError> {
+        self.require_read()?;
+        let args = FeedArguments::parse(&args)?;
+        // Call the read-only query directly: the REST feed handler queues AI
+        // work. A feed view must not change messages, jobs or read state.
+        let mut messages = self
+            .state
+            .store
+            .get_unified_messages(
+                args.limit + 1,
+                args.before_timestamp,
+                args.before_message_id.as_deref(),
+            )
+            .mcp()?;
+        let has_more = messages.len() > args.limit as usize;
+        if has_more {
+            messages.remove(0);
+        }
+        let next_cursor = messages
+            .first()
+            .filter(|_| has_more)
+            .map(|message| FeedCursor {
+                before_timestamp: message.timestamp,
+                before_message_id: message.id.clone(),
+            });
+        let page = FeedPage {
+            messages: messages.into_iter().map(FeedMessage::from).collect(),
+            has_more,
+            next_cursor,
+        };
+        Ok(CallToolResult::structured(
+            serde_json::to_value(page)
+                .map_err(|error| McpError::internal_error(error.to_string(), None))?,
+        ))
     }
 
     async fn handle_read_messages(&self, args: Value) -> Result<CallToolResult, McpError> {
@@ -1553,6 +1819,7 @@ impl WhatsAppMcpServer {
                 Self::list_contacts_tool(),
                 Self::search_contacts_tool(),
                 Self::read_messages_tool(),
+                Self::read_unified_messages_tool(),
                 Self::search_messages_tool(),
                 Self::prepare_message_tool(),
             ]);
@@ -1648,6 +1915,7 @@ impl ServerHandler for WhatsAppMcpServer {
             "list_contacts" => self.handle_contacts(args, false).await,
             "search_contacts" => self.handle_contacts(args, true).await,
             "read_messages" => self.handle_read_messages(args).await,
+            "read_unified_messages" => self.handle_read_unified_messages(args).await,
             "search_messages" => self.handle_search_messages(args).await,
             "prepare_message" => self.handle_prepare_message(args).await,
             "send_message" => self.handle_prepared_send(args, false).await,
@@ -1682,6 +1950,768 @@ mod tests {
             None,
         );
         (state, data_dir)
+    }
+
+    struct FeedFixture {
+        state: Arc<AppState>,
+        dir: std::path::PathBuf,
+    }
+
+    impl FeedFixture {
+        fn new() -> Self {
+            let (state, dir) = test_state();
+            Self { state, dir }
+        }
+    }
+
+    impl Drop for FeedFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn seed_feed(state: &AppState) {
+        let private = "447700900123@s.whatsapp.net";
+        let group = "synthetic-group@g.us";
+        state
+            .store
+            .upsert_contact(
+                private,
+                Some("Fixture Friend"),
+                Some("447700900123"),
+                Some("private"),
+                0,
+            )
+            .unwrap();
+        state
+            .store
+            .upsert_contact(group, Some("Fixture Group"), None, Some("group"), 0)
+            .unwrap();
+        // The feed sources are beyond the initial contacts page.
+        for index in 0..60 {
+            state
+                .store
+                .upsert_contact(
+                    &format!("other-{index}@example.test"),
+                    Some("Other"),
+                    None,
+                    Some("private"),
+                    1000 + index,
+                )
+                .unwrap();
+        }
+        let mut a = extension_message("a", "447700900123:22@s.whatsapp.net", 100, true);
+        a.original_text = None;
+        a.translated_text = None;
+        a.source_language = None;
+        a.is_translated = false;
+        state.store.add_message(&a).unwrap();
+        let mut b = extension_message("b", group, 100, true);
+        b.chat_type = "group".into();
+        b.sender_name = Some("Fixture Member".into());
+        b.sender_phone = Some("900000000001@lid".into());
+        b.content_type = "Image".into();
+        b.content_json = json!({"type":"image", "caption":"Regarde", "media_data":"SYNTHETIC_MEDIA_BYTES",
+            "reply_context":{"messageId":"outside-history", "senderName":"Quoted Member", "text":"Earlier quote", "unexpected":"must not leak"}}).to_string();
+        b.original_text = Some("Regarde".into());
+        b.translated_text = Some("Look".into());
+        b.source_language = Some("French".into());
+        state.store.add_message(&b).unwrap();
+        let mut c = extension_message("c", private, 200, false);
+        c.sender_name = Some("Me".into());
+        c.sender_phone = Some("447700900000".into());
+        c.original_text = Some("See you".into());
+        c.translated_text = Some("À bientôt".into());
+        c.source_language = Some("French".into());
+        c.is_translated = true;
+        c.delivery_status = Some("uncertain".into());
+        state.store.add_message(&c).unwrap();
+        state
+            .store
+            .upsert_contact("status@broadcast", None, None, Some("status"), 0)
+            .unwrap();
+        for (id, chat, content_type, content) in [
+            (
+                "status",
+                "status@broadcast",
+                "text",
+                json!({"type":"text","body":"Status"}),
+            ),
+            (
+                "reaction-label",
+                private,
+                "Reaction",
+                json!({"type":"text","body":"Reaction label"}),
+            ),
+            (
+                "reaction-payload",
+                group,
+                "text",
+                json!({"type":"reaction","emoji":"👍"}),
+            ),
+        ] {
+            let mut excluded = extension_message(id, chat, 300, true);
+            excluded.content_type = content_type.into();
+            excluded.content_json = content.to_string();
+            state.store.add_message(&excluded).unwrap();
+        }
+    }
+
+    #[test]
+    fn unified_feed_schema_is_complete_app_only_and_read_scoped() {
+        let fixture = FeedFixture::new();
+        for scope in [
+            "",
+            "whatsapp.send",
+            "whatsapp.read",
+            "whatsapp.read whatsapp.send",
+            "mcp",
+        ] {
+            let server =
+                WhatsAppMcpServer::new(fixture.state.clone(), McpPermissions::from_scope(scope));
+            let tools = server.advertised_tools();
+            let feed = tools
+                .iter()
+                .find(|tool| tool.name == "read_unified_messages");
+            assert_eq!(feed.is_some(), server.permissions.read, "{scope}");
+        }
+        let tool = serde_json::to_value(WhatsAppMcpServer::read_unified_messages_tool()).unwrap();
+        assert_eq!(tool["_meta"]["ui"]["visibility"], json!(["app"]));
+        assert_eq!(tool["annotations"]["readOnlyHint"], true);
+        assert_eq!(tool["annotations"]["destructiveHint"], false);
+        assert_eq!(tool["annotations"]["idempotentHint"], true);
+        assert_eq!(tool["annotations"]["openWorldHint"], false);
+        let input = &tool["inputSchema"];
+        assert_eq!(input["additionalProperties"], false);
+        assert_eq!(
+            input["properties"]["limit"],
+            json!({"type":"integer","minimum":1,"maximum":100,"default":50})
+        );
+        assert_eq!(
+            input["properties"]["before_timestamp"]["maximum"],
+            JS_SAFE_INTEGER
+        );
+        assert_eq!(
+            input["dependentRequired"],
+            json!({"before_timestamp":["before_message_id"], "before_message_id":["before_timestamp"]})
+        );
+        let output = &tool["outputSchema"];
+        assert_eq!(output["additionalProperties"], false);
+        assert_eq!(
+            output["required"],
+            json!(["hasMore", "messages", "nextCursor"])
+        );
+        let message = &output["properties"]["messages"]["items"];
+        let mut required = vec![
+            "id",
+            "contactId",
+            "contactName",
+            "contactPhone",
+            "chatType",
+            "timestamp",
+            "timestampIso",
+            "isFromMe",
+            "senderName",
+            "senderPhone",
+            "text",
+            "originalText",
+            "translatedText",
+            "isTranslated",
+            "sourceLanguage",
+            "contentType",
+            "deliveryStatus",
+            "replyContext",
+        ];
+        required.sort_unstable();
+        assert_eq!(message["required"], json!(required));
+        assert_eq!(
+            message["properties"].as_object().unwrap().len(),
+            required.len()
+        );
+        assert_eq!(message["additionalProperties"], false);
+        for name in [
+            "contactName",
+            "contactPhone",
+            "timestampIso",
+            "senderName",
+            "senderPhone",
+            "text",
+            "originalText",
+            "translatedText",
+            "sourceLanguage",
+            "deliveryStatus",
+        ] {
+            assert_eq!(
+                message["properties"][name]["type"],
+                json!(["string", "null"])
+            );
+        }
+        let quote = &message["properties"]["replyContext"]["anyOf"][1];
+        assert_eq!(
+            quote["required"],
+            json!(["messageId", "senderName", "text"])
+        );
+        assert_eq!(quote["additionalProperties"], false);
+        assert_eq!(
+            output["properties"]["nextCursor"]["anyOf"][1]["required"],
+            json!(["beforeMessageId", "beforeTimestamp"])
+        );
+    }
+
+    fn invalid_feed_arguments() -> Vec<Value> {
+        vec![
+            json!(null),
+            json!([]),
+            json!({"tenant":"other"}),
+            json!({"contact_id":"ignored"}),
+            json!({"limit":null}),
+            json!({"limit":0}),
+            json!({"limit":101}),
+            json!({"limit":-1}),
+            json!({"limit":1.5}),
+            json!({"limit":"2"}),
+            json!({"limit":true}),
+            json!({"before_timestamp":100}),
+            json!({"before_message_id":"a"}),
+            json!({"before_timestamp":null,"before_message_id":"a"}),
+            json!({"before_timestamp":100,"before_message_id":null}),
+            json!({"before_timestamp":-1,"before_message_id":"a"}),
+            json!({"before_timestamp":1.5,"before_message_id":"a"}),
+            json!({"before_timestamp":JS_SAFE_INTEGER+1,"before_message_id":"a"}),
+            json!({"before_timestamp":u64::MAX,"before_message_id":"a"}),
+            json!({"before_timestamp":"100","before_message_id":"a"}),
+            json!({"before_timestamp":true,"before_message_id":"a"}),
+            json!({"before_timestamp":100,"before_message_id":""}),
+            json!({"before_timestamp":100,"before_message_id":2}),
+        ]
+    }
+
+    #[test]
+    fn unified_feed_runtime_arguments_enforce_schema_and_preserve_opaque_ids() {
+        for args in invalid_feed_arguments() {
+            assert!(FeedArguments::parse(&args).is_err(), "accepted {args}");
+        }
+        assert_eq!(FeedArguments::parse(&json!({})).unwrap().limit, 50);
+        let id = "  opaque:/%🧪  ";
+        let args = FeedArguments::parse(
+            &json!({"limit":100,"before_timestamp":JS_SAFE_INTEGER,"before_message_id":id}),
+        )
+        .unwrap();
+        assert_eq!(args.limit, 100);
+        assert_eq!(args.before_timestamp, Some(JS_SAFE_INTEGER));
+        assert_eq!(args.before_message_id.as_deref(), Some(id));
+        assert_eq!(
+            FeedArguments::parse(
+                &json!({"limit":2.0,"before_timestamp":0.0,"before_message_id":"a"})
+            )
+            .unwrap()
+            .before_timestamp,
+            Some(0)
+        );
+    }
+
+    #[tokio::test]
+    async fn unified_feed_exact_content_and_cursor_are_independent_of_contacts_page() {
+        let fixture = FeedFixture::new();
+        seed_feed(&fixture.state);
+        let server = WhatsAppMcpServer::new(
+            fixture.state.clone(),
+            McpPermissions {
+                read: true,
+                send: true,
+            },
+        );
+        let contacts = server
+            .handle_contacts(json!({}), false)
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(contacts["contacts"].as_array().unwrap().len(), 50);
+        assert!(!contacts["contacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|contact| contact["id"] == "synthetic-group@g.us"));
+        let page = server
+            .handle_read_unified_messages(json!({"limit":2}))
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(
+            page,
+            json!({"messages":[
+            {"id":"b","contactId":"synthetic-group@g.us","contactName":"Fixture Group","contactPhone":null,"chatType":"group",
+                "timestamp":100,"timestampIso":"1970-01-01T00:00:00.100+00:00","isFromMe":false,"senderName":"Fixture Member","senderPhone":"900000000001@lid",
+                "text":"Look","originalText":"Regarde","translatedText":"Look","isTranslated":true,"sourceLanguage":"French","contentType":"Image","deliveryStatus":"delivered",
+                "replyContext":{"messageId":"outside-history","senderName":"Quoted Member","text":"Earlier quote"}},
+            {"id":"c","contactId":"447700900123@s.whatsapp.net","contactName":"Fixture Friend","contactPhone":"447700900123","chatType":"private",
+                "timestamp":200,"timestampIso":"1970-01-01T00:00:00.200+00:00","isFromMe":true,"senderName":"Me","senderPhone":"447700900000",
+                "text":"See you","originalText":"See you","translatedText":"À bientôt","isTranslated":true,"sourceLanguage":"French","contentType":"text","deliveryStatus":"uncertain","replyContext":null}
+        ],"hasMore":true,"nextCursor":{"beforeTimestamp":100,"beforeMessageId":"b"}})
+        );
+        let older = server.handle_read_unified_messages(json!({"limit":2,"before_timestamp":page["nextCursor"]["beforeTimestamp"],"before_message_id":page["nextCursor"]["beforeMessageId"]})).await.unwrap().structured_content.unwrap();
+        assert_eq!(older["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(older["messages"][0]["id"], "a");
+        assert_eq!(
+            older["messages"][0]["contactId"],
+            "447700900123@s.whatsapp.net"
+        );
+        assert_eq!(older["messages"][0]["text"], "hello");
+        assert_eq!(older["hasMore"], false);
+        assert!(older["nextCursor"].is_null());
+        let all = server
+            .handle_read_unified_messages(json!({}))
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(
+            all["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|message| message["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["a", "b", "c"]
+        );
+        assert!(!all.to_string().contains("SYNTHETIC_MEDIA_BYTES"));
+        // Navigating by the source ID works without having loaded its contact row.
+        let chat = server
+            .handle_open(json!({"contact_id":page["messages"][0]["contactId"]}), true)
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(chat["contact"]["id"], "synthetic-group@g.us");
+        assert_eq!(chat["messages"][0]["id"], "b");
+        assert!(chat["messages"][0].get("chatType").is_none());
+        assert_eq!(
+            chat["messages"][0]["replyContext"]["unexpected"],
+            "must not leak"
+        );
+    }
+
+    #[tokio::test]
+    async fn unified_feed_empty_missing_metadata_media_and_partial_quotes_are_explicit() {
+        let fixture = FeedFixture::new();
+        let server = WhatsAppMcpServer::new(
+            fixture.state.clone(),
+            McpPermissions {
+                read: true,
+                send: false,
+            },
+        );
+        assert_eq!(
+            server
+                .handle_read_unified_messages(json!({}))
+                .await
+                .unwrap()
+                .structured_content
+                .unwrap(),
+            json!({"messages":[],"hasMore":false,"nextCursor":null})
+        );
+        fixture
+            .state
+            .store
+            .upsert_contact("unresolved@lid", None, None, Some("private"), 0)
+            .unwrap();
+        for (id, kind, caption, quote) in [
+            ("audio", "Audio", None, json!("invalid quote")),
+            (
+                "document",
+                "Document",
+                Some("Document caption"),
+                json!({"messageId":7,"text":"Partial quote","extra":true}),
+            ),
+            ("video", "Video", Some("Video caption"), json!(null)),
+        ] {
+            let mut message = extension_message(id, "unresolved@lid", 100, true);
+            message.content_type = kind.into();
+            message.content_json = json!({"type":kind.to_lowercase(),"caption":caption,"mediaData":"SYNTHETIC_MEDIA_BYTES","reply_context":quote}).to_string();
+            message.original_text = None;
+            message.translated_text = None;
+            message.is_translated = false;
+            fixture.state.store.add_message(&message).unwrap();
+        }
+        let page = server
+            .handle_read_unified_messages(json!({}))
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(page["messages"].as_array().unwrap().len(), 3);
+        for message in page["messages"].as_array().unwrap() {
+            assert_eq!(message["contactId"], "unresolved@lid");
+            assert!(message["contactName"].is_null());
+            assert!(message["contactPhone"].is_null());
+        }
+        assert!(page["messages"][0]["text"].is_null());
+        assert!(page["messages"][0]["replyContext"].is_null());
+        assert_eq!(page["messages"][1]["text"], "Document caption");
+        assert_eq!(
+            page["messages"][1]["replyContext"],
+            json!({"messageId":null,"senderName":null,"text":"Partial quote"})
+        );
+        assert_eq!(page["messages"][2]["text"], "Video caption");
+        assert!(!page.to_string().contains("SYNTHETIC_MEDIA_BYTES"));
+    }
+
+    // Read only the disposable test database, never the service's session data.
+    // Snapshot every persisted table so unexpected writes outside the message
+    // and receipt tables are caught as well.
+    fn feed_database_snapshot(
+        dir: &std::path::Path,
+    ) -> std::collections::BTreeMap<String, Vec<String>> {
+        use rusqlite::{types::ValueRef, Connection, OpenFlags};
+        let connection =
+            Connection::open_with_flags(dir.join("messages.db"), OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .unwrap();
+        let names = connection.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap()
+            .query_map([], |row| row.get::<_, String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        let mut snapshot = std::collections::BTreeMap::new();
+        for name in names {
+            let mut statement = connection
+                .prepare(&format!("SELECT * FROM \"{}\"", name.replace('"', "\"\"")))
+                .unwrap();
+            let columns = statement.column_count();
+            let mut rows = statement
+                .query_map([], |row| {
+                    let values = (0..columns)
+                        .map(|index| {
+                            Ok(match row.get_ref(index)? {
+                                ValueRef::Null => Value::Null,
+                                ValueRef::Integer(value) => json!(value),
+                                ValueRef::Real(value) => json!(value),
+                                ValueRef::Text(value) => json!(std::str::from_utf8(value).unwrap()),
+                                ValueRef::Blob(value) => json!({"blob":value}),
+                            })
+                        })
+                        .collect::<rusqlite::Result<Vec<_>>>()?;
+                    Ok(json!(values).to_string())
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            rows.sort();
+            snapshot.insert(name, rows);
+        }
+        snapshot
+    }
+
+    fn feed_oauth_token(state: &AppState, token: &str, scope: &str, expires_at: i64) {
+        state
+            .store
+            .oauth_store_client(&crate::oauth::OAuthClientRegistration {
+                client_id: token.into(),
+                client_name: Some("Synthetic feed client".into()),
+                redirect_uris: vec!["http://127.0.0.1/callback".into()],
+                scope: scope.into(),
+                created_at: 0,
+            })
+            .unwrap();
+        state
+            .store
+            .oauth_store_access_token(&crate::oauth::AccessToken {
+                token: token.into(),
+                client_id: token.into(),
+                scope: scope.into(),
+                created_at: 0,
+                expires_at,
+            })
+            .unwrap();
+    }
+
+    async fn feed_rpc(
+        state: Arc<AppState>,
+        authorization: Option<&str>,
+        method: &str,
+        params: Value,
+    ) -> axum::response::Response {
+        use tower::ServiceExt;
+        let mut request = axum::http::Request::builder()
+            .method("POST")
+            .uri("/mcp")
+            .header("host", "127.0.0.1:3000")
+            .header("content-type", "application/json")
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", "2025-11-25");
+        if let Some(authorization) = authorization {
+            request = request.header("authorization", authorization);
+        }
+        crate::web::create_router(state)
+            .oneshot(
+                request
+                    .body(axum::body::Body::from(
+                        json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn feed_rpc_body(response: axum::response::Response) -> Value {
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), 2 * 1024 * 1024)
+            .await
+            .unwrap();
+        let text = std::str::from_utf8(&bytes).unwrap();
+        serde_json::from_str(text).unwrap_or_else(|_| {
+            serde_json::from_str(
+                text.lines()
+                    .find_map(|line| line.strip_prefix("data: "))
+                    .expect("SSE data"),
+            )
+            .unwrap()
+        })
+    }
+
+    #[tokio::test]
+    async fn unified_feed_http_auth_isolation_and_repeated_reads_have_no_side_effects() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let ai_requests = Arc::new(AtomicUsize::new(0));
+        let observed = ai_requests.clone();
+        let mock = axum::Router::new().route(
+            "/responses",
+            axum::routing::post(move || {
+                let observed = observed.clone();
+                async move {
+                    observed.fetch_add(1, Ordering::SeqCst);
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}/responses", listener.local_addr().unwrap());
+        let mock_task = tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+        let mut first = FeedFixture::new();
+        let mutable = Arc::get_mut(&mut first.state).unwrap();
+        mutable.password = Some("synthetic-password".into());
+        mutable.translator = Some(Arc::new(
+            crate::translation::TranslationService::new_with_api_url(api_url),
+        ));
+        seed_feed(&first.state);
+        let private = "447700900123@s.whatsapp.net";
+        first
+            .state
+            .store
+            .update_conversation_settings(
+                private,
+                &ConversationSettings {
+                    translation_enabled: true,
+                    reply_only: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let mut untranslated = extension_message("needs-translation", private, 50, true);
+        untranslated.original_text = Some("Bonjour, ceci attend une traduction".into());
+        untranslated.translated_text = None;
+        untranslated.source_language = None;
+        untranslated.is_translated = false;
+        first
+            .state
+            .store
+            .add_message_with_notification(&untranslated, Some(false))
+            .unwrap();
+        let mut audio = extension_message("needs-voice", private, 40, true);
+        audio.content_type = "Audio".into();
+        audio.content_json =
+            json!({"type":"audio","media_data":"SYNTHETIC_AUDIO_BYTES"}).to_string();
+        audio.original_text = None;
+        audio.translated_text = None;
+        audio.source_language = None;
+        audio.is_translated = false;
+        first
+            .state
+            .store
+            .add_message_with_notification(&audio, Some(false))
+            .unwrap();
+        for (token, scope, expiration) in [
+            ("feed-read", "whatsapp.read", i64::MAX),
+            ("feed-full", "whatsapp.read whatsapp.send", i64::MAX),
+            ("feed-legacy", "mcp", i64::MAX),
+            ("feed-send-only", "whatsapp.send", i64::MAX),
+            ("feed-expired", "whatsapp.read", 1),
+        ] {
+            feed_oauth_token(&first.state, token, scope, expiration);
+        }
+        let (tx, mut commands) = tokio::sync::mpsc::channel(8);
+        first.state.set_command_tx(tx).await;
+        *first.state.connected.write().await = true;
+        let mut events = first.state.broadcast_tx.subscribe();
+        let request_id = first.state.request_id_counter.load(Ordering::SeqCst);
+        let before = feed_database_snapshot(&first.dir);
+        assert!(before["translation_jobs"].is_empty());
+        assert!(before["viewed_messages"].is_empty());
+        assert!(!before["unread_messages"].is_empty());
+        assert!(!before["pending_notifications"].is_empty());
+        let call = json!({"name":"read_unified_messages","arguments":{"limit":2}});
+        for auth in [
+            None,
+            Some("Bearer invalid-feed-token"),
+            Some("Basic feed-read"),
+            Some("Bearer feed-expired"),
+        ] {
+            let response = feed_rpc(first.state.clone(), auth, "tools/call", call.clone()).await;
+            assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+            assert!(response.headers().contains_key("www-authenticate"));
+        }
+        let tools = feed_rpc_body(
+            feed_rpc(
+                first.state.clone(),
+                Some("Bearer feed-send-only"),
+                "tools/list",
+                json!({}),
+            )
+            .await,
+        )
+        .await;
+        assert!(!tools["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["name"] == "read_unified_messages"));
+        let denied = feed_rpc_body(
+            feed_rpc(
+                first.state.clone(),
+                Some("Bearer feed-send-only"),
+                "tools/call",
+                call.clone(),
+            )
+            .await,
+        )
+        .await;
+        assert!(denied.get("error").is_some());
+        for args in invalid_feed_arguments()
+            .into_iter()
+            .filter(Value::is_object)
+        {
+            let rejected = feed_rpc_body(
+                feed_rpc(
+                    first.state.clone(),
+                    Some("Bearer feed-read"),
+                    "tools/call",
+                    json!({"name":"read_unified_messages","arguments":args}),
+                )
+                .await,
+            )
+            .await;
+            assert!(rejected.get("error").is_some(), "accepted {args}");
+        }
+        for token in ["feed-read", "feed-full", "feed-legacy"] {
+            let authorization = format!("Bearer {token}");
+            for _ in 0..3 {
+                let page = feed_rpc_body(
+                    feed_rpc(
+                        first.state.clone(),
+                        Some(&authorization),
+                        "tools/call",
+                        call.clone(),
+                    )
+                    .await,
+                )
+                .await;
+                let page = &page["result"]["structuredContent"];
+                assert_eq!(
+                    page["messages"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|m| m["id"].as_str().unwrap())
+                        .collect::<Vec<_>>(),
+                    ["b", "c"]
+                );
+                assert_eq!(
+                    page["nextCursor"],
+                    json!({"beforeTimestamp":100,"beforeMessageId":"b"})
+                );
+                let older = feed_rpc_body(feed_rpc(first.state.clone(), Some(&authorization), "tools/call", json!({"name":"read_unified_messages","arguments":{"limit":100,"before_timestamp":100,"before_message_id":"b"}})).await).await;
+                let older = &older["result"]["structuredContent"];
+                assert_eq!(
+                    older["messages"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|m| m["id"].as_str().unwrap())
+                        .collect::<Vec<_>>(),
+                    ["needs-voice", "needs-translation", "a"]
+                );
+                assert_eq!(older["hasMore"], false);
+                assert!(older["nextCursor"].is_null());
+            }
+        }
+        let mut second = FeedFixture::new();
+        Arc::get_mut(&mut second.state).unwrap().password = Some("other-synthetic-password".into());
+        second
+            .state
+            .store
+            .upsert_contact(private, Some("Second instance"), None, Some("private"), 0)
+            .unwrap();
+        second
+            .state
+            .store
+            .add_message(&extension_message("second-only", private, 100, true))
+            .unwrap();
+        feed_oauth_token(&second.state, "second-read", "whatsapp.read", i64::MAX);
+        let second_before = feed_database_snapshot(&second.dir);
+        assert_eq!(
+            feed_rpc(
+                second.state.clone(),
+                Some("Bearer feed-read"),
+                "tools/call",
+                call.clone()
+            )
+            .await
+            .status(),
+            axum::http::StatusCode::UNAUTHORIZED
+        );
+        let isolated = feed_rpc_body(
+            feed_rpc(
+                second.state.clone(),
+                Some("Bearer second-read"),
+                "tools/call",
+                call,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            isolated["result"]["structuredContent"]["messages"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            isolated["result"]["structuredContent"]["messages"][0]["id"],
+            "second-only"
+        );
+        assert_eq!(
+            isolated["result"]["structuredContent"]["messages"][0]["contactName"],
+            "Second instance"
+        );
+        assert_eq!(feed_database_snapshot(&first.dir), before);
+        assert_eq!(feed_database_snapshot(&second.dir), second_before);
+        assert!(matches!(
+            commands.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        assert_eq!(ai_requests.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            first.state.request_id_counter.load(Ordering::SeqCst),
+            request_id
+        );
+        assert!(first.state.mcp_prepared_messages.read().await.is_empty());
+        assert!(first.state.pending_send_requests.read().await.is_empty());
+        assert_eq!(first.state.voice_queue.available_permits(), 4);
+        mock_task.abort();
     }
 
     #[test]
