@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>WhatsApp conversations · BabelBridge</title>
+    <title>WhatsApp chats and messages · BabelBridge</title>
     <style>
       /* EXTENSION_STYLES */
     </style>
@@ -20,30 +20,42 @@
             ↻
           </button>
         </header>
-        <div class="inbox-heading">
-          <h1>Chats</h1>
-          <span class="count" id="count">—</span>
+        <nav class="view-nav" aria-label="WhatsApp views">
+          <button class="active" data-view="chats" aria-pressed="true">
+            Chats
+          </button>
+          <button data-view="messages" aria-pressed="false">Messages</button>
+        </nav>
+        <p id="feed-description" class="feed-description" hidden>
+          All your messages, together.<br />Open a source conversation to
+          continue in Chats.
+        </p>
+        <div id="chat-navigation" class="chat-navigation">
+          <div class="inbox-heading">
+            <h1>Chats</h1>
+            <span class="count" id="count">—</span>
+          </div>
+          <label class="search"
+            ><span aria-hidden="true">⌕</span
+            ><input
+              id="search"
+              type="search"
+              placeholder="Search conversations"
+              aria-label="Search conversations"
+          /></label>
+          <div class="filters" role="group" aria-label="Filter conversations">
+            <button class="active" data-filter="all" aria-pressed="true">
+              All</button
+            ><button data-filter="unread" aria-pressed="false">Unread</button
+            ><button data-filter="group" aria-pressed="false">Groups</button>
+          </div>
+          <div class="chat-list" id="chat-list" aria-live="polite">
+            <p class="empty">Connecting to your chats…</p>
+          </div>
+          <button id="more-chats" class="load-more" hidden>
+            Load more conversations
+          </button>
         </div>
-        <label class="search"
-          ><span aria-hidden="true">⌕</span
-          ><input
-            id="search"
-            type="search"
-            placeholder="Search conversations"
-            aria-label="Search conversations"
-        /></label>
-        <div class="filters" role="group" aria-label="Filter conversations">
-          <button class="active" data-filter="all" aria-pressed="true">
-            All</button
-          ><button data-filter="unread" aria-pressed="false">Unread</button
-          ><button data-filter="group" aria-pressed="false">Groups</button>
-        </div>
-        <div class="chat-list" id="chat-list" aria-live="polite">
-          <p class="empty">Connecting to your chats…</p>
-        </div>
-        <button id="more-chats" class="load-more" hidden>
-          Load more conversations
-        </button>
         <footer class="inbox-footer">
           <span class="dot"></span> Your connected WhatsApp account
         </footer>
@@ -57,6 +69,21 @@
             <h2 id="chat-name">Your conversations, understood.</h2>
             <span id="chat-subtitle">Choose a chat to get started</span>
           </div>
+          <button
+            id="show-messages"
+            class="view-button"
+            aria-label="Open Messages"
+          >
+            Messages
+          </button>
+          <button
+            id="refresh-feed"
+            class="icon"
+            aria-label="Refresh messages"
+            hidden
+          >
+            ↻
+          </button>
           <button
             id="read"
             class="icon"
@@ -116,6 +143,9 @@
         </form>
         <div class="readonly" id="readonly" hidden>
           Read-only connection · message sending is not authorised
+        </div>
+        <div class="readonly" id="feed-note" hidden>
+          View only · open a source conversation to reply
         </div>
       </main>
     </div>

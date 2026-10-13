@@ -97,9 +97,182 @@
         },
       ];
       if (options.xss) contacts[0].name = "<img src=x onerror=alert(1)>";
+      const sourceOnlyContacts = [
+        {
+          id: "phone@s.whatsapp.net",
+          name: null,
+          phone: "447700900102",
+          type: "private",
+          unreadCount: 0,
+          isPinned: false,
+          lastMessageTime: 1791370900000,
+        },
+        {
+          id: "opaque/room+?@g.us",
+          name: null,
+          phone: null,
+          type: "group",
+          unreadCount: 0,
+          isPinned: false,
+          lastMessageTime: 1791370900000,
+        },
+      ];
+      const storedFeedMessage = (id, contact, timestamp, values = {}) => ({
+        id,
+        contactId: contact.id,
+        contactName: contact.name || null,
+        contactPhone: contact.phone || null,
+        chatType: contact.type,
+        timestamp,
+        timestampIso: new Date(timestamp).toISOString(),
+        isFromMe: false,
+        senderName: null,
+        senderPhone: null,
+        text: "Stored message",
+        originalText: "Stored message",
+        translatedText: null,
+        isTranslated: false,
+        sourceLanguage: null,
+        contentType: "text",
+        deliveryStatus: null,
+        replyContext: null,
+        ...values,
+      });
+      const feed = options.feedCursor
+        ? [
+            storedFeedMessage("a", contacts[0], 100, {
+              text: "Equal-time Alice",
+              originalText: "Equal-time Alice",
+            }),
+            storedFeedMessage("b", contacts[1], 100, {
+              text: "Equal-time group",
+              originalText: "Equal-time group",
+              senderName: "Marta",
+            }),
+            storedFeedMessage("c", contacts[2], 200, {
+              text: "Later Daniel",
+              originalText: "Later Daniel",
+            }),
+          ]
+        : options.feedLong
+          ? Array.from({ length: 12 }, (_, index) =>
+              storedFeedMessage(
+                `long-${String(index).padStart(2, "0")}`,
+                contacts[0],
+                1791370000000 + index * 1000,
+                {
+                  text: `Reading message ${index}. ${"A long line of stored text wraps across the conversation. ".repeat(6)}`,
+                  originalText: `Original ${index}. ${"Un texte conservé pour lire sans envoyer de message. ".repeat(6)}`,
+                  translatedText: `Reading message ${index}. ${"A long line of stored text wraps across the conversation. ".repeat(6)}`,
+                  isTranslated: true,
+                  sourceLanguage: "French",
+                },
+              ),
+            )
+          : [
+              storedFeedMessage("feed-1", contacts[0], 1791280000000, {
+                text: "Earlier private message",
+                originalText: "Earlier private message",
+              }),
+              storedFeedMessage(
+                "feed-2",
+                sourceOnlyContacts[0],
+                1791370000000,
+                {
+                  text: "A contact with a phone only",
+                  originalText: "A contact with a phone only",
+                },
+              ),
+              storedFeedMessage(
+                "feed-3",
+                sourceOnlyContacts[1],
+                1791370100000,
+                {
+                  text: "A conversation with an opaque ID",
+                  originalText: "A conversation with an opaque ID",
+                  senderPhone: "447700900103",
+                },
+              ),
+              storedFeedMessage("feed-4", contacts[1], 1791370200000, {
+                text: "Let’s meet at the café.",
+                originalText: "On se retrouve au café.",
+                translatedText: "Let’s meet at the café.",
+                isTranslated: true,
+                sourceLanguage: "French",
+                senderName: "Marta",
+                replyContext: {
+                  messageId: "quoted-outside-page",
+                  senderName: "Alice",
+                  text: "Which place works for everyone?",
+                },
+              }),
+              storedFeedMessage("feed-5", contacts[2], 1791370300000, {
+                text: "I will bring the notes.",
+                originalText: "I will bring the notes.",
+                translatedText: "Je vais apporter les notes.",
+                isTranslated: true,
+                sourceLanguage: "French",
+                isFromMe: true,
+                deliveryStatus: "uncertain",
+              }),
+              storedFeedMessage("feed-6", contacts[1], 1791370400000, {
+                text: "A photo from the café",
+                originalText: "Une photo du café",
+                translatedText: "A photo from the café",
+                isTranslated: true,
+                sourceLanguage: "French",
+                senderName: "Marta",
+                contentType: "image",
+              }),
+              storedFeedMessage("feed-7", contacts[0], 1791370500000, {
+                text: null,
+                originalText: null,
+                contentType: "voice note",
+              }),
+            ];
+      if (options.feedXss) {
+        feed[feed.length - 1] = storedFeedMessage(
+          "hostile",
+          sourceOnlyContacts[1],
+          1791370900000,
+          {
+            contactName: "<img src=x onerror=alert(1)>",
+            senderName: "<script>bad()<\/script>",
+            text: "<button onclick=bad()>Stored text</button>",
+            originalText: "<button onclick=bad()>Stored text</button>",
+            replyContext: {
+              messageId: "opaque",
+              senderName: "<svg onload=bad()>",
+              text: "<iframe src=bad></iframe>",
+            },
+          },
+        );
+      }
       window.calls = [];
+      window.hostCalls = [];
+      window.pending = [];
+      const heldCounts = new Map();
+      function hold(name, args) {
+        const count = (heldCounts.get(name) || 0) + 1;
+        heldCounts.set(name, count);
+        const enabled =
+          name === "read_unified_messages"
+            ? (options.holdFeed && count === 1) ||
+              (options.holdOlder && args.before_message_id)
+            : name === "open_chat"
+              ? options.holdSource
+              : name === "read_messages"
+                ? options.holdChat
+                : false;
+        if (!enabled) return;
+        return new Promise((resolve, reject) =>
+          window.pending.push({ name, args, resolve, reject }),
+        );
+      }
       let listFailures = options.error ? 1 : 0;
       let sendFailures = options.sendError ? 1 : 0;
+      let feedFailures = options.feedError ? 1 : 0;
+      let olderFailures = options.olderError ? 1 : 0;
       function send(data) {
         document
           .getElementById("app")
@@ -129,6 +302,10 @@
           return;
         const request = event.data;
         if (!request || request.jsonrpc !== "2.0") return;
+        window.hostCalls.push({
+          method: request.method,
+          params: request.params,
+        });
         if (request.method === "ui/notifications/initialized") {
           notify("ui/notifications/tool-result", structured(initial()));
           return;
@@ -155,6 +332,8 @@
           else if (request.method === "tools/call") {
             const { name, arguments: args } = request.params;
             window.calls.push({ name, args });
+            const held = hold(name, args);
+            if (held) await held;
             if (name === "list_contacts") {
               if (listFailures-- > 0)
                 throw Error("Synthetic connection failure");
@@ -176,10 +355,42 @@
                 nextCursor: offset + 2 < found.length ? offset + 2 : null,
                 totalMatched: found.length,
               });
+            } else if (name === "read_unified_messages") {
+              if (feedFailures-- > 0) throw Error("Synthetic feed failure");
+              if (args.before_message_id && olderFailures-- > 0)
+                throw Error("Synthetic older-page failure");
+              const eligible = options.feedEmpty
+                ? []
+                : feed.filter(
+                    (message) =>
+                      args.before_timestamp === undefined ||
+                      message.timestamp < args.before_timestamp ||
+                      (message.timestamp === args.before_timestamp &&
+                        message.id < args.before_message_id),
+                  );
+              const pageSize = options.feedCursor
+                ? 2
+                : options.feedLong
+                  ? 4
+                  : 5;
+              const page = eligible.slice(-pageSize);
+              const hasMore = eligible.length > page.length;
+              result = structured({
+                messages: page,
+                hasMore,
+                nextCursor: hasMore
+                  ? {
+                      beforeTimestamp: page[0].timestamp,
+                      beforeMessageId: page[0].id,
+                    }
+                  : null,
+              });
             } else if (name === "read_messages" || name === "open_chat") {
               if (options.slowChat && args.contact_id === contacts[0].id)
                 await new Promise((resolve) => setTimeout(resolve, 600));
-              const contact = contacts.find((c) => c.id === args.contact_id);
+              const contact = [...contacts, ...sourceOnlyContacts].find(
+                (c) => c.id === args.contact_id,
+              );
               if (!contact) throw Error("Unknown contact_id");
               const page = args.before_message_id
                 ? [
@@ -194,7 +405,10 @@
                   ? messages
                   : [];
               result = structured({
-                contact,
+                contact:
+                  options.wrongSource && name === "open_chat"
+                    ? contacts[0]
+                    : contact,
                 messages: page,
                 hasMore: !args.before_message_id && page.length > 0,
                 nextCursor:
