@@ -65,6 +65,7 @@ const state = {
   feedMessages: [] as FeedMessage[],
   feedCursor: null as Cursor | null,
   feedHasMore: false,
+  feedFailed: false,
   loadingFeed: false,
   loadingOlderFeed: false,
   feedExpanded: new Set<string>(),
@@ -421,6 +422,7 @@ function changeView(view: "chats" | "messages") {
   state.loadingList = false;
   state.loadingFeed = false;
   state.loadingOlderFeed = false;
+  state.feedFailed = false;
   state.busy = false;
   state.reply = null;
   invalidatePreparation();
@@ -496,6 +498,7 @@ function drawFeed(latest = false) {
       messages: state.feedMessages,
       hasMore: state.feedHasMore,
       loading: state.loadingFeed,
+      failed: state.feedFailed,
       expanded: state.feedExpanded,
     },
     {
@@ -517,6 +520,7 @@ async function loadFeed(older = false) {
   ++state.linkGeneration;
   state.loadingFeed = true;
   state.loadingOlderFeed = older;
+  state.feedFailed = false;
   clearError();
   drawFeed();
   try {
@@ -555,7 +559,8 @@ async function loadFeed(older = false) {
       view === state.viewGeneration &&
       generation === state.feedGeneration &&
       state.view === "messages"
-    )
+    ) {
+      state.feedFailed = true;
       error(reason, async () => {
         if (
           view === state.viewGeneration &&
@@ -563,6 +568,7 @@ async function loadFeed(older = false) {
         )
           await loadFeed(older);
       });
+    }
   } finally {
     if (
       view === state.viewGeneration &&
@@ -1018,7 +1024,10 @@ app.ontoolcancelled = () => {
   state.loadingFeed = false;
   invalidatePreparation();
   controls();
-  if (state.view === "messages") drawFeed();
+  if (state.view === "messages") {
+    state.feedFailed = true;
+    drawFeed();
+  }
   const view = state.viewGeneration;
   error("The request was interrupted. Refresh to reconnect.", async () => {
     if (view === state.viewGeneration)

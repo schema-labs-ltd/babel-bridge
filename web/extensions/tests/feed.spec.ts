@@ -316,6 +316,9 @@ test("feed errors retry the same page, refresh starts a new window, and no write
   const ui = await open(page, "?feedError=1&olderError=1");
   await feed(ui);
   await expect(ui.getByRole("alert")).toContainText("Synthetic feed failure");
+  await expect(
+    ui.getByText("No messages here yet.", { exact: true }),
+  ).toHaveCount(0);
   await ui.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(ui.locator(".feed-item")).toHaveCount(5);
   await ui.getByRole("button", { name: "Load earlier messages" }).click();
@@ -636,5 +639,8 @@ test("compiled feed screenshots cover desktop, dark, narrow, empty, loading and 
   await page.screenshot({ path: evidence("loading") });
   await release(page, "read_unified_messages", true);
   await expect(ui.getByRole("alert")).toContainText("failure");
+  await expect(
+    ui.getByText("No messages here yet.", { exact: true }),
+  ).toHaveCount(0);
   await page.screenshot({ path: evidence("error") });
 });

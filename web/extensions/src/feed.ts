@@ -50,6 +50,7 @@ export function renderFeed(
     messages: FeedMessage[];
     hasMore: boolean;
     loading: boolean;
+    failed: boolean;
     expanded: Set<string>;
   },
   actions: { older: () => void; openChat: (message: FeedMessage) => void },
@@ -81,7 +82,7 @@ export function renderFeed(
     more.onclick = actions.older;
     container.append(more);
   }
-  if (!state.messages.length)
+  if (!state.messages.length && !state.failed)
     container.append(
       element(
         "p",
