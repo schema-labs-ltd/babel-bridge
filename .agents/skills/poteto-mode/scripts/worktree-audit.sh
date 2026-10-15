@@ -127,7 +127,7 @@ printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 	for wt in "${worktrees[@]}"; do
 	[ "$wt" = "$main_wt" ] && continue
 
-	size=$(du -sh "$wt" 2>/dev/null | awk '{print $1}')
+	size=$(cd "$wt" && du -sh . 2>/dev/null | awk '{print $1}')
 	head=$(git -C "$wt" rev-parse HEAD 2>/dev/null)
 	head_ts=$(git -C "$wt" log -1 --format='%ct' HEAD 2>/dev/null || echo 0)
 	age=$([ "$head_ts" -gt 0 ] 2>/dev/null && echo "$(( (now - head_ts) / 86400 ))d" || echo "?")
@@ -174,8 +174,10 @@ printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 		esac ;;
 	esac
 
+	# Shell-escape the path so tabs and newlines cannot split table rows or sort records.
+	display_wt=$(printf '%q' "$wt")
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
+		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$display_wt"
 	done
 } | sort -t$'\t' -k1,1 -rh
 
