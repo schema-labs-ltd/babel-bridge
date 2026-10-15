@@ -139,9 +139,14 @@ if ! {
 	# Distinguish real WIP (tracked edits) from disposable untracked scratch.
 	porcelain=$(git -C "$wt" status --porcelain 2>/dev/null)
 	if [ -z "$porcelain" ]; then dirty=clean
-	elif printf '%s\n' "$porcelain" | grep -qv '^??'; then
-		dirty="wip:$(printf '%s\n' "$porcelain" | grep -cv '^??')"
-	else dirty="scratch:$(printf '%s\n' "$porcelain" | grep -c '^??')"; fi
+	else
+		tracked_count=$(printf '%s\n' "$porcelain" | awk '!/^\?\?/ { count++ } END { print count + 0 }')
+		if [ "$tracked_count" -gt 0 ]; then dirty="wip:$tracked_count"
+		else
+			scratch_count=$(printf '%s\n' "$porcelain" | awk '/^\?\?/ { count++ } END { print count + 0 }')
+			dirty="scratch:$scratch_count"
+		fi
+	fi
 
 	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
 	if [ -z "$branch" ]; then remote=detached
@@ -159,13 +164,21 @@ if ! {
 	# followed by "/" or a quote so glint-482 does not match glint-482-r37.
 	last="-"; last_ts=0
 	if [ -d "$transcripts" ]; then
+		if ! wt_json=$(jq -Rn --arg path "$wt" '$path' 2>/dev/null); then
+			echo "error: could not encode worktree path for transcript search" >&2
+			rm -f "$prs"
+			exit 1
+		fi
+		wt_json_prefix=${wt_json%\"}
 		if ! matches=$(mktemp); then
 			echo "error: could not create recent-chat search results file" >&2
 			rm -f "$prs"
 			exit 1
 		fi
 		if rg --fixed-strings --multiline --files-with-matches --null \
-			-e "${wt}/" -e "${wt}\"" "$transcripts" > "$matches" 2>/dev/null; then
+			-e "${wt}/" -e "${wt}\"" \
+			-e "${wt_json_prefix}/" -e "$wt_json" \
+			"$transcripts" > "$matches" 2>/dev/null; then
 			while IFS= read -r -d '' chat_file; do
 				chat_ts=$(stat -f '%m' "$chat_file" 2>/dev/null || true)
 				case "$chat_ts" in ''|*[!0-9]*) chat_ts=$(stat -c '%Y' "$chat_file" 2>/dev/null || true) ;; esac
