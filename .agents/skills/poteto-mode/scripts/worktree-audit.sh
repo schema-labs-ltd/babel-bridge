@@ -148,13 +148,32 @@ if ! {
 		rm -f "$status_file" "$prs"
 		exit 1
 	fi
-	tracked_count=0; scratch_paths=(); ignored_paths=()
+	if ! data_file=$(mktemp); then
+		echo "error: could not create worktree data file" >&2
+		rm -f "$status_file" "$prs"
+		exit 1
+	fi
+	tracked_count=0; scratch_count=0; ignored_count=0
 	while IFS= read -r -d '' status_row; do
 		status_code="${status_row:0:2}"
 		status_path="${status_row:3}"
 		case "$status_code" in
-		"??") scratch_paths+=("$status_path") ;;
-		"!!") ignored_paths+=("$status_path") ;;
+		"??")
+			scratch_count=$((scratch_count + 1))
+			if ! printf 'untracked:%q\n' "$status_path" >> "$data_file"; then
+				echo "error: could not record untracked worktree path" >&2
+				rm -f "$status_file" "$data_file" "$prs"
+				exit 1
+			fi
+			;;
+		"!!")
+			ignored_count=$((ignored_count + 1))
+			if ! printf 'ignored:%q\n' "$status_path" >> "$data_file"; then
+				echo "error: could not record ignored worktree path" >&2
+				rm -f "$status_file" "$data_file" "$prs"
+				exit 1
+			fi
+			;;
 		*)
 			tracked_count=$((tracked_count + 1))
 			# Porcelain v1 -z emits a second NUL-delimited path for renames/copies.
@@ -169,20 +188,19 @@ if ! {
 		esac
 	done < "$status_file"
 	rm -f "$status_file"
-	scratch_count=${#scratch_paths[@]}; ignored_count=${#ignored_paths[@]}
 	if [ "$tracked_count" -gt 0 ]; then dirty="wip:$tracked_count"
 	elif [ "$scratch_count" -gt 0 ] && [ "$ignored_count" -gt 0 ]; then dirty="scratch:$scratch_count,ignored:$ignored_count"
 	elif [ "$scratch_count" -gt 0 ]; then dirty="scratch:$scratch_count"
 	elif [ "$ignored_count" -gt 0 ]; then dirty="ignored:$ignored_count"
 	else dirty=clean; fi
-	data_entries=()
-	for data_path in "${scratch_paths[@]}"; do data_entries+=("untracked:$data_path"); done
-	for data_path in "${ignored_paths[@]}"; do data_entries+=("ignored:$data_path"); done
-	if ! data_json=$(jq -cn --args '$ARGS.positional' -- "${data_entries[@]}" 2>/dev/null); then
+	# Paths are shell-escaped one per line before JSON encoding, so tabs and
+	# newlines stay intact without passing an unbounded path list in argv.
+	if ! data_json=$(jq -Rsc 'split("\n") | map(select(length > 0))' < "$data_file" 2>/dev/null); then
 		echo "error: could not encode worktree data paths" >&2
-		rm -f "$prs"
+		rm -f "$data_file" "$prs"
 		exit 1
 	fi
+	rm -f "$data_file"
 
 	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
 	if [ -z "$branch" ]; then remote=detached

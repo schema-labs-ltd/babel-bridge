@@ -490,6 +490,21 @@ describe("Store", () => {
     expect(await readdir(directory)).not.toContain(".orch.lock");
   });
 
+  it("can retry close after temporary lock-guard contention", async () => {
+    const { directory, store } = await initializedStore();
+    const guardPath = join(directory, ".orch.lock.guard");
+    await writeFile(guardPath, `${process.pid}\ttemporary-contention\n`);
+
+    await expect(store.close()).rejects.toThrow(
+      "store lock coordination is held by pid"
+    );
+    expect(await readdir(directory)).toContain(".orch.lock");
+
+    await rm(guardPath);
+    await store.close();
+    expect(await readdir(directory)).not.toContain(".orch.lock");
+  });
+
   it("blocks a writer and steals the pid lock only with force", async () => {
     const { directory, store } = await initializedStore();
     await store.close();

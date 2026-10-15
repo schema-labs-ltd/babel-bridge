@@ -1345,11 +1345,13 @@ export function openStore(
 ): Store {
   const store = resolve(directory);
   let closed = false;
+  let closing = false;
+  let closeRequest: Promise<void> | null = null;
   let releaseLock: (() => Promise<void>) | null = null;
   let lockRequest: Promise<void> | null = null;
 
   const ensureOpen = (): void => {
-    if (closed) {
+    if (closed || closing) {
       throw new UserError("store is closed");
     }
   };
@@ -1738,18 +1740,32 @@ export function openStore(
       if (closed) {
         return;
       }
-      if (lockRequest !== null) {
-        try {
-          await lockRequest;
-        } catch {
-          // A failed acquisition has no lock to release.
-        }
+      if (closeRequest !== null) {
+        return closeRequest;
       }
-      const release = releaseLock;
-      releaseLock = null;
-      closed = true;
-      if (release !== null) {
-        await release();
+      closing = true;
+      closeRequest = (async () => {
+        if (lockRequest !== null) {
+          try {
+            await lockRequest;
+          } catch {
+            // A failed acquisition has no lock to release.
+          }
+        }
+        const release = releaseLock;
+        if (release !== null) {
+          await release();
+          releaseLock = null;
+        }
+        closed = true;
+      })();
+      try {
+        await closeRequest;
+      } catch (error) {
+        // Keep the release callback so a later close() can retry after
+        // temporary lock-guard contention or manual stale-guard recovery.
+        closeRequest = null;
+        throw error;
       }
     },
   };
