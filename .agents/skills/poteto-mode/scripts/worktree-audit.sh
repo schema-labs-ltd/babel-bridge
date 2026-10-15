@@ -121,7 +121,7 @@ transcripts="$HOME/.cursor/projects/$slug/agent-transcripts"
 now=$(date +%s)
 
 echo "# base: $base"
-printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
+printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tDATA\tWORKTREE\n"
 
 if ! {
 	for wt in "${worktrees[@]}"; do
@@ -136,16 +136,52 @@ if ! {
 	# real signal; merge-base only catches fast-forward/rebase merges.
 	git merge-base --is-ancestor "$head" "$base" 2>/dev/null && merged=YES || merged=no
 
-	# Distinguish real WIP (tracked edits) from disposable untracked scratch.
-	porcelain=$(git -C "$wt" status --porcelain 2>/dev/null)
-	if [ -z "$porcelain" ]; then dirty=clean
-	else
-		tracked_count=$(printf '%s\n' "$porcelain" | awk '!/^\?\?/ { count++ } END { print count + 0 }')
-		if [ "$tracked_count" -gt 0 ]; then dirty="wip:$tracked_count"
-		else
-			scratch_count=$(printf '%s\n' "$porcelain" | awk '/^\?\?/ { count++ } END { print count + 0 }')
-			dirty="scratch:$scratch_count"
-		fi
+	# Enumerate untracked and ignored files as well as tracked edits. Default
+	# porcelain omits ignored paths, which --force worktree removal deletes.
+	if ! status_file=$(mktemp); then
+		echo "error: could not create worktree status file" >&2
+		rm -f "$prs"
+		exit 1
+	fi
+	if ! git -C "$wt" status --porcelain=v1 -z --untracked-files=all --ignored=traditional > "$status_file" 2>/dev/null; then
+		echo "error: could not read worktree status" >&2
+		rm -f "$status_file" "$prs"
+		exit 1
+	fi
+	tracked_count=0; scratch_paths=(); ignored_paths=()
+	while IFS= read -r -d '' status_row; do
+		status_code="${status_row:0:2}"
+		status_path="${status_row:3}"
+		case "$status_code" in
+		"??") scratch_paths+=("$status_path") ;;
+		"!!") ignored_paths+=("$status_path") ;;
+		*)
+			tracked_count=$((tracked_count + 1))
+			# Porcelain v1 -z emits a second NUL-delimited path for renames/copies.
+			if [[ "$status_code" == *R* || "$status_code" == *C* ]]; then
+				if ! IFS= read -r -d '' original_path; then
+					echo "error: incomplete rename record in worktree status" >&2
+					rm -f "$status_file" "$prs"
+					exit 1
+				fi
+			fi
+			;;
+		esac
+	done < "$status_file"
+	rm -f "$status_file"
+	scratch_count=${#scratch_paths[@]}; ignored_count=${#ignored_paths[@]}
+	if [ "$tracked_count" -gt 0 ]; then dirty="wip:$tracked_count"
+	elif [ "$scratch_count" -gt 0 ] && [ "$ignored_count" -gt 0 ]; then dirty="scratch:$scratch_count,ignored:$ignored_count"
+	elif [ "$scratch_count" -gt 0 ]; then dirty="scratch:$scratch_count"
+	elif [ "$ignored_count" -gt 0 ]; then dirty="ignored:$ignored_count"
+	else dirty=clean; fi
+	data_entries=()
+	for data_path in "${scratch_paths[@]}"; do data_entries+=("untracked:$data_path"); done
+	for data_path in "${ignored_paths[@]}"; do data_entries+=("ignored:$data_path"); done
+	if ! data_json=$(jq -cn --args '$ARGS.positional' -- "${data_entries[@]}" 2>/dev/null); then
+		echo "error: could not encode worktree data paths" >&2
+		rm -f "$prs"
+		exit 1
 	fi
 
 	branch=$(git -C "$wt" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
@@ -205,7 +241,7 @@ if ! {
 	fi
 	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
-	case "$dirty" in wip:*) bucket=hold-wip ;; *)
+	case "$dirty" in wip:*) bucket=hold-wip ;; scratch:*|ignored:*) bucket=hold-untracked-data ;; *)
 		case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
 			if [ "$recent" = yes ]; then bucket=verify-recent-chat
 			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
@@ -215,8 +251,8 @@ if ! {
 
 	# Shell-escape the path so tabs and newlines cannot split table rows or sort records.
 	display_wt=$(printf '%q' "$wt")
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$display_wt"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$data_json" "$display_wt"
 	done
 } | sort -t$'\t' -k1,1 -rh; then
 	rm -f "$prs"
