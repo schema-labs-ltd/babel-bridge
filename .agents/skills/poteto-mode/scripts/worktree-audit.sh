@@ -10,7 +10,7 @@
 #   Without it the base is origin/HEAD, then origin/main, then origin/master.
 #   origin/HEAD is the remote's default branch, not necessarily the branch PRs
 #   merge into; pass -b when they differ.
-set -u
+set -uo pipefail
 
 base=""
 while [ $# -gt 0 ]; do
@@ -123,7 +123,7 @@ now=$(date +%s)
 echo "# base: $base"
 printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 
-{
+if ! {
 	for wt in "${worktrees[@]}"; do
 	[ "$wt" = "$main_wt" ] && continue
 
@@ -159,10 +159,36 @@ printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 	# followed by "/" or a quote so glint-482 does not match glint-482-r37.
 	last="-"; last_ts=0
 	if [ -d "$transcripts" ]; then
-		f=$(rg -l -e "${wt}/" -e "${wt}\"" "$transcripts" 2>/dev/null \
-			| xargs stat -f '%m %N' 2>/dev/null | sort -rn | head -1)
-		if [ -n "$f" ]; then last_ts=$(echo "$f" | awk '{print $1}')
-			last=$(date -r "$last_ts" '+%Y-%m-%d' 2>/dev/null); fi
+		if ! matches=$(mktemp); then
+			echo "error: could not create recent-chat search results file" >&2
+			rm -f "$prs"
+			exit 1
+		fi
+		if rg --fixed-strings --multiline --files-with-matches --null \
+			-e "${wt}/" -e "${wt}\"" "$transcripts" > "$matches" 2>/dev/null; then
+			while IFS= read -r -d '' chat_file; do
+				chat_ts=$(stat -f '%m' "$chat_file" 2>/dev/null || true)
+				case "$chat_ts" in ''|*[!0-9]*) chat_ts=$(stat -c '%Y' "$chat_file" 2>/dev/null || true) ;; esac
+				case "$chat_ts" in ''|*[!0-9]*)
+					echo "error: could not read transcript timestamp for worktree audit" >&2
+					rm -f "$matches" "$prs"
+					exit 1
+					;;
+				esac
+				[ "$chat_ts" -gt "$last_ts" ] && last_ts="$chat_ts"
+			done < "$matches"
+		else
+			search_status=$?
+			if [ "$search_status" -ne 1 ]; then
+				echo "error: could not search recent-chat transcripts for worktree" >&2
+				rm -f "$matches" "$prs"
+				exit 1
+			fi
+		fi
+		rm -f "$matches"
+		if [ "$last_ts" -gt 0 ]; then
+			last=$(date -r "$last_ts" '+%Y-%m-%d' 2>/dev/null || date -d "@$last_ts" '+%Y-%m-%d' 2>/dev/null || echo "-")
+		fi
 	fi
 	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
@@ -179,6 +205,9 @@ printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$display_wt"
 	done
-} | sort -t$'\t' -k1,1 -rh
+} | sort -t$'\t' -k1,1 -rh; then
+	rm -f "$prs"
+	exit 1
+fi
 
 rm -f "$prs"
