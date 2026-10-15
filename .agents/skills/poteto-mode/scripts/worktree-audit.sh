@@ -153,7 +153,7 @@ if ! {
 		rm -f "$status_file" "$prs"
 		exit 1
 	fi
-	tracked_count=0; scratch_count=0; ignored_count=0
+	tracked_count=0; scratch_count=0; ignored_count=0; submodule_count=0
 	while IFS= read -r -d '' status_row; do
 		status_code="${status_row:0:2}"
 		status_path="${status_row:3}"
@@ -188,11 +188,35 @@ if ! {
 		esac
 	done < "$status_file"
 	rm -f "$status_file"
-	if [ "$tracked_count" -gt 0 ]; then dirty="wip:$tracked_count"
-	elif [ "$scratch_count" -gt 0 ] && [ "$ignored_count" -gt 0 ]; then dirty="scratch:$scratch_count,ignored:$ignored_count"
-	elif [ "$scratch_count" -gt 0 ]; then dirty="scratch:$scratch_count"
-	elif [ "$ignored_count" -gt 0 ]; then dirty="ignored:$ignored_count"
-	else dirty=clean; fi
+	if ! index_file=$(mktemp); then
+		echo "error: could not create worktree index file" >&2
+		rm -f "$data_file" "$prs"
+		exit 1
+	fi
+	if ! git -C "$wt" ls-files --stage -z > "$index_file" 2>/dev/null; then
+		echo "error: could not read worktree index" >&2
+		rm -f "$index_file" "$data_file" "$prs"
+		exit 1
+	fi
+	while IFS= read -r -d '' index_record; do
+		index_header="${index_record%%$'\t'*}"
+		if [[ "$index_header" == "160000 "* ]]; then
+			index_path="${index_record#*$'\t'}"
+			submodule_count=$((submodule_count + 1))
+			if ! printf 'submodule:%q\n' "$index_path" >> "$data_file"; then
+				echo "error: could not record submodule path" >&2
+				rm -f "$index_file" "$data_file" "$prs"
+				exit 1
+			fi
+		fi
+	done < "$index_file"
+	rm -f "$index_file"
+	dirty=""
+	if [ "$tracked_count" -gt 0 ]; then dirty="wip:$tracked_count"; fi
+	if [ "$scratch_count" -gt 0 ]; then dirty="${dirty:+$dirty,}scratch:$scratch_count"; fi
+	if [ "$ignored_count" -gt 0 ]; then dirty="${dirty:+$dirty,}ignored:$ignored_count"; fi
+	if [ "$submodule_count" -gt 0 ]; then dirty="${dirty:+$dirty,}submodule:$submodule_count"; fi
+	[ -n "$dirty" ] || dirty=clean
 	# Paths are shell-escaped one per line before JSON encoding, so tabs and
 	# newlines stay intact without passing an unbounded path list in argv.
 	if ! data_json=$(jq -Rsc 'split("\n") | map(select(length > 0))' < "$data_file" 2>/dev/null); then
@@ -259,7 +283,7 @@ if ! {
 	fi
 	recent=$([ "$last_ts" -gt 0 ] 2>/dev/null && [ $(( (now - last_ts) / 86400 )) -le 4 ] && echo yes || echo no)
 
-	case "$dirty" in wip:*) bucket=hold-wip ;; scratch:*|ignored:*) bucket=hold-untracked-data ;; *)
+	case "$dirty" in wip:*) bucket=hold-wip ;; *scratch:*|*ignored:*) bucket=hold-untracked-data ;; *submodule:*) bucket=hold-submodule-data ;; *)
 		case "$pr" in */open|*/draft) bucket=hold-open-pr ;; *)
 			if [ "$recent" = yes ]; then bucket=verify-recent-chat
 			elif [ "$merged" = YES ] || [ "$pr" != "-" ]; then bucket=safe
