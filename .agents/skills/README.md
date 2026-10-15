@@ -55,7 +55,7 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 | `principle-type-system-discipline` | [`principle-type-system-discipline/SKILL.md`](principle-type-system-discipline/SKILL.md) | `plugins/pstack/skills/principle-type-system-discipline` | 3 | MIT, Lauren Tan | imported unchanged |
 | `reflect` | [`reflect/SKILL.md`](reflect/SKILL.md) | `plugins/pstack/skills/reflect` | 7 | MIT, Lauren Tan | imported unchanged |
 | `setup-pstack` | [`setup-pstack/SKILL.md`](setup-pstack/SKILL.md) | `plugins/pstack/skills/setup-pstack` | 3 | MIT, Lauren Tan | imported unchanged |
-| `show-me-your-work` | [`show-me-your-work/SKILL.md`](show-me-your-work/SKILL.md) | `plugins/pstack/skills/show-me-your-work` | 5 | MIT, Lauren Tan | imported unchanged |
+| `show-me-your-work` | [`show-me-your-work/SKILL.md`](show-me-your-work/SKILL.md) | `plugins/pstack/skills/show-me-your-work` | 5 | MIT, Lauren Tan | adapted (portable paths) |
 | `swarm` | [`swarm/SKILL.md`](swarm/SKILL.md) | `plugins/pstack/skills/swarm` | 3 | MIT, Lauren Tan | imported unchanged |
 | `tdd` | [`tdd/SKILL.md`](tdd/SKILL.md) | `plugins/pstack/skills/tdd` | 3 | MIT, Lauren Tan | imported unchanged |
 | `technical-writing` | [`technical-writing/SKILL.md`](technical-writing/SKILL.md) | `plugins/pstack/skills/technical-writing` | 3 | MIT, Lauren Tan | imported unchanged |
@@ -66,13 +66,14 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 
 ## Conflict manifest
 
-- The target checkout had no existing `.agents/skills` entries. All 49 source skill names were new; 0 skills were reused, 1 was adapted for portable local paths, and 48 were imported byte-for-byte. 0 skills are blocked and there are no unresolved name or semantic conflicts.
+- The target checkout had no existing `.agents/skills` entries. All 49 source skill names were new; 0 skills were reused, 2 were adapted for portable local paths, and 47 were imported byte-for-byte. 0 skills are blocked and there are no unresolved name or semantic conflicts.
 - Existing repository-specific behavior in the root `AGENTS.md` remains in place. It does not define an existing skill with an overlapping name.
 
 ## Portability adaptations
 
 - `poteto-mode/SKILL.md` and `poteto-mode/compatibility.md`: changed the pstack plugin README link `../../README.md#skills` to `../../skills/README.md#skills`, which resolves to this local catalog from the repository `.agents/skills` location.
-- `poteto-mode/playbooks/multi-phase-plan.md`: changed its eight `pstack/skills/...` path examples to `.agents/skills/...`, including the Node plan-checker helper and skill/playbook file lookups. No helper behavior changed.
+- `poteto-mode/playbooks/multi-phase-plan.md`: changed its eight `pstack/skills/...` path examples to `.agents/skills/...`, including the Node plan-checker helper and skill/playbook file lookups.
+- Anchored bundled helper invocations to `.agents/skills/` in `poteto-mode/compatibility.md`, `poteto-mode/playbooks/babysit.md`, `orchestrate.md`, `shipping.md`, and `worktree-cleanup.md`, plus `show-me-your-work/SKILL.md`. This covers the watcher, orchestration CLI, worktree audit, and decision-log helper. No helper behavior changed.
 - Other intra-skill and cross-skill relative references remain unchanged; for example, `architect/references/rationale-template.md` still resolves to the imported `arena/SKILL.md`.
 
 ## Deliberate update process

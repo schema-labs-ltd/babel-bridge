@@ -11,9 +11,9 @@ These rules adapt the retained upstream playbooks. Apply them before following a
 
 ## Bundled helper requirements
 
-The `scripts/` directory retains upstream helpers and tests. Bun is required for orchestration and PR watching; Node.js is required for the plan checker; Git and authenticated `gh` are required for GitHub reads/actions. Some playbooks mention optional Origin tooling. No service connection or credentials are bundled.
+The `.agents/skills/poteto-mode/scripts/` directory retains upstream helpers and tests. Bun is required for orchestration and PR watching; Node.js is required for the plan checker; Git and authenticated `gh` are required for GitHub reads/actions. Some playbooks mention optional Origin tooling. No service connection or credentials are bundled.
 
-From `scripts/`, install with `bun install --frozen-lockfile`, respecting the project's install runner and preflight policy. Run `bun run test` and `bun run typecheck` for fixture tests and TypeScript checks. No mixed package manager or shared node_modules symlink.
+From `.agents/skills/poteto-mode/scripts/`, install with `bun install --frozen-lockfile`, respecting the project's install runner and preflight policy. Run `bun run test` and `bun run typecheck` for fixture tests and TypeScript checks. No mixed package manager or shared node_modules symlink.
 
 The upstream bootstrap may install dependencies automatically on first helper invocation. Complete installation explicitly through the required project runner before invoking wrappers, or run the wrapper through that runner so any bootstrap install is covered. Scripts can modify local orchestration state or GitHub state depending on command; inspect the relevant playbook and command before use. Do not run live drive/merge/cleanup commands merely to test an import.
 
