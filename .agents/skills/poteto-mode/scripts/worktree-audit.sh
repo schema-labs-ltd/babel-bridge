@@ -59,14 +59,42 @@ prs=$(mktemp)
 if command -v origin >/dev/null 2>&1 \
 	&& raw=$(origin pr list --author "@me" --state all --limit 1000 \
 		--json number,status,headRef 2>/dev/null); then
-	if ! printf '%s' "$raw" | jq -e 'if type == "array" then map({number, state: .status, head: .headRef}) else error("expected an array") end' > "$prs" 2>/dev/null; then
+	if ! printf '%s' "$raw" | jq --slurp -e '
+		if length == 1 and (.[0] | type) == "array" and all(.[0][];
+			. as $pr
+			| ($pr.number | type) == "number"
+			and $pr.number > 0
+			and $pr.number == ($pr.number | floor)
+			and ($pr.status | type) == "string"
+			and ($pr.headRef | type) == "string"
+			and ($pr.headRef | length) > 0
+			and (["open", "draft", "merged", "closed"] | index($pr.status | ascii_downcase)) != null
+		)
+		then .[0] | map({number, state: (.status | ascii_downcase), head: .headRef})
+		else error("invalid Origin PR inventory")
+		end
+	' > "$prs" 2>/dev/null; then
 		echo "error: could not parse the Origin PR inventory" >&2
 		rm -f "$prs"
 		exit 1
 	fi
 elif raw=$(gh pr list --author "@me" --state all --limit 1000 \
 	--json number,state,headRefName 2>/dev/null); then
-	if ! printf '%s' "$raw" | jq -e 'if type == "array" then map({number, state: (.state | ascii_downcase), head: .headRefName}) else error("expected an array") end' > "$prs" 2>/dev/null; then
+	if ! printf '%s' "$raw" | jq --slurp -e '
+		if length == 1 and (.[0] | type) == "array" and all(.[0][];
+			. as $pr
+			| ($pr.number | type) == "number"
+			and $pr.number > 0
+			and $pr.number == ($pr.number | floor)
+			and ($pr.state | type) == "string"
+			and ($pr.headRefName | type) == "string"
+			and ($pr.headRefName | length) > 0
+			and (["open", "merged", "closed"] | index($pr.state | ascii_downcase)) != null
+		)
+		then .[0] | map({number, state: (.state | ascii_downcase), head: .headRefName})
+		else error("invalid GitHub PR inventory")
+		end
+	' > "$prs" 2>/dev/null; then
 		echo "error: could not parse the GitHub PR inventory" >&2
 		rm -f "$prs"
 		exit 1
