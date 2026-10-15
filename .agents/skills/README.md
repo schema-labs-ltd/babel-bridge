@@ -74,7 +74,7 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 - `poteto-mode/SKILL.md` and `poteto-mode/compatibility.md`: changed the pstack plugin README link `../../README.md#skills` to `../../skills/README.md#skills`, which resolves to this local catalog from the repository `.agents/skills` location.
 - `poteto-mode/playbooks/multi-phase-plan.md`: changed its eight `pstack/skills/...` path examples to `.agents/skills/...`, including the Node plan-checker helper and skill/playbook file lookups.
 - Anchored bundled helper invocations to `.agents/skills/` in `poteto-mode/compatibility.md`, `poteto-mode/playbooks/babysit.md`, `orchestrate.md`, `shipping.md`, and `worktree-cleanup.md`, plus `show-me-your-work/SKILL.md`. This covers the watcher, orchestration CLI, worktree audit, and decision-log helper.
-- `poteto-mode/scripts/worktree-audit.sh`: fail clearly if `jq` is unavailable or rejects the PR inventory, rather than silently treating a failed parse as no open PRs. The existing best-effort empty inventory still applies when neither supported forge command can provide PR data.
+- `poteto-mode/scripts/worktree-audit.sh`: fail clearly if `jq` is unavailable or rejects the PR inventory, rather than silently treating a failed parse as no open PRs; read Git's NUL-delimited worktree paths so spaces are preserved. The existing best-effort empty inventory still applies when neither supported forge command can provide PR data.
 - Other intra-skill and cross-skill relative references remain unchanged; for example, `architect/references/rationale-template.md` still resolves to the imported `arena/SKILL.md`.
 
 ## Deliberate update process

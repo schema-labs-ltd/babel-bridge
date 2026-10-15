@@ -32,8 +32,19 @@ repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 cd "$repo" || exit 1
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "error: not a git repo: $repo" >&2; exit 1; }
 
-# Main worktree is the first entry; everything else is a candidate.
-main_wt=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+# Git's NUL-delimited porcelain preserves spaces and newlines in worktree paths.
+# The main worktree is listed first; everything else is a candidate.
+worktrees=()
+main_wt=""
+while IFS= read -r -d '' record; do
+	case "$record" in
+	"worktree "*)
+		wt_path="${record#worktree }"
+		[ -n "$main_wt" ] || main_wt="$wt_path"
+		worktrees+=("$wt_path")
+		;;
+	esac
+done < <(git worktree list --porcelain -z)
 
 if [ -z "$base" ]; then
 	for cand in "$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)" origin/main origin/master; do
@@ -112,7 +123,8 @@ now=$(date +%s)
 echo "# base: $base"
 printf "SIZE\tAGE\tMERGED\tDIRTY\tREMOTE\tPR\tLAST_CHAT\tBUCKET\tWORKTREE\n"
 
-git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt; do
+{
+	for wt in "${worktrees[@]}"; do
 	[ "$wt" = "$main_wt" ] && continue
 
 	size=$(du -sh "$wt" 2>/dev/null | awk '{print $1}')
@@ -164,6 +176,7 @@ git worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r wt;
 
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$size" "$age" "$merged" "$dirty" "$remote" "$pr" "$last" "$bucket" "$wt"
-done | sort -t$'\t' -k1,1 -rh
+	done
+} | sort -t$'\t' -k1,1 -rh
 
 rm -f "$prs"
