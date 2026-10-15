@@ -22,6 +22,11 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+command -v jq >/dev/null 2>&1 || {
+	echo "error: jq is required to build the PR inventory" >&2
+	exit 1
+}
+
 repo="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 [ -z "$repo" ] && { echo "not in a git repo; pass a repo path" >&2; exit 1; }
 cd "$repo" || exit 1
@@ -54,12 +59,22 @@ prs=$(mktemp)
 if command -v origin >/dev/null 2>&1 \
 	&& raw=$(origin pr list --author "@me" --state all --limit 1000 \
 		--json number,status,headRef 2>/dev/null); then
-	printf '%s' "$raw" | jq '[.[] | {number, state: .status, head: .headRef}]' > "$prs" 2>/dev/null
+	if ! printf '%s' "$raw" | jq -e 'if type == "array" then map({number, state: .status, head: .headRef}) else error("expected an array") end' > "$prs" 2>/dev/null; then
+		echo "error: could not parse the Origin PR inventory" >&2
+		rm -f "$prs"
+		exit 1
+	fi
 elif raw=$(gh pr list --author "@me" --state all --limit 1000 \
 	--json number,state,headRefName 2>/dev/null); then
-	printf '%s' "$raw" | jq '[.[] | {number, state: (.state | ascii_downcase), head: .headRefName}]' > "$prs" 2>/dev/null
+	if ! printf '%s' "$raw" | jq -e 'if type == "array" then map({number, state: (.state | ascii_downcase), head: .headRefName}) else error("expected an array") end' > "$prs" 2>/dev/null; then
+		echo "error: could not parse the GitHub PR inventory" >&2
+		rm -f "$prs"
+		exit 1
+	fi
+else
+	# No forge could provide PR state; preserve the documented best-effort empty inventory.
+	echo "[]" > "$prs"
 fi
-[ -s "$prs" ] || echo "[]" > "$prs"
 
 # Transcripts dir: ~/.cursor/projects/<slugified-repo-path>/agent-transcripts.
 slug=$(printf '%s' "$main_wt" | sed 's#^/##; s#/#-#g')

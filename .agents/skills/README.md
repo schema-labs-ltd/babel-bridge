@@ -28,7 +28,7 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 | `ketchup` | [`ketchup/SKILL.md`](ketchup/SKILL.md) | `plugins/pstack/skills/ketchup` | 3 | MIT, Lauren Tan | imported unchanged |
 | `maintain-verification-skill` | [`maintain-verification-skill/SKILL.md`](maintain-verification-skill/SKILL.md) | `plugins/pstack/skills/maintain-verification-skill` | 3 | MIT, Lauren Tan | imported unchanged |
 | `no-comments` | [`no-comments/SKILL.md`](no-comments/SKILL.md) | `plugins/pstack/skills/no-comments` | 3 | MIT, Lauren Tan | imported unchanged |
-| `poteto-mode` | [`poteto-mode/SKILL.md`](poteto-mode/SKILL.md) | `plugins/pstack/skills/poteto-mode` | 49 | MIT, Lauren Tan | adapted (portable paths) |
+| `poteto-mode` | [`poteto-mode/SKILL.md`](poteto-mode/SKILL.md) | `plugins/pstack/skills/poteto-mode` | 49 | MIT, Lauren Tan | adapted (paths + fail-closed audit) |
 | `principle-attack-the-premise` | [`principle-attack-the-premise/SKILL.md`](principle-attack-the-premise/SKILL.md) | `plugins/pstack/skills/principle-attack-the-premise` | 3 | MIT, Lauren Tan | imported unchanged |
 | `principle-boundary-discipline` | [`principle-boundary-discipline/SKILL.md`](principle-boundary-discipline/SKILL.md) | `plugins/pstack/skills/principle-boundary-discipline` | 3 | MIT, Lauren Tan | imported unchanged |
 | `principle-build-the-lever` | [`principle-build-the-lever/SKILL.md`](principle-build-the-lever/SKILL.md) | `plugins/pstack/skills/principle-build-the-lever` | 3 | MIT, Lauren Tan | imported unchanged |
@@ -66,14 +66,15 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 
 ## Conflict manifest
 
-- The target checkout had no existing `.agents/skills` entries. All 49 source skill names were new; 0 skills were reused, 2 were adapted for portable local paths, and 47 were imported byte-for-byte. 0 skills are blocked and there are no unresolved name or semantic conflicts.
+- The target checkout had no existing `.agents/skills` entries. All 49 source skill names were new; 0 skills were reused, 2 were adapted across 9 source files for portable paths and a fail-closed audit guard, and 47 were imported byte-for-byte. 0 skills are blocked and there are no unresolved name or semantic conflicts.
 - Existing repository-specific behavior in the root `AGENTS.md` remains in place. It does not define an existing skill with an overlapping name.
 
-## Portability adaptations
+## Import adaptations
 
 - `poteto-mode/SKILL.md` and `poteto-mode/compatibility.md`: changed the pstack plugin README link `../../README.md#skills` to `../../skills/README.md#skills`, which resolves to this local catalog from the repository `.agents/skills` location.
 - `poteto-mode/playbooks/multi-phase-plan.md`: changed its eight `pstack/skills/...` path examples to `.agents/skills/...`, including the Node plan-checker helper and skill/playbook file lookups.
-- Anchored bundled helper invocations to `.agents/skills/` in `poteto-mode/compatibility.md`, `poteto-mode/playbooks/babysit.md`, `orchestrate.md`, `shipping.md`, and `worktree-cleanup.md`, plus `show-me-your-work/SKILL.md`. This covers the watcher, orchestration CLI, worktree audit, and decision-log helper. No helper behavior changed.
+- Anchored bundled helper invocations to `.agents/skills/` in `poteto-mode/compatibility.md`, `poteto-mode/playbooks/babysit.md`, `orchestrate.md`, `shipping.md`, and `worktree-cleanup.md`, plus `show-me-your-work/SKILL.md`. This covers the watcher, orchestration CLI, worktree audit, and decision-log helper.
+- `poteto-mode/scripts/worktree-audit.sh`: fail clearly if `jq` is unavailable or rejects the PR inventory, rather than silently treating a failed parse as no open PRs. The existing best-effort empty inventory still applies when neither supported forge command can provide PR data.
 - Other intra-skill and cross-skill relative references remain unchanged; for example, `architect/references/rationale-template.md` still resolves to the imported `arena/SKILL.md`.
 
 ## Deliberate update process

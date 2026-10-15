@@ -11,7 +11,7 @@ These rules adapt the retained upstream playbooks. Apply them before following a
 
 ## Bundled helper requirements
 
-The `.agents/skills/poteto-mode/scripts/` directory retains upstream helpers and tests. Bun is required for orchestration and PR watching; Node.js is required for the plan checker; Git and authenticated `gh` are required for GitHub reads/actions. Some playbooks mention optional Origin tooling. No service connection or credentials are bundled.
+The `.agents/skills/poteto-mode/scripts/` directory retains upstream helpers and tests. Bun is required for orchestration and PR watching; Node.js is required for the plan checker; Git and authenticated `gh` are required for GitHub reads/actions; `jq` is required to build the worktree audit's PR inventory. Some playbooks mention optional Origin tooling. No service connection or credentials are bundled.
 
 From `.agents/skills/poteto-mode/scripts/`, install with `bun install --frozen-lockfile`, respecting the project's install runner and preflight policy. Run `bun run test` and `bun run typecheck` for fixture tests and TypeScript checks. No mixed package manager or shared node_modules symlink.
 
