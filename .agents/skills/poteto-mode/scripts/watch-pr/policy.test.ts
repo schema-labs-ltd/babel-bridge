@@ -88,6 +88,29 @@ describe("readiness truth table", () => {
       blocker: { kind: "failing-checks" },
     });
   });
+
+  it("keeps REVIEW_REQUIRED out of READY when checks pass and merge state is BLOCKED", async () => {
+    const snapshot = await readSnapshot({
+      reader: fakeReader({
+        facts: {
+          mergeStateStatus: "BLOCKED",
+          reviewDecision: "REVIEW_REQUIRED",
+        },
+        fastPath: { kind: "checks", checks: [passingCheck()] },
+        commitRollups: [{ oid: "head", state: "SUCCESS" }],
+      }),
+      context: context(2),
+      pendingHistory: "include",
+      allowDraft: false,
+    });
+    expect(snapshot.kind).toBe("open");
+    if (snapshot.kind !== "open") throw new Error("expected open snapshot");
+    expect(snapshot.ci.kind).toBe("ci-clean");
+    expect(classifyPr(snapshot)).toMatchObject({
+      kind: "blocker",
+      blocker: { kind: "merge-gate", reason: "review-required" },
+    });
+  });
 });
 
 describe("snapshot query planning", () => {

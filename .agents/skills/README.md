@@ -28,7 +28,7 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 | `ketchup` | [`ketchup/SKILL.md`](ketchup/SKILL.md) | `plugins/pstack/skills/ketchup` | 3 | MIT, Lauren Tan | imported unchanged |
 | `maintain-verification-skill` | [`maintain-verification-skill/SKILL.md`](maintain-verification-skill/SKILL.md) | `plugins/pstack/skills/maintain-verification-skill` | 3 | MIT, Lauren Tan | imported unchanged |
 | `no-comments` | [`no-comments/SKILL.md`](no-comments/SKILL.md) | `plugins/pstack/skills/no-comments` | 3 | MIT, Lauren Tan | imported unchanged |
-| `poteto-mode` | [`poteto-mode/SKILL.md`](poteto-mode/SKILL.md) | `plugins/pstack/skills/poteto-mode` | 49 | MIT, Lauren Tan | adapted (paths + fail-closed audit) |
+| `poteto-mode` | [`poteto-mode/SKILL.md`](poteto-mode/SKILL.md) | `plugins/pstack/skills/poteto-mode` | 49 | MIT, Lauren Tan | adapted (paths + safety fixes) |
 | `principle-attack-the-premise` | [`principle-attack-the-premise/SKILL.md`](principle-attack-the-premise/SKILL.md) | `plugins/pstack/skills/principle-attack-the-premise` | 3 | MIT, Lauren Tan | imported unchanged |
 | `principle-boundary-discipline` | [`principle-boundary-discipline/SKILL.md`](principle-boundary-discipline/SKILL.md) | `plugins/pstack/skills/principle-boundary-discipline` | 3 | MIT, Lauren Tan | imported unchanged |
 | `principle-build-the-lever` | [`principle-build-the-lever/SKILL.md`](principle-build-the-lever/SKILL.md) | `plugins/pstack/skills/principle-build-the-lever` | 3 | MIT, Lauren Tan | imported unchanged |
@@ -66,7 +66,7 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 
 ## Conflict manifest
 
-- The target checkout had no existing `.agents/skills` entries. All 49 source skill names were new; 0 skills were reused, 2 were adapted across 9 source files for portable paths and a fail-closed audit guard, and 47 were imported byte-for-byte. 0 skills are blocked and there are no unresolved name or semantic conflicts.
+- The target checkout had no existing `.agents/skills` entries. All 49 source skill names were new; 0 skills were reused, 2 were adapted across 15 source files for portable paths and documented safety fixes, and 47 were imported byte-for-byte. 0 skills are blocked and there are no unresolved name or semantic conflicts.
 - Existing repository-specific behavior in the root `AGENTS.md` remains in place. It does not define an existing skill with an overlapping name.
 
 ## Import adaptations
@@ -75,6 +75,10 @@ This repository-local catalog and manifest covers skills loaded from `.agents/sk
 - `poteto-mode/playbooks/multi-phase-plan.md`: changed its eight `pstack/skills/...` path examples to `.agents/skills/...`, including the Node plan-checker helper and skill/playbook file lookups.
 - Anchored bundled helper invocations to `.agents/skills/` in `poteto-mode/compatibility.md`, `poteto-mode/playbooks/babysit.md`, `orchestrate.md`, `shipping.md`, and `worktree-cleanup.md`, plus `show-me-your-work/SKILL.md`. This covers the watcher, orchestration CLI, worktree audit, and decision-log helper.
 - `poteto-mode/scripts/worktree-audit.sh`: fail clearly if `jq` is unavailable or rejects the PR inventory, rather than silently treating a failed parse as no open PRs; the best-effort empty inventory still applies when neither supported forge command can provide PR data. Count tracked and untracked status rows without early-exit grep; read Git's NUL-delimited worktree paths and shell-escape displayed paths so whitespace does not corrupt sorted table rows; search recent-chat transcripts with literal raw or JSON-escaped path matching and surface search errors.
+- `poteto-mode/scripts/watch-pr/{types,policy,render}.ts`: treat GitHub's `REVIEW_REQUIRED` decision as a merge-gate blocker and render it as an approval requirement, so passing checks cannot incorrectly produce `READY`. `policy.test.ts` covers the blocked merge state with passing CI.
+- `poteto-mode/scripts/orch/store.ts`: protect an existing verifier-authored ledger verdict from a worker report that omits verifier identity; an explicit later verifier can still update the verdict. `orch.test.ts` covers both paths.
+- `poteto-mode/scripts/orch/store.ts`: serialize lock creation, stale recovery, forced takeover, and release with `.orch.lock.guard`; lock generations use random tokens and recovery rechecks exact contents before unlinking. A leftover coordination guard fails closed and can be removed only after verifying no writer remains. `orch.test.ts` covers stale-lock replacement and an old same-process handle releasing after forced replacement.
+- `poteto-mode/playbooks/worktree-cleanup.md`: require listing exact untracked or ignored paths and getting explicit user confirmation before `git worktree remove --force` or `rm -rf` can delete them.
 - Other intra-skill and cross-skill relative references remain unchanged; for example, `architect/references/rationale-template.md` still resolves to the imported `arena/SKILL.md`.
 
 ## Deliberate update process

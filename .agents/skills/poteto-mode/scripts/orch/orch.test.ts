@@ -8,7 +8,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { realpathSync } from "node:fs";
+import { realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -342,7 +342,7 @@ describe("Store", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("records, replaces, checks, and summarizes typed ledger verdicts", async () => {
+  it("protects verifier-authored ledger verdicts from later worker reports", async () => {
     const { store } = await initializedStore();
 
     try {
@@ -366,7 +366,7 @@ describe("Store", () => {
     const recorded = await store.ledger.record({
       pr: 184530,
       sha: "abc123",
-      verdict: "unit-test-verified",
+      verdict: "verifier-failed",
       evidence: "reports/verify.md",
       verifier: "opus",
     });
@@ -374,15 +374,32 @@ describe("Store", () => {
       recorded
     );
     expect(await store.ledger.summary()).toEqual({
-      "unit-test-verified": 1,
+      "verifier-failed": 1,
     });
 
-    await store.ledger.record({
+    await expect(
+      store.ledger.record({
+        pr: 184530,
+        sha: "abc123",
+        verdict: "live-ui-verified",
+        evidence: "reports/live.md",
+      })
+    ).rejects.toThrow("worker report cannot replace verifier-authored verdict");
+    expect(await store.ledger.check({ pr: 184530, sha: "abc123" })).toEqual(
+      recorded
+    );
+    expect(await store.ledger.summary()).toEqual({ "verifier-failed": 1 });
+
+    const updated = await store.ledger.record({
       pr: 184530,
       sha: "abc123",
       verdict: "live-ui-verified",
       evidence: "reports/live.md",
+      verifier: "reviewer-2",
     });
+    expect(await store.ledger.check({ pr: 184530, sha: "abc123" })).toEqual(
+      updated
+    );
     expect(await store.ledger.summary()).toEqual({
       "live-ui-verified": 1,
     });
@@ -433,6 +450,43 @@ describe("Store", () => {
     ).toMatchObject({ id: "u1" });
     expect(stale).toEqual([String(exited.pid)]);
     await recovered.close();
+    expect(await readdir(directory)).not.toContain(".orch.lock");
+  });
+
+  it("does not unlink a replacement lock installed after stale inspection", async () => {
+    const { directory } = await initializedStore();
+    const exited = Bun.spawn(["true"]);
+    await exited.exited;
+    const lockPath = join(directory, ".orch.lock");
+    await writeFile(lockPath, `${exited.pid}\n`);
+    const replacement = `${process.pid}\nreplacement-generation\n`;
+
+    const recovering = useStore(directory, {
+      onStaleLock: () => {
+        unlinkSync(lockPath);
+        writeFileSync(lockPath, replacement, { flag: "wx" });
+      },
+    });
+    await expect(
+      recovering.units.add({ id: "u1", track: "build" })
+    ).rejects.toThrow("store lock changed during recovery");
+    expect(await readFile(lockPath, "utf8")).toBe(replacement);
+    expect(await readdir(directory)).not.toContain(".orch.lock.guard");
+    await recovering.close();
+  });
+
+  it("does not let an old same-process handle release a forced replacement lock", async () => {
+    const { directory, store } = await initializedStore();
+    const forced = useStore(directory, { force: true });
+    await forced.units.add({ id: "u1", track: "build" });
+    const replacement = await readFile(join(directory, ".orch.lock"), "utf8");
+
+    await store.close();
+    expect(await readFile(join(directory, ".orch.lock"), "utf8")).toBe(
+      replacement
+    );
+
+    await forced.close();
     expect(await readdir(directory)).not.toContain(".orch.lock");
   });
 

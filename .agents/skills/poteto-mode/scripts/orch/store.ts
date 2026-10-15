@@ -17,6 +17,7 @@ import { basename, dirname, join, resolve } from "node:path";
 const UNIT_HEADER = "id\ttrack\tstate\tbranch\tpr\tsha\tbrief";
 const LEDGER_HEADER = "pr\tsha\tverdict\tevidence\tverifier\tts";
 const LOCK_FILE = ".orch.lock";
+const LOCK_GUARD_FILE = ".orch.lock.guard";
 
 export type Verdict =
   | "live-ui-verified"
@@ -379,66 +380,138 @@ function holderIsDead(holder: string): boolean {
   }
 }
 
+interface LockRecord {
+  readonly contents: string;
+  readonly holder: string;
+}
+
+async function readLockRecord(path: string): Promise<LockRecord> {
+  const contents = await readFile(path, "utf8");
+  const holder = contents.trim().split(/\s+/, 1)[0] || "unknown";
+  return { contents, holder };
+}
+
+async function withLockGuard<T>(
+  store: string,
+  action: () => Promise<T>
+): Promise<T> {
+  const path = join(store, LOCK_GUARD_FILE);
+  const contents = `${process.pid}\t${randomUUID()}\n`;
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
+  let ownsGuard = false;
+
+  try {
+    try {
+      handle = await open(path, "wx");
+      ownsGuard = true;
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST") throw error;
+      let holder = "unknown";
+      try {
+        holder = (await readLockRecord(path)).holder;
+      } catch {
+        holder = "unknown";
+      }
+      throw new UserError(
+        `store lock coordination is held by pid ${holder}; retry. If ${LOCK_GUARD_FILE} is stale, verify that no writer remains before removing it`
+      );
+    }
+
+    await handle.writeFile(contents);
+    await handle.close();
+    handle = null;
+    return await action();
+  } finally {
+    if (handle !== null) await handle.close().catch(() => {});
+    if (ownsGuard) {
+      try {
+        if ((await readFile(path, "utf8")) === contents) await unlink(path);
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") throw error;
+      }
+    }
+  }
+}
+
 async function acquireLock(
   store: string,
   options: OpenStoreOptions
 ): Promise<() => Promise<void>> {
   const path = join(store, LOCK_FILE);
   const pid = String(process.pid);
-  const create = async (): Promise<void> => {
-    const handle = await open(path, "wx");
-    await handle.writeFile(`${pid}\n`);
-    await handle.close();
-  };
+  const lockContents = `${pid}\n${randomUUID()}\n`;
+  const create = async (): Promise<void> =>
+    writeFile(path, lockContents, { flag: "wx" });
 
-  const takeOver = async (): Promise<void> => {
+  const takeOver = async (expected: LockRecord): Promise<void> => {
+    let current: LockRecord;
+    try {
+      current = await readLockRecord(path);
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") throw error;
+      await create();
+      return;
+    }
+    if (current.contents !== expected.contents) {
+      throw new UserError(
+        `store lock changed during recovery; refusing to unlink the replacement held by pid ${current.holder}`
+      );
+    }
+    if (!options.force && !holderIsDead(current.holder)) {
+      throw new UserError(
+        `store lock holder ${current.holder} is active; refusing to recover it`
+      );
+    }
     await unlink(path);
     try {
       await create();
     } catch (retryError) {
       if (errorCode(retryError) === "EEXIST") {
-        const retryHolder =
-          (await readFile(path, "utf8")).trim() || "unknown";
+        const retryHolder = (await readLockRecord(path)).holder;
         throw new UserError(`store lock held by pid ${retryHolder}`);
       }
       throw retryError;
     }
   };
 
-  try {
-    await create();
-  } catch (error) {
-    if (errorCode(error) !== "EEXIST") {
-      throw error;
-    }
-    let holder = "unknown";
+  await withLockGuard(store, async () => {
     try {
-      holder = (await readFile(path, "utf8")).trim() || "unknown";
-    } catch {
-      holder = "unknown";
-    }
-    if (holderIsDead(holder)) {
-      options.onStaleLock?.(holder);
-      await takeOver();
-    } else if (options.force) {
-      options.onLockStolen?.(holder);
-      await takeOver();
-    } else {
-      throw new UserError(`store lock held by pid ${holder}`);
-    }
-  }
-
-  return async (): Promise<void> => {
-    try {
-      if ((await readFile(path, "utf8")).trim() === pid) {
-        await unlink(path);
-      }
+      await create();
+      return;
     } catch (error) {
-      if (errorCode(error) !== "ENOENT") {
+      if (errorCode(error) !== "EEXIST") throw error;
+    }
+
+    let observed: LockRecord;
+    try {
+      observed = await readLockRecord(path);
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") throw error;
+      await create();
+      return;
+    }
+
+    if (holderIsDead(observed.holder)) {
+      options.onStaleLock?.(observed.holder);
+    } else if (options.force) {
+      options.onLockStolen?.(observed.holder);
+    } else {
+      throw new UserError(`store lock held by pid ${observed.holder}`);
+    }
+    await takeOver(observed);
+  });
+
+  return async (): Promise<void> =>
+    withLockGuard(store, async () => {
+      let current: LockRecord;
+      try {
+        current = await readLockRecord(path);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") return;
         throw error;
       }
-    }
-  };
+      if (current.contents === lockContents) await unlink(path);
+    });
 }
 
 async function readTsv(
@@ -1419,6 +1492,12 @@ export function openStore(
         if (index < 0) {
           rows.push(row);
         } else {
+          const old = rows[index];
+          if (old?.verifier && !row.verifier) {
+            throw new UserError(
+              `worker report cannot replace verifier-authored verdict for PR ${row.pr} at ${row.sha}`
+            );
+          }
           rows[index] = row;
         }
         await saveLedger(store, rows);
