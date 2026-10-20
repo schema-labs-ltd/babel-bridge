@@ -235,6 +235,21 @@ pub enum WhatsAppConnectionState {
     Connected,
     Reconnecting,
     LinkingRequired,
+    /// The bridge stopped retrying. Another dial will not succeed until the
+    /// reported cause is fixed.
+    Disconnected,
+}
+
+impl WhatsAppConnectionState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Reconnecting => "reconnecting",
+            Self::LinkingRequired => "linking_required",
+            Self::Disconnected => "disconnected",
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -783,6 +798,24 @@ impl AppState {
         *self.qr_code.write().await = Some(qr.clone());
         self.broadcast_connection_status().await;
         let _ = self.broadcast_tx.send(WebSocketEvent::Qr { data: qr });
+    }
+
+    /// Record a connection that will not be retried. Linking stays as it is.
+    pub async fn mark_whatsapp_disconnected(&self) {
+        if *self.connection_state.read().await == WhatsAppConnectionState::LinkingRequired {
+            return;
+        }
+        *self.connected.write().await = false;
+        *self.phone.write().await = None;
+        *self.name.write().await = None;
+        let mut connection_state = self.connection_state.write().await;
+        if *connection_state == WhatsAppConnectionState::LinkingRequired {
+            return;
+        }
+        *connection_state = WhatsAppConnectionState::Disconnected;
+        drop(connection_state);
+        self.broadcast_connection_status().await;
+        let _ = self.broadcast_tx.send(WebSocketEvent::Disconnected);
     }
 
     pub async fn require_whatsapp_link(&self) {
@@ -5308,6 +5341,26 @@ mod tests {
         assert!(status.connected);
         assert_eq!(status.connection_state, WhatsAppConnectionState::Connected);
         assert!(status.qr.is_none());
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn get_status_reports_reconnecting_until_retries_stop() {
+        let (state, data_dir) = test_state(None);
+        state.set_connected(false, None, None).await;
+        let retrying = get_status(State(state.clone())).await.0;
+        assert!(!retrying.connected);
+        assert_eq!(
+            retrying.connection_state,
+            WhatsAppConnectionState::Reconnecting
+        );
+        state.mark_whatsapp_disconnected().await;
+        let stopped = get_status(State(state)).await.0;
+        assert!(!stopped.connected);
+        assert_eq!(
+            stopped.connection_state,
+            WhatsAppConnectionState::Disconnected
+        );
         let _ = std::fs::remove_dir_all(data_dir);
     }
 

@@ -296,10 +296,11 @@ async fn handle_web_event(
         }
 
         BridgeEvent::ConnectionState { state: conn_state } => match conn_state {
-            ConnectionState::Disconnected
-            | ConnectionState::Reconnecting
-            | ConnectionState::Connecting => {
+            ConnectionState::Reconnecting | ConnectionState::Connecting => {
                 state.set_connected(false, None, None).await;
+            }
+            ConnectionState::Disconnected => {
+                state.mark_whatsapp_disconnected().await;
             }
             ConnectionState::LoggedOut => {
                 state.require_whatsapp_link().await;
@@ -1484,6 +1485,40 @@ mod identity_tests {
             *state.connection_state.read().await,
             web::WhatsAppConnectionState::Connected
         );
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[tokio::test]
+    async fn reconnecting_status_lasts_until_a_permanent_disconnect() {
+        let path =
+            std::env::temp_dir().join(format!("connection-backoff-{}", uuid::Uuid::new_v4()));
+        let store = MessageStore::new(&path).unwrap();
+        let state = AppState::new(store.clone(), path.clone(), path.clone(), None, None, None);
+        handle_web_event(
+            BridgeEvent::ConnectionState {
+                state: ConnectionState::Reconnecting,
+            },
+            &state,
+            &store,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(!*state.connected.read().await);
+        assert_eq!(state.connection_state.read().await.label(), "reconnecting");
+        handle_web_event(
+            BridgeEvent::ConnectionState {
+                state: ConnectionState::Disconnected,
+            },
+            &state,
+            &store,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(!*state.connected.read().await);
+        assert_eq!(state.connection_state.read().await.label(), "disconnected");
+        assert!(!state.take_session_reset_request());
         let _ = std::fs::remove_dir_all(path);
     }
 

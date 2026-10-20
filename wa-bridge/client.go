@@ -103,10 +103,12 @@ func mapAlbumUploads[Input any, Output any](
 
 // Client wraps the whatsmeow client and handles events
 type Client struct {
-	client    *whatsmeow.Client
-	container *sqlstore.Container
-	verbose   bool
-	ctx       context.Context
+	client        *whatsmeow.Client
+	container     *sqlstore.Container
+	verbose       bool
+	ctx           context.Context
+	connectedNote chan struct{}
+	lossNote      chan connectionLoss
 }
 
 // stderrLogger creates a logger that writes to stderr (not stdout)
@@ -149,16 +151,17 @@ func NewClient(ctx context.Context, dataDir string, verbose bool) (*Client, erro
 	// Create client with stderr logger
 	clientLog := stderrLogger("Client", verbose)
 	client := whatsmeow.NewClient(deviceStore, clientLog)
-	client.AutoReconnectHook = func(error) bool {
-		SendEvent(NewConnectionStateEvent("reconnecting"))
-		return ctx.Err() == nil
-	}
+	// This process owns reconnect timing. whatsmeow's built-in loop has no cap
+	// and does not retry a failed initial dial.
+	client.EnableAutoReconnect = false
 
 	c := &Client{
-		client:    client,
-		container: container,
-		verbose:   verbose,
-		ctx:       ctx,
+		client:        client,
+		container:     container,
+		verbose:       verbose,
+		ctx:           ctx,
+		connectedNote: make(chan struct{}, 1),
+		lossNote:      make(chan connectionLoss, 1),
 	}
 
 	// Register event handler
@@ -191,7 +194,7 @@ func (c *Client) Connect(ctx context.Context) error {
 				return nil
 			case "timeout":
 				return fmt.Errorf("QR code scan timed out")
-			case "error", "err-unexpected-event", "err-client-outdated":
+			case "error", "err-unexpected-event", "err-unexpected-state", "err-client-outdated", "err-scanned-without-multidevice":
 				return fmt.Errorf("linking failed: %s", evt.Event)
 			}
 		}
@@ -205,6 +208,143 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// MaintainConnection dials WhatsApp and, after a retryable failure, waits and
+// dials again. A logout or an outdated client stops the loop; the process stays
+// up until the parent cancels ctx.
+func (c *Client) MaintainConnection(ctx context.Context) {
+	dropSocket := false
+	maintainWhatsAppConnection(ctx,
+		func(ctx context.Context) error {
+			if dropSocket {
+				c.Disconnect()
+				dropSocket = false
+			}
+			c.drainRetryableSignals()
+			if loss, ok := c.takeStopLoss(); ok {
+				return stopError{loss: loss}
+			}
+			err := c.Connect(ctx)
+			if loss, ok := c.takeStopLoss(); ok {
+				return stopError{loss: loss}
+			}
+			return err
+		},
+		c.watchConnection,
+		randomConnectJitter,
+		sleepContext,
+		func(plan connectRetryPlan) {
+			if plan.Retry {
+				dropSocket = true
+			}
+			reportConnectPlan(plan)
+		},
+	)
+}
+
+func (c *Client) watchConnection(ctx context.Context) (watchedConnection, bool) {
+	if c == nil || c.client == nil {
+		return watchedConnection{}, false
+	}
+	reset := c.client.IsLoggedIn()
+	select {
+	case <-c.connectedNote:
+		reset = true
+	default:
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return watchedConnection{}, false
+		case <-c.connectedNote:
+			reset = true
+		case loss := <-c.lossNote:
+			return watchedConnection{reset: reset, loss: loss}, true
+		}
+	}
+}
+
+func (c *Client) observeConnection(evt interface{}) {
+	if c == nil {
+		return
+	}
+	if _, ok := evt.(*events.Connected); ok {
+		c.signalConnected()
+	}
+	if loss, ok := classifyConnectionEvent(evt, time.Now()); ok {
+		c.signalLoss(loss)
+	}
+}
+
+func (c *Client) signalConnected() {
+	if c == nil || c.connectedNote == nil {
+		return
+	}
+	select {
+	case c.connectedNote <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Client) signalLoss(loss connectionLoss) {
+	if c == nil || c.lossNote == nil {
+		return
+	}
+	select {
+	case c.lossNote <- loss:
+		return
+	default:
+	}
+	if loss.class == connectFailureRetryable {
+		return
+	}
+	select {
+	case <-c.lossNote:
+	default:
+	}
+	select {
+	case c.lossNote <- loss:
+	default:
+	}
+}
+
+func (c *Client) drainRetryableSignals() {
+	if c == nil {
+		return
+	}
+	if c.connectedNote != nil {
+		select {
+		case <-c.connectedNote:
+		default:
+		}
+	}
+	if c.lossNote == nil {
+		return
+	}
+	select {
+	case loss := <-c.lossNote:
+		if loss.class != connectFailureRetryable {
+			c.signalLoss(loss)
+		}
+	default:
+	}
+}
+
+func (c *Client) takeStopLoss() (connectionLoss, bool) {
+	if c == nil || c.lossNote == nil {
+		return connectionLoss{}, false
+	}
+	select {
+	case loss := <-c.lossNote:
+		if loss.class == connectFailureRetryable {
+			c.signalLoss(loss)
+			return connectionLoss{}, false
+		}
+		return loss, true
+	default:
+		return connectionLoss{}, false
+	}
 }
 
 // Disconnect gracefully disconnects from WhatsApp
@@ -234,6 +374,7 @@ func (c *Client) IsLoggedIn() bool {
 
 // handleEvent processes events from whatsmeow
 func (c *Client) handleEvent(evt interface{}) {
+	c.observeConnection(evt)
 	// Log all event types for debugging (enable with verbose mode)
 	if c.verbose {
 		SendEvent(NewLogEvent("debug", fmt.Sprintf("Event received: %T", evt)))

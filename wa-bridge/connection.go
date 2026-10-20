@@ -4,6 +4,7 @@ import "go.mau.fi/whatsmeow/types/events"
 
 // Only a revoked session requires new keys. A dropped socket or a second
 // connection using the same keys must never delete the saved WhatsApp session.
+// Retry timing for those drops lives in maintainWhatsAppConnection.
 func connectionEvents(event interface{}) []interface{} {
 	switch event := event.(type) {
 	case *events.LoggedOut:

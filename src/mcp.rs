@@ -479,6 +479,7 @@ impl WhatsAppMcpServer {
             Self::object_output(
                 json!({
                     "connected":{"type":"boolean"},
+                    "connectionState":{"type":"string","enum":["connecting","connected","reconnecting","disconnected","linking_required"]},
                     "accountName":{"type":["string","null"]},
                     "accountPhone":{"type":["string","null"]},
                     "translationConfigured":{"type":"boolean"},
@@ -487,6 +488,7 @@ impl WhatsAppMcpServer {
                 }),
                 &[
                     "connected",
+                    "connectionState",
                     "translationConfigured",
                     "contactCount",
                     "messageCount",
@@ -965,6 +967,7 @@ impl WhatsAppMcpServer {
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
         Ok(CallToolResult::structured(json!({
             "connected": *self.state.connected.read().await,
+            "connectionState": self.state.connection_state.read().await.label(),
             "accountName": self.state.name.read().await.clone(),
             "accountPhone": self.state.phone.read().await.clone(),
             "translationConfigured": self.state.translator.is_some(),
@@ -2033,6 +2036,37 @@ mod tests {
             None,
         );
         (state, data_dir)
+    }
+
+    #[tokio::test]
+    async fn get_status_reports_reconnecting_and_a_stopped_connection() {
+        let (state, data_dir) = test_state();
+        let server = WhatsAppMcpServer::new(
+            state.clone(),
+            McpPermissions {
+                read: true,
+                send: false,
+            },
+        );
+        state.set_connected(false, None, None).await;
+        let retrying = server
+            .handle_get_status()
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(retrying["connected"], false);
+        assert_eq!(retrying["connectionState"], "reconnecting");
+        state.mark_whatsapp_disconnected().await;
+        let stopped = server
+            .handle_get_status()
+            .await
+            .unwrap()
+            .structured_content
+            .unwrap();
+        assert_eq!(stopped["connected"], false);
+        assert_eq!(stopped["connectionState"], "disconnected");
+        let _ = std::fs::remove_dir_all(data_dir);
     }
 
     struct FeedFixture {
