@@ -18,7 +18,7 @@ final class ServerSignOutTests: XCTestCase {
 
     func testResolvedEndpointsKeepAServerSubpath() throws {
         let root = try ServerConfiguration.make(address: "https://sign-out.test", password: "fixture")
-        let prefixed = try ServerConfiguration.make(address: "https://sign-out.test/bridge/", password: "fixture")
+        let prefixed = ServerConfiguration(baseURL: URL(string: "https://sign-out.test/bridge")!, password: "fixture")
         XCTAssertEqual(
             APIClient.resolvedEndpoint(baseURL: root.baseURL, path: APIClient.deviceSessionRevokePath)?.absoluteString,
             "https://sign-out.test/api/auth/session"
@@ -59,7 +59,7 @@ final class ServerSignOutTests: XCTestCase {
     }
 
     func testForgettingOnASubpathServerRevokesThatPrefixedSession() async throws {
-        let harness = try Harness(address: "https://sign-out.test/bridge")
+        let harness = try Harness(baseURL: URL(string: "https://sign-out.test/bridge")!)
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
         let installationID = PushNotificationCoordinator.shared.currentInstallationID
@@ -190,8 +190,12 @@ private struct Harness {
     let api: APIClient
     let urlSession: URLSession
 
-    init(address: String = "https://sign-out.test") throws {
-        configuration = try ServerConfiguration.make(address: address, password: "fixture")
+    init(address: String = "https://sign-out.test", baseURL: URL? = nil) throws {
+        if let baseURL {
+            configuration = ServerConfiguration(baseURL: baseURL, password: "fixture")
+        } else {
+            configuration = try ServerConfiguration.make(address: address, password: "fixture")
+        }
         credentials = MemoryCredentialStore()
         let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.protocolClasses = [ServerSignOutURLProtocol.self]
