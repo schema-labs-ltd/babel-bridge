@@ -182,7 +182,9 @@ pub fn start(state: Arc<AppState>) {
     tokio::spawn(async move {
         loop {
             // Also batches bursts of messages into a single request.
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            if state.wait_for_shutdown(Duration::from_secs(5)).await {
+                break;
+            }
             // Simplify a bounded batch of existing labels, retaining all assignments until
             // a complete response is validated. New messages still get a turn each cycle.
             match state.store.next_topic_labels() {

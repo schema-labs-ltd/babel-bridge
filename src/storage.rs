@@ -413,6 +413,32 @@ impl MessageStore {
         Ok(store)
     }
 
+    /// Flush the WAL into the database file and close the connection.
+    pub fn close(&self) -> Result<()> {
+        let mut guard = self
+            .conn
+            .lock()
+            .expect("sqlite mutex poisoned during shutdown");
+        guard.busy_timeout(std::time::Duration::from_millis(500))?;
+        let (busy, _, _) = guard.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        let placeholder = Connection::open_in_memory().context("open placeholder database")?;
+        let live = std::mem::replace(&mut *guard, placeholder);
+        drop(guard);
+        if let Err((_conn, error)) = Connection::close(live) {
+            return Err(error).context("failed to close sqlite");
+        }
+        if busy != 0 {
+            anyhow::bail!("sqlite checkpoint was busy");
+        }
+        Ok(())
+    }
+
     /// Initialize database schema
     fn init_schema(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -3141,6 +3167,30 @@ mod tests {
         ));
         let store = MessageStore::new(&data_dir).expect("test store");
         (store, data_dir)
+    }
+
+    #[test]
+    fn close_checkpoints_wal_and_releases_the_database() {
+        let (store, dir) = test_store();
+        store
+            .upsert_contact("family@g.us", Some("Family"), None, Some("group"), 1)
+            .unwrap();
+        store.close().unwrap();
+        store.close().unwrap();
+
+        let wal = dir.join("messages.db-wal");
+        let wal_len = std::fs::metadata(&wal).map(|meta| meta.len()).unwrap_or(0);
+        assert_eq!(wal_len, 0, "checkpoint should truncate the WAL");
+
+        let conn = Connection::open(dir.join("messages.db")).unwrap();
+        let name: String = conn
+            .query_row(
+                "SELECT name FROM contacts WHERE id = 'family@g.us'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Family");
     }
 
     #[test]

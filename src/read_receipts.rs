@@ -4,11 +4,15 @@ use std::sync::Arc;
 
 pub fn start(state: Arc<AppState>) {
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
         loop {
-            tick.tick().await;
             if let Err(error) = dispatch(&state).await {
                 tracing::warn!("Read receipt retry: {error}");
+            }
+            if state
+                .wait_for_shutdown(std::time::Duration::from_secs(2))
+                .await
+            {
+                break;
             }
         }
     });

@@ -15,6 +15,9 @@ pub fn start(state: Arc<AppState>) -> anyhow::Result<()> {
         let state = state.clone();
         tokio::spawn(async move {
             loop {
+                if *state.shutdown.borrow() {
+                    break;
+                }
                 match state.store.claim_translation() {
                     Ok(Some(id)) => {
                         if let Err(error) = translate(&state, &id).await {
@@ -22,10 +25,16 @@ pub fn start(state: Arc<AppState>) -> anyhow::Result<()> {
                             let _ = state.store.retry_translation(&id);
                         }
                     }
-                    Ok(None) => tokio::time::sleep(Duration::from_millis(500)).await,
+                    Ok(None) => {
+                        if state.wait_for_shutdown(Duration::from_millis(500)).await {
+                            break;
+                        }
+                    }
                     Err(error) => {
                         tracing::error!("Translation queue failed: {error}");
-                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        if state.wait_for_shutdown(Duration::from_secs(5)).await {
+                            break;
+                        }
                     }
                 }
             }
@@ -57,7 +66,9 @@ fn start_notifications(state: Arc<AppState>) {
                 }
                 Err(error) => tracing::warn!("Notification queue failed: {error}"),
             }
-            tokio::time::sleep(Duration::from_millis(250)).await;
+            if state.wait_for_shutdown(Duration::from_millis(250)).await {
+                break;
+            }
         }
     });
 }

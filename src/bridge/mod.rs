@@ -3,7 +3,7 @@
 pub mod process;
 pub mod protocol;
 
-pub use process::{default_data_dir, find_bridge_binary, BridgeConfig, BridgeProcess};
+pub use process::{default_data_dir, find_bridge_binary, BridgeConfig, BridgeProcess, BridgeStop};
 pub use protocol::{
     BridgeCommand, BridgeEvent, BridgeImage, Chat, ChatPresenceState, ConnectionState, Contact,
     Message, MessageContent,

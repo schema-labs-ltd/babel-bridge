@@ -212,6 +212,47 @@ func TestConnectRetryLoopResetsDelayAfterConnected(t *testing.T) {
 	}
 }
 
+func TestShutdownCancelsBackoffWithoutAnotherDial(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	dials := 0
+	var planned connectRetryPlan
+	maintainWhatsAppConnection(ctx,
+		func(context.Context) error {
+			dials++
+			if dials > 1 {
+				t.Fatal("dialed again after shutdown cancelled the retry")
+			}
+			return fmt.Errorf("connect: %w", socket.ErrDialFailed)
+		},
+		func(context.Context) (watchedConnection, bool) {
+			t.Fatal("watch should not run when shutdown cancels the backoff")
+			return watchedConnection{}, false
+		},
+		func() float64 { return 1 },
+		func(sleepCtx context.Context, delay time.Duration) bool {
+			if delay < time.Second {
+				t.Fatalf("backoff delay = %s, want at least the initial delay", delay)
+			}
+			cancel()
+			started := time.Now()
+			continued := sleepContext(sleepCtx, delay)
+			if time.Since(started) > time.Second {
+				t.Fatal("cancelled backoff waited out the delay")
+			}
+			return continued
+		},
+		func(plan connectRetryPlan) {
+			planned = plan
+		},
+	)
+	if dials != 1 {
+		t.Fatalf("dials = %d, want 1", dials)
+	}
+	if !planned.Retry || planned.Code != "network" {
+		t.Fatalf("plan = %+v, want a retry that shutdown then cancelled", planned)
+	}
+}
+
 func TestPermanentConnectionEventsDoNotRetry(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	cases := []interface{}{

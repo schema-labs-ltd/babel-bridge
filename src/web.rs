@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, oneshot, RwLock};
+use tokio::sync::{broadcast, oneshot, watch, RwLock};
 use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
@@ -119,6 +119,8 @@ pub struct AppState {
     /// Whether the bridge restart loop should clear WhatsApp session files before respawning.
     pub session_reset_requested: AtomicBool,
     pub push_notifications: Option<Arc<ApnsClient>>,
+    /// Set to true once, when the process should stop background work and sockets.
+    pub shutdown: watch::Sender<bool>,
 }
 
 /// Bridge send result normalized for Rust/web consumers.
@@ -667,9 +669,23 @@ impl AppState {
             auth_tokens: RwLock::new(HashMap::new()),
             session_reset_requested: AtomicBool::new(false),
             push_notifications,
+            shutdown: watch::channel(false).0,
         });
         crate::outbox::recover_receipts(&state).expect("Cannot reconcile durable send receipts");
         state
+    }
+
+    /// Wait for `delay` or for shutdown, whichever comes first.
+    /// Returns true when shutdown has been requested.
+    pub async fn wait_for_shutdown(&self, delay: Duration) -> bool {
+        let mut watch = self.shutdown.subscribe();
+        if *watch.borrow() {
+            return true;
+        }
+        tokio::select! {
+            changed = watch.changed() => changed.is_ok() && *watch.borrow(),
+            _ = tokio::time::sleep(delay) => false,
+        }
     }
 
     pub fn request_session_reset_before_bridge_restart(&self) {
@@ -1407,6 +1423,7 @@ pub async fn start_server(
     host: &str,
     port: u16,
     allow_local_no_auth: bool,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
     crate::access::validate(host, state.password.as_deref(), allow_local_no_auth)?;
     let addr = SocketAddr::new(host.parse()?, port);
@@ -1417,7 +1434,9 @@ pub async fn start_server(
     info!("Web server running at http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, router).await?;
+    // HTTP, WebSocket, and MCP share this server. Graceful shutdown stops new
+    // connections and waits for the ones already accepted.
+    crate::shutdown::serve_until_shutdown(listener, router, shutdown).await?;
 
     Ok(())
 }
@@ -1434,7 +1453,9 @@ fn cleanup_expired_oauth(state: &Arc<AppState>, reason: &str) {
 fn spawn_oauth_cleanup_task(state: Arc<AppState>) {
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(OAUTH_CLEANUP_INTERVAL).await;
+            if state.wait_for_shutdown(OAUTH_CLEANUP_INTERVAL).await {
+                break;
+            }
             cleanup_expired_oauth(&state, "periodic cleanup");
         }
     });
@@ -5140,8 +5161,19 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
 
     // Handle incoming messages and broadcast events
     let mut heartbeat = tokio::time::interval(Duration::from_secs(20));
+    let mut shutdown = state.shutdown.subscribe();
+    if *shutdown.borrow() {
+        let _ = sender.send(Message::Close(None)).await;
+        return;
+    }
     loop {
         tokio::select! {
+            changed = shutdown.changed() => {
+                if changed.is_ok() && *shutdown.borrow() {
+                    let _ = sender.send(Message::Close(None)).await;
+                    break;
+                }
+            }
             _ = heartbeat.tick() => {
                 if sender.send(Message::Text("{\"type\":\"heartbeat\"}".into())).await.is_err() { break; }
             }
