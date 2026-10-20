@@ -16,7 +16,24 @@ final class ServerSignOutTests: XCTestCase {
         XCTAssertFalse(APIClient.pushDeviceDeletionPath(installationID: "install/1")?.contains("logout") == true)
     }
 
-    func testForgettingAnOnlineServerRemovesThePushRegistration() async throws {
+    func testResolvedEndpointsKeepAServerSubpath() throws {
+        let root = try ServerConfiguration.make(address: "https://sign-out.test", password: "fixture")
+        let prefixed = try ServerConfiguration.make(address: "https://sign-out.test/bridge/", password: "fixture")
+        XCTAssertEqual(
+            APIClient.resolvedEndpoint(baseURL: root.baseURL, path: APIClient.deviceSessionRevokePath)?.absoluteString,
+            "https://sign-out.test/api/auth/session"
+        )
+        XCTAssertEqual(
+            APIClient.resolvedEndpoint(baseURL: prefixed.baseURL, path: APIClient.deviceSessionRevokePath)?.absoluteString,
+            "https://sign-out.test/bridge/api/auth/session"
+        )
+        XCTAssertEqual(
+            APIClient.resolvedEndpoint(baseURL: prefixed.baseURL, path: "/api/push/devices/install%2F1")?.absoluteString,
+            "https://sign-out.test/bridge/api/push/devices/install%2F1"
+        )
+    }
+
+    func testForgettingRevokesTheSessionAfterPushRemovalAndBeforeClearingLocalState() async throws {
         let harness = try Harness()
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
@@ -26,14 +43,57 @@ final class ServerSignOutTests: XCTestCase {
         await session.forgetServer()
 
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
-        XCTAssertEqual(signOut.map(\.path), ["/api/push/devices/\(installationID)"])
-        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token"])
+        XCTAssertEqual(signOut.map(\.method), ["DELETE", "DELETE"])
+        XCTAssertEqual(signOut.map(\.path), [
+            "/api/push/devices/\(installationID)",
+            "/api/auth/session",
+        ])
+        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token", "Bearer session-token"])
+        XCTAssertEqual(signOut.map(\.credentialClears), [0, 0])
+        XCTAssertEqual(signOut.map(\.timeout), [APIClient.bestEffortTimeout, APIClient.bestEffortTimeout])
         XCTAssertNoLogout(signOut)
         await harness.assertForgotten(session)
         let callsAfterForget = ServerSignOutURLProtocol.state.requests.count
         await session.registerPushDevice(token: "fixture-device-token", installationID: installationID, environment: "sandbox")
         XCTAssertEqual(ServerSignOutURLProtocol.state.requests.count, callsAfterForget)
+    }
+
+    func testForgettingOnASubpathServerRevokesThatPrefixedSession() async throws {
+        let harness = try Harness(address: "https://sign-out.test/bridge")
+        defer { harness.cleanup() }
+        let session = try await harness.signedInSession()
+        let installationID = PushNotificationCoordinator.shared.currentInstallationID
+        let before = ServerSignOutURLProtocol.state.requests.count
+
+        await session.forgetServer()
+
+        let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
+        XCTAssertEqual(signOut.map(\.path), [
+            "/bridge/api/push/devices/\(installationID)",
+            "/bridge/api/auth/session",
+        ])
+        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token", "Bearer session-token"])
+        XCTAssertEqual(signOut.map(\.credentialClears), [0, 0])
+        XCTAssertNoLogout(signOut)
+        await harness.assertForgotten(session)
+    }
+
+    func testForgettingWithoutATokenSkipsSessionRevoke() async throws {
+        let harness = try Harness()
+        defer { harness.cleanup() }
+        let session = try await harness.signedInSession(passwordRequired: false)
+        let installationID = PushNotificationCoordinator.shared.currentInstallationID
+        let before = ServerSignOutURLProtocol.state.requests.count
+
+        await session.forgetServer()
+
+        let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
+        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
+        XCTAssertEqual(signOut.map(\.path), ["/api/push/devices/\(installationID)"])
+        XCTAssertEqual(signOut.map(\.authorization), [nil])
+        XCTAssertFalse(signOut.contains { $0.path.hasSuffix("/api/auth/session") })
+        XCTAssertNoLogout(signOut)
+        await harness.assertForgotten(session)
     }
 
     func testForgettingStillClearsTheDeviceWhenTheServerIsUnreachable() async throws {
@@ -46,13 +106,18 @@ final class ServerSignOutTests: XCTestCase {
         await session.forgetServer()
 
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
-        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token"])
+        XCTAssertEqual(signOut.map(\.method), ["DELETE", "DELETE"])
+        XCTAssertEqual(signOut.map(\.path), [
+            "/api/push/devices/\(PushNotificationCoordinator.shared.currentInstallationID)",
+            "/api/auth/session",
+        ])
+        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token", "Bearer session-token"])
+        XCTAssertEqual(signOut.map(\.credentialClears), [0, 0])
         XCTAssertNoLogout(signOut)
         await harness.assertForgotten(session)
     }
 
-    func testRejectedPushRemovalStillClearsTheDevice() async throws {
+    func testRejectedPushRemovalStillRevokesTheSessionAndClearsTheDevice() async throws {
         let harness = try Harness()
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
@@ -62,15 +127,16 @@ final class ServerSignOutTests: XCTestCase {
         await session.forgetServer()
 
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
+        XCTAssertEqual(signOut.map(\.method), ["DELETE", "DELETE"])
         XCTAssertEqual(signOut.map(\.path), [
             "/api/push/devices/\(PushNotificationCoordinator.shared.currentInstallationID)",
+            "/api/auth/session",
         ])
         XCTAssertNoLogout(signOut)
         await harness.assertForgotten(session)
     }
 
-    func testUnauthorizedPushRemovalDoesNotSignInAgain() async throws {
+    func testUnauthorizedSessionRevokeDoesNotSignInAgain() async throws {
         let harness = try Harness()
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
@@ -82,7 +148,9 @@ final class ServerSignOutTests: XCTestCase {
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
         XCTAssertEqual(signOut.map(\.path), [
             "/api/push/devices/\(PushNotificationCoordinator.shared.currentInstallationID)",
+            "/api/auth/session",
         ])
+        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token", "Bearer session-token"])
         XCTAssertFalse(signOut.contains { $0.path == "/api/auth" || $0.path == "/api/auth/check" })
         XCTAssertNoLogout(signOut)
         await harness.assertForgotten(session)
@@ -112,7 +180,7 @@ private func XCTAssertNoLogout(
     file: StaticString = #filePath,
     line: UInt = #line
 ) {
-    XCTAssertFalse(requests.contains { $0.path == "/api/logout" }, "forgetting a server must not call /api/logout", file: file, line: line)
+    XCTAssertFalse(requests.contains { $0.path.contains("/api/logout") }, "forgetting a server must not call /api/logout", file: file, line: line)
 }
 
 @MainActor
@@ -122,8 +190,8 @@ private struct Harness {
     let api: APIClient
     let urlSession: URLSession
 
-    init() throws {
-        configuration = try ServerConfiguration.make(address: "https://sign-out.test", password: "fixture")
+    init(address: String = "https://sign-out.test") throws {
+        configuration = try ServerConfiguration.make(address: address, password: "fixture")
         credentials = MemoryCredentialStore()
         let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.protocolClasses = [ServerSignOutURLProtocol.self]
@@ -132,7 +200,8 @@ private struct Harness {
         ServerSignOutURLProtocol.state.reset()
     }
 
-    func signedInSession() async throws -> AppSession {
+    func signedInSession(passwordRequired: Bool = true) async throws -> AppSession {
+        ServerSignOutURLProtocol.state.passwordRequired = passwordRequired
         await api.configure(configuration)
         _ = try await api.authenticate()
         try credentials.save(configuration)
@@ -187,7 +256,14 @@ private final class MemoryCredentialStore: ServerCredentialStoring, @unchecked S
 
     func load() -> ServerConfiguration? { lock.withLock { stored } }
     func save(_ configuration: ServerConfiguration) throws { lock.withLock { stored = configuration } }
-    func clear() { lock.withLock { stored = nil; clears += 1 } }
+    func clear() {
+        let count = lock.withLock { () -> Int in
+            stored = nil
+            clears += 1
+            return clears
+        }
+        ServerSignOutURLProtocol.state.credentialClears = count
+    }
     var clearCount: Int { lock.withLock { clears } }
 }
 
@@ -203,27 +279,41 @@ private final class ServerSignOutURLProtocol: URLProtocol, @unchecked Sendable {
         var method: String
         var path: String
         var authorization: String?
+        var credentialClears: Int
+        var timeout: TimeInterval
     }
 
     final class State: @unchecked Sendable {
         private let lock = NSLock()
         private var recorded: [Exchange] = []
         private var failure = Mode.success
+        private var clears = 0
+        private var requiresPassword = true
 
         var mode: Mode {
             get { lock.withLock { failure } }
             set { lock.withLock { failure = newValue } }
         }
+        var passwordRequired: Bool {
+            get { lock.withLock { requiresPassword } }
+            set { lock.withLock { requiresPassword = newValue } }
+        }
+        var credentialClears: Int {
+            get { lock.withLock { clears } }
+            set { lock.withLock { clears = newValue } }
+        }
         var requests: [Exchange] { lock.withLock { recorded } }
 
-        func reset() { lock.withLock { recorded = []; failure = .success } }
+        func reset() { lock.withLock { recorded = []; failure = .success; clears = 0; requiresPassword = true } }
 
         func record(_ request: URLRequest) -> Mode {
             lock.withLock {
                 recorded.append(Exchange(
                     method: request.httpMethod ?? "GET",
                     path: request.url?.path ?? "",
-                    authorization: request.value(forHTTPHeaderField: "Authorization")
+                    authorization: request.value(forHTTPHeaderField: "Authorization"),
+                    credentialClears: clears,
+                    timeout: request.timeoutInterval
                 ))
                 return failure
             }
@@ -243,8 +333,9 @@ private final class ServerSignOutURLProtocol: URLProtocol, @unchecked Sendable {
         let path = request.url?.path ?? ""
         let method = request.httpMethod ?? "GET"
         let mode = Self.state.record(request)
-        let signOut = method == "DELETE" && path.hasPrefix("/api/push/devices/")
-        if signOut {
+        let pushRemoval = method == "DELETE" && path.contains("/api/push/devices/")
+        let sessionRevoke = method == "DELETE" && path.hasSuffix("/api/auth/session")
+        if pushRemoval || sessionRevoke {
             switch mode {
             case .offline:
                 client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
@@ -252,7 +343,7 @@ private final class ServerSignOutURLProtocol: URLProtocol, @unchecked Sendable {
             case .unauthorized:
                 finish(status: 401, body: Data(#"{"error":"unauthorized"}"#.utf8))
                 return
-            case .deleteRejected where method == "DELETE":
+            case .deleteRejected where pushRemoval:
                 finish(status: 500, body: Data(#"{"error":"unavailable"}"#.utf8))
                 return
             case .success, .deleteRejected:
@@ -266,7 +357,8 @@ private final class ServerSignOutURLProtocol: URLProtocol, @unchecked Sendable {
         case "/api/health":
             body = Data(#"{"ok":true}"#.utf8)
         case "/api/auth/check":
-            body = Data(#"{"required":true}"#.utf8)
+            let required = Self.state.passwordRequired
+            body = Data("{\"required\":\(required)}".utf8)
         case "/api/auth":
             body = Data(#"{"success":true,"token":"session-token"}"#.utf8)
         case "/api/status":

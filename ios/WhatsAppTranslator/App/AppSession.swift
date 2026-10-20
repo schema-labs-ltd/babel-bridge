@@ -1156,12 +1156,12 @@ final class AppSession {
     func forgetServer() async {
         let installationID = PushNotificationCoordinator.shared.currentInstallationID
         PushNotificationCoordinator.shared.deactivate()
-        forgetServerLocally()
         if demoMode {
             await api.disconnectLiveEvents()
-            return
+        } else {
+            await api.revokeDeviceAccess(installationID: installationID)
         }
-        await api.unregisterPushInstallation(installationID)
+        forgetServerLocally()
     }
 
     private func forgetServerLocally() {

@@ -425,19 +425,66 @@ actor APIClient {
         }
     }
 
-    /// Best-effort removal of this installation's push registration.
-    /// The in-memory password and bearer token are dropped first. A failure, including
-    /// an unreachable server, is ignored, and a 401 does not sign in again.
-    func unregisterPushInstallation(_ installationID: String) async {
+    /// Best-effort device sign-out. Removes this installation's push registration,
+    /// then revokes only the bearer token still held in memory. The token and server
+    /// address stay available until both calls finish. A 200, 401, timeout, or other
+    /// failure does not sign in again and does not stop the caller from clearing local state.
+    func revokeDeviceAccess(installationID: String) async {
         pushRegistrationEpoch = UUID()
         let baseURL = configuration?.baseURL
         let bearer = token?.trimmingCharacters(in: .whitespacesAndNewlines)
         let bearerToken = (bearer?.isEmpty == false) ? bearer : nil
+        disconnectLiveEvents()
+        if let baseURL {
+            if let path = Self.pushDeviceDeletionPath(installationID: installationID) {
+                await performBestEffort(method: "DELETE", path: path, baseURL: baseURL, bearerToken: bearerToken)
+            }
+            if let bearerToken {
+                await performBestEffort(
+                    method: "DELETE",
+                    path: Self.deviceSessionRevokePath,
+                    baseURL: baseURL,
+                    bearerToken: bearerToken
+                )
+            }
+        }
         configuration = nil
         token = nil
-        disconnectLiveEvents()
-        guard let baseURL, let path = Self.pushDeviceDeletionPath(installationID: installationID) else { return }
-        await performBestEffort(method: "DELETE", path: path, baseURL: baseURL, bearerToken: bearerToken)
+    }
+
+    static let deviceSessionRevokePath = "/api/auth/session"
+    static let bestEffortTimeout: TimeInterval = 5
+
+    /// Joins an API path onto the configured server and keeps a sub-path prefix.
+    /// A leading slash must not replace the prefix, matching `ServerConfiguration.endpointURL`.
+    static func resolvedEndpoint(baseURL: URL, path: String) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else { return nil }
+        let basePath = pathSegments(components.percentEncodedPath).joined(separator: "/")
+        components.percentEncodedPath = basePath.isEmpty ? "/" : "/" + basePath + "/"
+        components.query = nil
+        components.fragment = nil
+        guard let directory = components.url else { return nil }
+        let pieces = requestPieces(path)
+        var relative = pathSegments(pieces.path).joined(separator: "/")
+        if let query = pieces.query { relative += "?\(query)" }
+        if let fragment = pieces.fragment { relative += "#\(fragment)" }
+        guard !relative.isEmpty else { return directory.absoluteURL }
+        return URL(string: relative, relativeTo: directory)?.absoluteURL
+    }
+
+    private static func pathSegments(_ percentEncodedPath: String) -> [String] {
+        percentEncodedPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private static func requestPieces(_ rawPath: String) -> (path: String, query: String?, fragment: String?) {
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fragmentParts = trimmed.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+        let beforeFragment = String(fragmentParts[0])
+        let fragment = fragmentParts.count == 2 ? String(fragmentParts[1]) : nil
+        let queryParts = beforeFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let path = String(queryParts[0])
+        let query = queryParts.count == 2 ? String(queryParts[1]) : nil
+        return (path, query?.isEmpty == false ? query : nil, fragment?.isEmpty == false ? fragment : nil)
     }
 
     static func pushDeviceDeletionPath(installationID: String) -> String? {
@@ -463,10 +510,10 @@ actor APIClient {
         baseURL: URL,
         bearerToken: String?
     ) async {
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else { return }
+        guard let url = Self.resolvedEndpoint(baseURL: baseURL, path: path) else { return }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 15
+        request.timeoutInterval = Self.bestEffortTimeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let bearerToken {
             request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
@@ -474,7 +521,7 @@ actor APIClient {
         do {
             _ = try await session.data(for: request)
         } catch {
-            // The device has already forgotten the server. A missed push removal must not undo that.
+            // Forgetting the server continues locally. A missed revoke must not sign in again.
         }
     }
 
