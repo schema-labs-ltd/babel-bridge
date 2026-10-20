@@ -1813,9 +1813,10 @@ fn bearer_token(headers: &HeaderMap) -> Option<String> {
 
 async fn live_web_auth_token(state: &AppState, token: &str) -> bool {
     let now = chrono::Utc::now().timestamp();
-    let mut tokens = state.auth_tokens.write().await;
-    tokens.retain(|_, expires_at| *expires_at > now);
-    tokens.contains_key(token)
+    let tokens = state.auth_tokens.read().await;
+    tokens
+        .get(token)
+        .is_some_and(|expires_at| *expires_at > now)
 }
 
 fn session_revoke_failure() -> Response {
@@ -1832,10 +1833,15 @@ fn session_revoke_failure() -> Response {
 /// Revoke only the bearer token that called this route.
 ///
 /// Web and iOS sessions are removed from the in-memory token map. An OAuth
-/// access token also drops the refresh token from the same grant, and access
-/// tokens minted from that refresh token. Other devices, stored messages,
-/// OAuth client registrations, and the WhatsApp session stay in place.
-/// `/api/logout` is unchanged.
+/// access token also drops the refresh token stored on that same grant, and
+/// access tokens minted from that refresh token. An access token with no grant
+/// link drops only itself. Other devices, stored messages, OAuth client
+/// registrations, and the WhatsApp session stay in place. `/api/logout` is
+/// unchanged.
+///
+/// When no password is configured, the route is reachable without a bearer
+/// token, matching the rest of the API. That call revokes nothing. A presented
+/// bearer still revokes only that token.
 async fn delete_auth_session(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
     let Some(token) = bearer_token(&headers) else {
         return if state.password.is_none() {
@@ -8463,6 +8469,129 @@ mod tests {
             .oauth_get_refresh_token("refresh-device-b")
             .expect("refresh")
             .is_some());
+        assert_eq!(remembered_message_count(&state), 1);
+        assert!(*state.connected.read().await);
+        assert_eq!(state.store.oauth_list_clients().expect("clients").len(), 1);
+
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn sign_out_without_a_password_revokes_only_a_presented_token() {
+        let (state, data_dir) = test_state(None);
+        *state.connected.write().await = true;
+        state
+            .store
+            .upsert_contact(
+                "chat@example.test",
+                Some("Test Chat"),
+                None,
+                Some("private"),
+                1_700_000_000_000,
+            )
+            .expect("insert contact");
+        state
+            .store
+            .add_message(&test_outgoing_message("msg_1", 1_700_000_000_000))
+            .expect("insert message");
+        store_linked_oauth_grant(&state, "client-shared", "access-linked", "refresh-shared");
+        state
+            .store
+            .oauth_store_access_token(&AccessToken {
+                token: "access-unlinked".to_string(),
+                client_id: "client-shared".to_string(),
+                scope: "whatsapp.read".to_string(),
+                created_at: 1_700_000_000,
+                expires_at: i64::MAX,
+                refresh_token: None,
+            })
+            .expect("store unlinked access token");
+        let device_a = generate_token();
+        let device_b = generate_token();
+        let expired = generate_token();
+        {
+            let mut tokens = state.auth_tokens.write().await;
+            let now = chrono::Utc::now().timestamp();
+            tokens.insert(device_a.clone(), now + 60);
+            tokens.insert(device_b.clone(), now + 60);
+            tokens.insert(expired.clone(), now - 60);
+        }
+
+        for token in [None, Some("unknown-token")] {
+            let response = delete_session(state.clone(), token).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body");
+            let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            assert_eq!(payload["success"], true);
+        }
+        let tokens = state.auth_tokens.read().await;
+        assert!(tokens.contains_key(&device_a));
+        assert!(tokens.contains_key(&device_b));
+        assert!(tokens.contains_key(&expired));
+        drop(tokens);
+        assert!(state
+            .store
+            .oauth_validate_access_token("access-linked")
+            .expect("linked")
+            .is_some());
+        assert!(state
+            .store
+            .oauth_validate_access_token("access-unlinked")
+            .expect("unlinked")
+            .is_some());
+        assert!(state
+            .store
+            .oauth_get_refresh_token("refresh-shared")
+            .expect("refresh")
+            .is_some());
+
+        let request = HttpRequest::builder()
+            .method("DELETE")
+            .uri("/api/auth/session")
+            .header(header::AUTHORIZATION, format!("Bearer {device_a}"))
+            .header(header::CONTENT_TYPE, "application/json");
+        let response = create_router(state.clone())
+            .oneshot(
+                request
+                    .body(Body::from(
+                        r#"{"token":"access-linked","refresh_token":"refresh-shared"}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let tokens = state.auth_tokens.read().await;
+        assert!(!tokens.contains_key(&device_a));
+        assert!(tokens.contains_key(&device_b));
+        assert!(tokens.contains_key(&expired));
+        drop(tokens);
+        assert!(state
+            .store
+            .oauth_get_refresh_token("refresh-shared")
+            .expect("refresh after web sign-out")
+            .is_some());
+
+        let oauth_response = delete_session(state.clone(), Some("access-unlinked")).await;
+        assert_eq!(oauth_response.status(), StatusCode::OK);
+        assert!(state
+            .store
+            .oauth_validate_access_token("access-unlinked")
+            .expect("unlinked after sign-out")
+            .is_none());
+        assert!(state
+            .store
+            .oauth_validate_access_token("access-linked")
+            .expect("linked after unlinked sign-out")
+            .is_some());
+        assert!(state
+            .store
+            .oauth_get_refresh_token("refresh-shared")
+            .expect("refresh after unlinked sign-out")
+            .is_some());
+        assert!(state.auth_tokens.read().await.contains_key(&device_b));
         assert_eq!(remembered_message_count(&state), 1);
         assert!(*state.connected.read().await);
         assert_eq!(state.store.oauth_list_clients().expect("clients").len(), 1);

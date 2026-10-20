@@ -2834,44 +2834,25 @@ impl MessageStore {
         }
     }
 
-    /// Revoke the access token a caller presented, plus the refresh token tied to that grant.
+    /// Revoke the access token a caller presented, plus the refresh token stored on that same row.
     ///
-    /// Other clients, and other refresh grants for the same client, stay stored.
+    /// An access token with no grant link drops only that row. OAuth client ids are one
+    /// registration, not one device, so this never selects a refresh token by client id.
     /// An unknown or already-removed token is a no-op.
     pub fn oauth_revoke_access_session(&self, token: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let row = conn
+        let linked_refresh = conn
             .query_row(
-                "SELECT client_id, refresh_token FROM oauth_access_tokens WHERE token = ?1",
+                "SELECT refresh_token FROM oauth_access_tokens WHERE token = ?1",
                 params![token],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                |row| row.get::<_, Option<String>>(0),
             )
             .optional()?;
-        let Some((client_id, linked_refresh)) = row else {
+        let Some(linked_refresh) = linked_refresh else {
             return Ok(());
         };
 
-        let refresh_tokens = {
-            let mut stmt =
-                conn.prepare("SELECT token FROM oauth_refresh_tokens WHERE client_id = ?1")?;
-            let rows = stmt
-                .query_map(params![client_id], |row| row.get::<_, String>(0))?
-                .filter_map(|row| row.ok())
-                .collect::<Vec<_>>();
-            rows
-        };
-
-        let refresh_to_revoke = linked_refresh
-            .filter(|value| !value.is_empty())
-            .or_else(|| {
-                if refresh_tokens.len() == 1 {
-                    refresh_tokens.first().cloned()
-                } else {
-                    None
-                }
-            });
-
-        if let Some(refresh) = refresh_to_revoke {
+        if let Some(refresh) = linked_refresh.filter(|value| !value.is_empty()) {
             conn.execute(
                 "DELETE FROM oauth_refresh_tokens WHERE token = ?1",
                 params![refresh],
@@ -2880,17 +2861,6 @@ impl MessageStore {
                 "DELETE FROM oauth_access_tokens WHERE token = ?1 OR refresh_token = ?2",
                 params![token, refresh],
             )?;
-            let remaining_refresh: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM oauth_refresh_tokens WHERE client_id = ?1",
-                params![client_id],
-                |row| row.get(0),
-            )?;
-            if remaining_refresh == 0 {
-                conn.execute(
-                    "DELETE FROM oauth_access_tokens WHERE client_id = ?1",
-                    params![client_id],
-                )?;
-            }
         } else {
             conn.execute(
                 "DELETE FROM oauth_access_tokens WHERE token = ?1",
@@ -4338,6 +4308,9 @@ mod tests {
                 Some("refresh-b"),
             ))
             .expect("access b");
+        store
+            .oauth_store_access_token(&linked_access_token("access-a-unlinked", "client-a", None))
+            .expect("unlinked access on the same client");
 
         store
             .oauth_revoke_access_session("access-a")
@@ -4377,68 +4350,59 @@ mod tests {
             .oauth_get_refresh_token("refresh-b")
             .expect("refresh b")
             .is_some());
+        assert!(store
+            .oauth_validate_access_token("access-a-unlinked")
+            .expect("unlinked access")
+            .is_some());
         assert_eq!(store.oauth_list_clients().expect("clients").len(), 2);
 
         let _ = std::fs::remove_dir_all(data_dir);
     }
 
     #[test]
-    fn oauth_access_session_revoke_of_unlinked_token_uses_the_only_refresh_grant() {
+    fn oauth_access_session_revoke_of_unlinked_token_leaves_the_clients_only_refresh_grant() {
         let (store, data_dir) = test_store();
         store
-            .oauth_store_client(&test_oauth_client("client-legacy"))
+            .oauth_store_client(&test_oauth_client("client-shared"))
             .expect("client");
         store
-            .oauth_store_client(&test_oauth_client("client-other"))
-            .expect("other client");
-        store
-            .oauth_store_refresh_token(&stored_refresh_token("refresh-legacy", "client-legacy"))
-            .expect("legacy refresh");
-        store
-            .oauth_store_refresh_token(&stored_refresh_token("refresh-other", "client-other"))
-            .expect("other refresh");
-        store
-            .oauth_store_access_token(&linked_access_token("access-legacy", "client-legacy", None))
-            .expect("legacy access");
+            .oauth_store_refresh_token(&stored_refresh_token("refresh-shared", "client-shared"))
+            .expect("shared refresh");
         store
             .oauth_store_access_token(&linked_access_token(
-                "access-legacy-old",
-                "client-legacy",
+                "access-unlinked",
+                "client-shared",
                 None,
             ))
-            .expect("old access");
+            .expect("unlinked access");
         store
             .oauth_store_access_token(&linked_access_token(
-                "access-other",
-                "client-other",
-                Some("refresh-other"),
+                "access-other-device",
+                "client-shared",
+                Some("refresh-shared"),
             ))
-            .expect("other access");
+            .expect("other device access");
 
         store
-            .oauth_revoke_access_session("access-legacy")
-            .expect("revoke legacy session");
+            .oauth_revoke_access_session("access-unlinked")
+            .expect("revoke unlinked access token");
+        store
+            .oauth_revoke_access_session("access-unlinked")
+            .expect("already revoked");
 
         assert!(store
-            .oauth_validate_access_token("access-legacy")
-            .expect("legacy")
+            .oauth_validate_access_token("access-unlinked")
+            .expect("unlinked")
             .is_none());
         assert!(store
-            .oauth_validate_access_token("access-legacy-old")
-            .expect("old")
-            .is_none());
-        assert!(store
-            .oauth_get_refresh_token("refresh-legacy")
-            .expect("legacy refresh")
-            .is_none());
-        assert!(store
-            .oauth_get_refresh_token("refresh-other")
-            .expect("other refresh")
+            .oauth_validate_access_token("access-other-device")
+            .expect("other device")
             .is_some());
         assert!(store
-            .oauth_validate_access_token("access-other")
-            .expect("other access")
+            .oauth_get_refresh_token("refresh-shared")
+            .expect("shared refresh")
             .is_some());
+        assert_eq!(store.oauth_list_clients().expect("clients").len(), 1);
 
         let _ = std::fs::remove_dir_all(data_dir);
     }
