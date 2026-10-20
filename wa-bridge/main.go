@@ -45,15 +45,23 @@ func main() {
 		SendEvent(NewErrorEvent("init", fmt.Sprintf("failed to create client: %v", err)))
 		os.Exit(1)
 	}
-	defer client.Close()
+	defer func() {
+		if err := client.Shutdown(); err != nil {
+			SendEvent(NewLogEvent("warn", "Failed to close session store"))
+		}
+	}()
 
-	// Handle shutdown signals
-	sigChan := make(chan os.Signal, 1)
+	// Handle shutdown signals. The Rust parent owns the process-lifetime log;
+	// this names the signal when it is delivered straight to the bridge.
+	sigChan := make(chan os.Signal, 2)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-sigChan
-		SendEvent(NewLogEvent("info", "Received shutdown signal"))
+		sig := <-sigChan
+		SendEvent(NewLogEvent("info", fmt.Sprintf("Received shutdown signal: %s", signalName(sig))))
 		cancel()
+		sig = <-sigChan
+		SendEvent(NewLogEvent("warn", fmt.Sprintf("Shutdown forced: second signal %s", signalName(sig))))
+		os.Exit(0)
 	}()
 
 	// Start command reader goroutine
@@ -68,12 +76,11 @@ func main() {
 		<-ctx.Done()
 	}
 
-	// Wait for context cancellation (shutdown)
+	// Wait for context cancellation (shutdown). Deferred Shutdown disconnects
+	// WhatsApp and flushes the session database.
 	<-ctx.Done()
 
-	// Clean shutdown
-	SendEvent(NewLogEvent("info", "Disconnecting..."))
-	client.Disconnect()
+	SendEvent(NewLogEvent("info", "Disconnecting"))
 }
 
 // readCommands reads commands from stdin and processes them

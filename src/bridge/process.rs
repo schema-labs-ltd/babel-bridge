@@ -173,23 +173,21 @@ impl BridgeProcess {
         self.command_tx.clone()
     }
 
-    /// Request graceful shutdown
-    pub async fn shutdown(mut self) -> Result<()> {
-        // Send disconnect command
+    /// Request graceful shutdown and kill the child if it misses the budget.
+    pub async fn shutdown(self) -> Result<BridgeStop> {
+        self.shutdown_within(crate::shutdown::BRIDGE_STOP_TIMEOUT)
+            .await
+    }
+
+    pub fn pid(&self) -> Option<u32> {
+        self.child.id()
+    }
+
+    pub async fn shutdown_within(mut self, timeout: std::time::Duration) -> Result<BridgeStop> {
         let _ = self.send_command(BridgeCommand::Disconnect).await;
-
-        // Wait for process to exit (with timeout)
-        tokio::select! {
-            result = self.child.wait() => {
-                result.context("Failed to wait for bridge process")?;
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
-                // Force kill if it doesn't exit gracefully
-                self.child.kill().await.context("Failed to kill bridge process")?;
-            }
-        }
-
-        Ok(())
+        let stopped = stop_child(&mut self.child, timeout).await;
+        crate::shutdown::clear_bridge_pid();
+        stopped
     }
 
     /// Check if the process is still running
@@ -197,6 +195,32 @@ impl BridgeProcess {
         self.child
             .try_wait()
             .context("Failed to check bridge process status")
+    }
+}
+
+/// How a bridge child stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BridgeStop {
+    Exited,
+    TimedOut,
+}
+
+pub(crate) async fn stop_child(
+    child: &mut Child,
+    timeout: std::time::Duration,
+) -> Result<BridgeStop> {
+    tokio::select! {
+        result = child.wait() => {
+            result.context("Failed to wait for bridge process")?;
+            Ok(BridgeStop::Exited)
+        }
+        _ = tokio::time::sleep(timeout) => {
+            // The child missed the budget. Kill and reap it so it cannot stay
+            // behind as a zombie after the parent exits.
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            Ok(BridgeStop::TimedOut)
+        }
     }
 }
 
@@ -245,4 +269,30 @@ pub fn default_data_dir() -> Result<PathBuf> {
         .join("whatsapp-translator");
 
     Ok(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn stop_child_kills_a_process_that_misses_the_budget() {
+        let mut child = Command::new("sleep").arg("30").spawn().expect("sleep");
+        let started = std::time::Instant::now();
+        let stop = stop_child(&mut child, Duration::from_millis(200))
+            .await
+            .expect("stop");
+        assert_eq!(stop, BridgeStop::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn stop_child_reports_a_process_that_exits() {
+        let mut child = Command::new("true").spawn().expect("true");
+        let stop = stop_child(&mut child, Duration::from_secs(2))
+            .await
+            .expect("stop");
+        assert_eq!(stop, BridgeStop::Exited);
+    }
 }

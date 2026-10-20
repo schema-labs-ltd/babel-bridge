@@ -18,6 +18,7 @@ mod oauth;
 mod outbox;
 mod push;
 mod read_receipts;
+mod shutdown;
 mod storage;
 mod style_analyzer;
 mod topics;
@@ -27,8 +28,8 @@ mod web;
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use tokio::signal;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use bridge::{BridgeConfig, BridgeEvent, BridgeProcess, ConnectionState, Message, MessageContent};
@@ -182,26 +183,42 @@ async fn run_web_mode(
     incoming::start(state.clone())?;
     topics::start(state.clone());
     read_receipts::start(state.clone());
-    // Spawn the web server (once, outside the bridge loop)
+    // Spawn the web server (once, outside the bridge loop). HTTP, WebSocket,
+    // and MCP all stop accepting when this shutdown signal fires.
     let server_state = state.clone();
     let host = args.host.clone();
     let port = args.port;
     let allow_local_no_auth = args.allow_local_no_auth;
-    tokio::spawn(async move {
-        if let Err(e) = web::start_server(server_state, &host, port, allow_local_no_auth).await {
+    let (server_shutdown_tx, server_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        if let Err(e) =
+            web::start_server(server_state, &host, port, allow_local_no_auth, async move {
+                let _ = server_shutdown_rx.await;
+            })
+            .await
+        {
             error!("Web server error: {}", e);
         }
     });
-
-    // Handle Ctrl+C for graceful shutdown
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    tokio::spawn(async move {
-        signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
-        let _ = shutdown_tx.send(());
-    });
+    let mut server_shutdown_tx = Some(server_shutdown_tx);
+    let mut server_task = Some(server_task);
+    let mut signals = shutdown::spawn_signal_listener();
+    // The initial empty value is not a signal.
+    let _ = signals.signals().borrow_and_update();
 
     // Bridge restart loop - restarts bridge after logout
     loop {
+        if signals.signals().borrow().is_some() {
+            let status = shutdown_web(
+                &state,
+                &store,
+                server_shutdown_tx.take(),
+                server_task.take(),
+                None,
+            )
+            .await;
+            shutdown::finish_process(status);
+        }
         // Channel for receiving events from the bridge
         let (event_tx, mut event_rx) = mpsc::channel::<BridgeEvent>(100);
 
@@ -218,20 +235,24 @@ async fn run_web_mode(
             Ok(b) => b,
             Err(e) => {
                 print_error(&format!("Failed to start bridge: {}", e));
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                pause_for_shutdown(signals.signals(), tokio::time::Duration::from_secs(3)).await;
                 continue;
             }
         };
 
         // Pass the bridge's command sender to the app state for sending messages
         state.set_command_tx(bridge.command_sender()).await;
+        if let Some(pid) = bridge.pid() {
+            shutdown::set_bridge_pid(pid);
+        }
 
         // Event loop for this bridge instance
         let should_exit = loop {
             tokio::select! {
-                _ = &mut shutdown_rx => {
-                    print_info("Shutting down...");
-                    break true; // Exit completely
+                changed = signals.signals().changed() => {
+                    if changed.is_ok() && signals.signals().borrow().is_some() {
+                        break true;
+                    }
                 }
 
                 event = event_rx.recv() => {
@@ -254,11 +275,19 @@ async fn run_web_mode(
         // A crashed bridge must not leave clients believing WhatsApp is online.
         // Reap it before touching SQLite session files or starting a replacement.
         *state.command_tx.write().await = None;
+        if should_exit {
+            let status = shutdown_web(
+                &state,
+                &store,
+                server_shutdown_tx.take(),
+                server_task.take(),
+                Some(bridge),
+            )
+            .await;
+            shutdown::finish_process(status);
+        }
         let _ = bridge.shutdown().await;
         state.set_connected(false, None, None).await;
-        if should_exit {
-            break;
-        }
 
         if state.take_session_reset_request() {
             info!("Clearing WhatsApp session files before bridge restart");
@@ -271,10 +300,61 @@ async fn run_web_mode(
         }
 
         // Small delay before restarting
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        pause_for_shutdown(signals.signals(), tokio::time::Duration::from_secs(1)).await;
     }
+}
 
-    Ok(())
+async fn pause_for_shutdown(
+    signals: &mut tokio::sync::watch::Receiver<Option<shutdown::ShutdownSignal>>,
+    delay: tokio::time::Duration,
+) {
+    tokio::select! {
+        _ = signals.changed() => {}
+        _ = tokio::time::sleep(delay) => {}
+    }
+}
+
+async fn shutdown_web(
+    state: &Arc<AppState>,
+    store: &MessageStore,
+    server_shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    server_task: Option<JoinHandle<()>>,
+    bridge: Option<BridgeProcess>,
+) -> shutdown::ShutdownStatus {
+    // Background workers and open WebSockets stop before the server drains.
+    let _ = state.shutdown.send_replace(true);
+    let budgets = shutdown::ShutdownBudgets::production();
+    let bridge_timeout = shutdown::BRIDGE_STOP_TIMEOUT;
+    let drain: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
+        match (server_shutdown_tx, server_task) {
+            (Some(trigger), Some(task)) => Box::pin(shutdown::ServerDrain::new(trigger, task)),
+            _ => Box::pin(std::future::ready(())),
+        };
+    let stop_bridge: std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>> =
+        match bridge {
+            Some(bridge) => Box::pin(async move {
+                matches!(
+                    bridge.shutdown_within(bridge_timeout).await,
+                    Ok(bridge::BridgeStop::Exited)
+                )
+            }),
+            None => Box::pin(std::future::ready(true)),
+        };
+    let store = store.clone();
+    let close_sqlite = async move {
+        match tokio::task::spawn_blocking(move || store.close()).await {
+            Ok(Ok(())) => true,
+            Ok(Err(error)) => {
+                error!("Failed to close message database: {error}");
+                false
+            }
+            Err(error) => {
+                error!("Failed to close message database: {error}");
+                false
+            }
+        }
+    };
+    shutdown::run_shutdown_steps(budgets, drain, stop_bridge, close_sqlite).await
 }
 
 /// Handle events in web mode
@@ -768,25 +848,37 @@ async fn run_terminal_mode(
     let bridge = BridgeProcess::spawn(config, event_tx)
         .await
         .context("Failed to start bridge process")?;
+    if let Some(pid) = bridge.pid() {
+        shutdown::set_bridge_pid(pid);
+    }
 
     let message_display = MessageDisplay::new();
     let mut connected = false;
     let mut qr_displayed = false;
 
-    // Handle Ctrl+C for graceful shutdown
-    let shutdown = async {
-        signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
-    };
-
-    tokio::pin!(shutdown);
+    let mut signals = shutdown::spawn_signal_listener();
+    let _ = signals.signals().borrow_and_update();
 
     loop {
         tokio::select! {
-            // Check for shutdown signal
-            _ = &mut shutdown => {
-                print_info("Shutting down...");
-                bridge.shutdown().await?;
-                break;
+            changed = signals.signals().changed() => {
+                if changed.is_err() || signals.signals().borrow().is_some() {
+                    let budgets = shutdown::ShutdownBudgets::production();
+                    let bridge_timeout = shutdown::BRIDGE_STOP_TIMEOUT;
+                    let status = shutdown::run_shutdown_steps(
+                        budgets,
+                        std::future::ready(()),
+                        async move {
+                            matches!(
+                                bridge.shutdown_within(bridge_timeout).await,
+                                Ok(bridge::BridgeStop::Exited)
+                            )
+                        },
+                        std::future::ready(true),
+                    )
+                    .await;
+                    shutdown::finish_process(status);
+                }
             }
 
             // Process events from the bridge

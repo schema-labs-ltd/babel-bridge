@@ -105,8 +105,10 @@ func mapAlbumUploads[Input any, Output any](
 type Client struct {
 	client        *whatsmeow.Client
 	container     *sqlstore.Container
+	dbPath        string
 	verbose       bool
 	ctx           context.Context
+	closed        bool
 	connectedNote chan struct{}
 	lossNote      chan connectionLoss
 }
@@ -158,6 +160,7 @@ func NewClient(ctx context.Context, dataDir string, verbose bool) (*Client, erro
 	c := &Client{
 		client:        client,
 		container:     container,
+		dbPath:        dbPath,
 		verbose:       verbose,
 		ctx:           ctx,
 		connectedNote: make(chan struct{}, 1),
@@ -352,9 +355,14 @@ func (c *Client) Disconnect() {
 	c.client.Disconnect()
 }
 
-// Close closes the database connection
+// Close closes the database connection. A second call is a no-op.
 func (c *Client) Close() error {
-	return c.container.Close()
+	if c == nil || c.container == nil {
+		return nil
+	}
+	err := c.container.Close()
+	c.container = nil
+	return err
 }
 
 // Logout clears the session and disconnects
