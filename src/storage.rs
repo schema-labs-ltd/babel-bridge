@@ -1706,11 +1706,10 @@ impl MessageStore {
         tx.commit()?;
 
         info!(
-            "Updated conversation settings for {}: language={:?}, style={:?}, original_follow_up={}",
-            contact_id,
-            settings.language_override,
-            settings.translation_style,
-            settings.send_original_follow_up
+            language = ?settings.language_override,
+            style = ?settings.translation_style,
+            original_follow_up = settings.send_original_follow_up,
+            "Updated conversation settings"
         );
 
         Ok(())
@@ -2877,10 +2876,7 @@ impl MessageStore {
             ],
         )?;
 
-        info!(
-            "Saved style profile for {} ({} messages analyzed)",
-            profile.contact_id, profile.message_count
-        );
+        info!(messages = profile.message_count, "Saved style profile");
 
         Ok(())
     }

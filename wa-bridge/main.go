@@ -145,7 +145,7 @@ func handleCommand(ctx context.Context, client *Client, cmd Command, cancel cont
 			return
 		}
 
-		SendEvent(NewLogEvent("info", fmt.Sprintf("Processing send command to %s", cmd.To)))
+		SendEvent(NewLogEvent("info", "Processing send command"))
 		messageID, timestamp, err := client.SendTextMessage(ctx, cmd.To, cmd.Text, cmd.ReplyTo, cmd.ReplyToSender, cmd.ReplyToText)
 		if err != nil {
 			SendEvent(NewSendResultEvent(cmd.RequestID, false, "", 0, err.Error()))

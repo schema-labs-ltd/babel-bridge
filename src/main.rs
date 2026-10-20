@@ -11,6 +11,7 @@ mod gallery;
 mod identity;
 mod incoming;
 mod link_preview;
+mod log_privacy;
 mod mcp;
 mod message_tones;
 mod oauth;
@@ -29,7 +30,6 @@ use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::EnvFilter;
 
 use bridge::{BridgeConfig, BridgeEvent, BridgeProcess, ConnectionState, Message, MessageContent};
 use cli::Args;
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
     }
 
     // Initialize logging
-    init_logging(args.verbose);
+    log_privacy::init_logging(args.verbose);
 
     // Determine data directory
     let data_dir = args
@@ -112,19 +112,14 @@ async fn main() -> Result<()> {
     }
 }
 
-/// Initialize the tracing subscriber for logging
-fn init_logging(verbose: bool) {
-    let filter = if verbose {
-        EnvFilter::new("debug")
-    } else {
-        EnvFilter::new("info").add_directive("whatsapp_archiver=info".parse().unwrap())
-    };
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .without_time()
-        .init();
+fn record_bridge_log(level: &str, message: &str) {
+    let message = log_privacy::redact_log_text(message);
+    match level {
+        "error" => error!("{message}"),
+        "warn" => warn!("{message}"),
+        "info" => info!("{message}"),
+        _ => debug!("{message}"),
+    }
 }
 
 /// Handle logout by removing session data
@@ -296,7 +291,7 @@ async fn handle_web_event(
         }
 
         BridgeEvent::Connected { phone, name, .. } => {
-            info!("Connected as {} ({})", name, phone);
+            info!("WhatsApp session connected");
             state.set_connected(true, Some(phone), Some(name)).await;
         }
 
@@ -410,7 +405,10 @@ async fn handle_web_event(
         }
 
         BridgeEvent::Error { code, message } => {
-            error!("Bridge error [{}]: {}", code, message);
+            error!(
+                "Bridge error [{code}]: {}",
+                log_privacy::redact_log_text(&message)
+            );
             if code == "reconnect_required" {
                 state.set_connected(false, None, None).await;
                 let _ = state
@@ -419,15 +417,10 @@ async fn handle_web_event(
             }
         }
 
-        BridgeEvent::Log { level, message } => match level.as_str() {
-            "error" => error!("{}", message),
-            "warn" => warn!("{}", message),
-            "info" => info!("{}", message),
-            _ => debug!("{}", message),
-        },
+        BridgeEvent::Log { level, message } => record_bridge_log(&level, &message),
 
         BridgeEvent::LoggedOut { reason } => {
-            warn!("Logged out: {}", reason);
+            warn!("Logged out: {}", log_privacy::redact_log_text(&reason));
             state.require_whatsapp_link().await;
             state.request_session_reset_before_bridge_restart();
             if let Err(e) = state
@@ -466,8 +459,8 @@ async fn handle_web_event(
                 );
             } else {
                 error!(
-                    "Failed to send message (request {}): {:?}",
-                    request_id, error
+                    "Failed to send message (request {request_id}): {}",
+                    log_privacy::redact_log_text(&error.unwrap_or_default())
                 );
             }
             // TODO: Could broadcast send result to WebSocket clients for UI updates
@@ -491,7 +484,10 @@ async fn handle_web_event(
             error,
         } => {
             if let Some(err) = error {
-                debug!("Profile picture error (request {}): {}", request_id, err);
+                debug!(
+                    "Profile picture error (request {request_id}): {}",
+                    log_privacy::redact_log_text(&err)
+                );
             }
             // Notify the waiting request
             state.handle_profile_picture_response(request_id, url).await;
@@ -507,8 +503,7 @@ async fn handle_web_event(
                 bridge::ChatPresenceState::Paused => "paused",
                 bridge::ChatPresenceState::Recording => "recording",
             };
-            // Log at info level so it's always visible
-            info!("Chat presence: {} is {} in {}", user_id, state_str, chat_id);
+            info!(state = state_str, "Chat presence");
             // Broadcast to WebSocket clients
             state.broadcast_typing(chat_id, user_id, state_str.to_string());
         }
@@ -522,15 +517,15 @@ async fn handle_web_event(
                 store.read_receipt_sent(&message_id, chrono::Utc::now().timestamp())?;
             } else {
                 warn!(
-                    "WhatsApp read receipt failed for {}: {:?}",
-                    message_id, error
+                    "WhatsApp read receipt failed for {message_id}: {}",
+                    log_privacy::redact_log_text(&error.unwrap_or_default())
                 );
             }
         }
 
         BridgeEvent::MarkAsRead { chat_id } => {
             // Chat was marked as read from another device (e.g., user's phone)
-            info!("Chat marked as read from another device: {}", chat_id);
+            info!("Chat marked as read from another device");
             store.mark_as_read(&chat_id)?;
             // Broadcast to WebSocket clients so UI updates
             state.broadcast_mark_as_read(chat_id);
@@ -623,10 +618,9 @@ async fn process_message(
                         }
                         Err(e) => {
                             tracing::warn!(
-                                "Failed to translate incoming message {} from {}: {}",
+                                "Failed to translate incoming message {}: {}",
                                 msg.id,
-                                contact_id,
-                                e
+                                log_privacy::redact_log_text(&e.to_string())
                             );
                             (Some(text), None, None, false)
                         }
@@ -910,16 +904,12 @@ async fn handle_terminal_event(
         }
 
         BridgeEvent::Error { code, message } => {
-            error!("Bridge error [{}]: {}", code, message);
-            print_error(&format!("[{}] {}", code, message));
+            let message = log_privacy::redact_log_text(&message);
+            error!("Bridge error [{code}]: {message}");
+            print_error(&format!("[{code}] {message}"));
         }
 
-        BridgeEvent::Log { level, message } => match level.as_str() {
-            "error" => error!("{}", message),
-            "warn" => warn!("{}", message),
-            "info" => info!("{}", message),
-            _ => debug!("{}", message),
-        },
+        BridgeEvent::Log { level, message } => record_bridge_log(&level, &message),
 
         BridgeEvent::LoggedOut { reason } => {
             print_warning(&format!("Logged out: {}", reason));
@@ -942,8 +932,8 @@ async fn handle_terminal_event(
                 );
             } else {
                 error!(
-                    "Failed to send message (request {}): {:?}",
-                    request_id, error
+                    "Failed to send message (request {request_id}): {}",
+                    log_privacy::redact_log_text(&error.unwrap_or_default())
                 );
             }
         }

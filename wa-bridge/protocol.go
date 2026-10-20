@@ -275,7 +275,14 @@ func NewErrorEvent(code, message string) ErrorEvent {
 }
 
 func NewLogEvent(level, message string) LogEvent {
-	return LogEvent{Type: "log", Level: level, Message: message}
+	return LogEvent{Type: "log", Level: level, Message: redactLog(message)}
+}
+
+func chatPresenceLog(state, media string) string {
+	if media == "" {
+		return fmt.Sprintf("ChatPresence: state=%s", state)
+	}
+	return fmt.Sprintf("ChatPresence: state=%s media=%s", state, media)
 }
 
 func NewLoggedOutEvent(reason string) LoggedOutEvent {

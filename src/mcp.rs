@@ -9,10 +9,10 @@ use crate::storage::{StoredContact, StoredMessage};
 use crate::web::{AppState, SendConfirmationError};
 use rmcp::{
     model::{
-        CallToolRequestParam, CallToolResult, Icon, Implementation, ListResourcesResult,
-        ListToolsResult, PaginatedRequestParam, RawResource, ReadResourceRequestParam,
-        ReadResourceResult, ResourceContents, ServerCapabilities, ServerInfo, Tool,
-        ToolAnnotations,
+        CallToolRequestParam, CallToolResult, Icon, Implementation, InitializeRequestParam,
+        InitializeResult, ListResourcesResult, ListToolsResult, PaginatedRequestParam, RawResource,
+        ReadResourceRequestParam, ReadResourceResult, ResourceContents, ServerCapabilities,
+        ServerInfo, Tool, ToolAnnotations,
     },
     service::RequestContext,
     ErrorData as McpError, RoleServer, ServerHandler,
@@ -20,6 +20,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::{info, warn};
 
 const CHAT_RESOURCE_URI: &str = "ui://whatsapp-translator/chats";
@@ -1589,10 +1590,7 @@ impl WhatsAppMcpServer {
         }
         let message_id = send_result.message_id.unwrap_or(temp_message_id);
         let timestamp = send_result.timestamp.unwrap_or(timestamp);
-        info!(
-            "MCP sent prepared message {message_id} to {}",
-            prepared.contact_id
-        );
+        info!("MCP sent prepared message");
         Ok(json!({
             "success":true,
             "messageId":message_id,
@@ -1855,7 +1853,32 @@ impl<T> McpResultExt<T> for anyhow::Result<T> {
     }
 }
 
+fn tool_result_count(result: &CallToolResult) -> usize {
+    let Some(structured) = result.structured_content.as_ref() else {
+        return 0;
+    };
+    for key in ["messages", "contacts", "chats", "tools", "resources"] {
+        if let Some(items) = structured.get(key).and_then(Value::as_array) {
+            return items.len();
+        }
+    }
+    0
+}
+
 impl ServerHandler for WhatsAppMcpServer {
+    async fn initialize(
+        &self,
+        request: InitializeRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, McpError> {
+        let started = Instant::now();
+        if context.peer.peer_info().is_none() {
+            context.peer.set_peer_info(request);
+        }
+        crate::log_privacy::log_mcp_call("initialize", None, "ok", None, 0, started.elapsed());
+        Ok(self.get_info())
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: Default::default(),
@@ -1879,7 +1902,17 @@ impl ServerHandler for WhatsAppMcpServer {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        Ok(self.chat_resources())
+        let started = Instant::now();
+        let result = self.chat_resources();
+        crate::log_privacy::log_mcp_call(
+            "resources/list",
+            None,
+            "ok",
+            None,
+            result.resources.len(),
+            started.elapsed(),
+        );
+        Ok(result)
     }
 
     async fn read_resource(
@@ -1887,7 +1920,21 @@ impl ServerHandler for WhatsAppMcpServer {
         request: ReadResourceRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        self.chat_resource(&request.uri)
+        let started = Instant::now();
+        let result = self.chat_resource(&request.uri);
+        let (status, error_code, count) = match &result {
+            Ok(value) => ("ok", None, value.contents.len()),
+            Err(error) => ("error", Some(error.code.0), 0),
+        };
+        crate::log_privacy::log_mcp_call(
+            "resources/read",
+            None,
+            status,
+            error_code,
+            count,
+            started.elapsed(),
+        );
+        result
     }
 
     async fn list_tools(
@@ -1895,10 +1942,46 @@ impl ServerHandler for WhatsAppMcpServer {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult::with_all_items(self.advertised_tools()))
+        let started = Instant::now();
+        let result = ListToolsResult::with_all_items(self.advertised_tools());
+        crate::log_privacy::log_mcp_call(
+            "tools/list",
+            None,
+            "ok",
+            None,
+            result.tools.len(),
+            started.elapsed(),
+        );
+        Ok(result)
     }
 
     async fn call_tool(
+        &self,
+        request: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let started = Instant::now();
+        let tool = request.name.as_ref().to_string();
+        let result = self.dispatch_tool(request, context).await;
+        let (status, error_code, count) = match &result {
+            Ok(value) if value.is_error == Some(true) => ("error", None, tool_result_count(value)),
+            Ok(value) => ("ok", None, tool_result_count(value)),
+            Err(error) => ("error", Some(error.code.0), 0),
+        };
+        crate::log_privacy::log_mcp_call(
+            "tools/call",
+            Some(&tool),
+            status,
+            error_code,
+            count,
+            started.elapsed(),
+        );
+        result
+    }
+}
+
+impl WhatsAppMcpServer {
+    async fn dispatch_tool(
         &self,
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
@@ -3301,5 +3384,98 @@ mod tests {
         assert_eq!(next["messages"][0]["id"], "m0005");
         assert!(next["nextCursor"].is_null());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn verbose_mcp_read_logs_metadata_without_message_or_number() {
+        const BODY: &str = "zz-unique-body-449d";
+        const PHONE: &str = "15550001111";
+        const NAME: &str = "ZzContactName449d";
+        let jid = format!("{PHONE}@s.whatsapp.net");
+        let (state, dir) = test_state();
+        state
+            .store
+            .upsert_contact(&jid, Some(NAME), Some(PHONE), Some("private"), 10)
+            .unwrap();
+        let mut message = extension_message("privacy-1", &jid, 10, true);
+        message.sender_name = Some(NAME.into());
+        message.sender_phone = Some(PHONE.into());
+        message.contact_name = Some(NAME.into());
+        message.contact_phone = Some(PHONE.into());
+        message.original_text = Some(BODY.into());
+        message.translated_text = Some("zz-translated-body-449d".into());
+        message.content_json = json!({"type":"text","body":BODY}).to_string();
+        message.content = Some(json!({"type":"text","body":BODY}));
+        state.store.add_message(&message).unwrap();
+        feed_oauth_token(&state, "privacy-token", "whatsapp.read", i64::MAX);
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(crate::log_privacy::logging_filter(true))
+            .with_ansi(false)
+            .without_time()
+            .with_target(false)
+            .with_writer({
+                let buf = buf.clone();
+                move || LogCapture(buf.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let read = feed_rpc(
+            state.clone(),
+            Some("Bearer privacy-token"),
+            "tools/call",
+            json!({"name":"read_messages","arguments":{"contact_id":jid,"limit":5}}),
+        )
+        .await;
+        let read_body = feed_rpc_body(read).await;
+        let read_text = read_body.to_string();
+        assert!(
+            read_text.contains(BODY),
+            "api response must still return the message"
+        );
+        assert!(
+            read_text.contains(PHONE),
+            "api response must still return the number"
+        );
+
+        let failed = feed_rpc(
+            state.clone(),
+            Some("Bearer privacy-token"),
+            "tools/call",
+            json!({"name":"read_messages","arguments":{"contact_id":"missing-chat","note":BODY,"phone":PHONE}}),
+        )
+        .await;
+        let failed_body = feed_rpc_body(failed).await;
+        assert!(failed_body.get("error").is_some(), "{failed_body}");
+
+        let logs = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        assert!(!logs.contains(BODY), "{logs}");
+        assert!(!logs.contains(PHONE), "{logs}");
+        assert!(!logs.contains(NAME), "{logs}");
+        assert!(!logs.contains("zz-translated-body-449d"), "{logs}");
+        assert!(logs.contains("method=\"tools/call\""), "{logs}");
+        assert!(logs.contains("tool=\"read_messages\""), "{logs}");
+        assert!(logs.contains("status=\"ok\""), "{logs}");
+        assert!(logs.contains("status=\"error\""), "{logs}");
+        assert!(logs.contains("count=1"), "{logs}");
+        assert!(logs.contains("duration_ms="), "{logs}");
+        assert!(logs.contains("error_code="), "{logs}");
+        drop(_guard);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    struct LogCapture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogCapture {
+        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("log buffer").extend_from_slice(data);
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 }
