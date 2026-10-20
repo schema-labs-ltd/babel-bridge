@@ -2536,6 +2536,7 @@ mod tests {
                 scope: scope.into(),
                 created_at: 0,
                 expires_at,
+                refresh_token: None,
             })
             .unwrap();
     }

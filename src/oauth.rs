@@ -99,6 +99,8 @@ pub struct AccessToken {
     pub scope: String,
     pub created_at: i64,
     pub expires_at: i64,
+    /// Refresh token issued for the same grant, when this access token has one.
+    pub refresh_token: Option<String>,
 }
 
 impl AccessToken {
