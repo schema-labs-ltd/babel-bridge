@@ -1161,7 +1161,7 @@ final class AppSession {
             await api.disconnectLiveEvents()
             return
         }
-        await api.revokeBackendAccess(installationID: installationID)
+        await api.unregisterPushInstallation(installationID)
     }
 
     private func forgetServerLocally() {

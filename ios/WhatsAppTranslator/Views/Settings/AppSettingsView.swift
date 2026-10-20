@@ -84,7 +84,7 @@ struct AppSettingsView: View {
                         Task { await session.forgetServer() }
                     }
                 } footer: {
-                    Text("This forgets the address and password on this device, removes its push registration, and signs out of the server. Signing out disconnects WhatsApp on that server and deletes the messages stored there.")
+                    Text("This forgets the address and password on this device. It does not log WhatsApp out or delete backend data.")
                 }
             }
             .navigationTitle("Settings")

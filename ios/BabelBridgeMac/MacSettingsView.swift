@@ -171,7 +171,7 @@ struct MacSettingsView: View {
 
     private var serverSection: some View {
         SettingsGroup(title: "Server", systemImage: "server.rack") {
-            Text("Changing server forgets the saved address and password on this Mac, removes its push registration, and signs out of the server. Signing out disconnects WhatsApp on that server and deletes the messages stored there.")
+            Text("Changing server forgets the saved address and password on this Mac. It does not log WhatsApp out or delete backend data.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button("Change Server…", role: .destructive) {

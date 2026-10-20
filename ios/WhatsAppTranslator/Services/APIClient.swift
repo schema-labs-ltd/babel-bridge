@@ -425,11 +425,10 @@ actor APIClient {
         }
     }
 
-    /// Best-effort sign-out for the server currently configured on this client.
-    /// Removes this installation's push registration, then posts `/api/logout`.
-    /// The in-memory password and bearer token are dropped first. Failures, including
-    /// an unreachable server, are ignored, and a 401 does not sign in again.
-    func revokeBackendAccess(installationID: String) async {
+    /// Best-effort removal of this installation's push registration.
+    /// The in-memory password and bearer token are dropped first. A failure, including
+    /// an unreachable server, is ignored, and a 401 does not sign in again.
+    func unregisterPushInstallation(_ installationID: String) async {
         pushRegistrationEpoch = UUID()
         let baseURL = configuration?.baseURL
         let bearer = token?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -437,15 +436,14 @@ actor APIClient {
         configuration = nil
         token = nil
         disconnectLiveEvents()
-        guard let baseURL else { return }
-        for call in BackendSignOutPlan.calls(installationID: installationID) {
-            await performBestEffort(
-                method: call.method,
-                path: call.path,
-                baseURL: baseURL,
-                bearerToken: bearerToken
-            )
-        }
+        guard let baseURL, let path = Self.pushDeviceDeletionPath(installationID: installationID) else { return }
+        await performBestEffort(method: "DELETE", path: path, baseURL: baseURL, bearerToken: bearerToken)
+    }
+
+    static func pushDeviceDeletionPath(installationID: String) -> String? {
+        let trimmed = installationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return "/api/push/devices/\(trimmed.urlPathEncoded)"
     }
 
     private func removePushRegistrationIfRevoked(
@@ -455,13 +453,8 @@ actor APIClient {
         bearerToken: String?
     ) async {
         guard epoch != pushRegistrationEpoch, let baseURL else { return }
-        guard let deletion = BackendSignOutPlan.calls(installationID: installationID).first(where: { $0.method == "DELETE" }) else { return }
-        await performBestEffort(
-            method: deletion.method,
-            path: deletion.path,
-            baseURL: baseURL,
-            bearerToken: bearerToken
-        )
+        guard let path = Self.pushDeviceDeletionPath(installationID: installationID) else { return }
+        await performBestEffort(method: "DELETE", path: path, baseURL: baseURL, bearerToken: bearerToken)
     }
 
     private func performBestEffort(
@@ -481,7 +474,7 @@ actor APIClient {
         do {
             _ = try await session.data(for: request)
         } catch {
-            // Local sign-out has already finished. One failed call must not skip the other.
+            // The device has already forgotten the server. A missed push removal must not undo that.
         }
     }
 
@@ -796,24 +789,6 @@ final class BackgroundPhotoUploadSession: NSObject, URLSessionDataDelegate, URLS
     }
 }
 #endif
-
-struct BackendSignOutPlan: Equatable, Sendable {
-    struct Call: Equatable, Sendable {
-        var method: String
-        var path: String
-    }
-
-    /// Push removal goes first. Logout invalidates the bearer token that the delete needs.
-    static func calls(installationID: String) -> [Call] {
-        let trimmed = installationID.trimmingCharacters(in: .whitespacesAndNewlines)
-        var calls: [Call] = []
-        if !trimmed.isEmpty {
-            calls.append(Call(method: "DELETE", path: "/api/push/devices/\(trimmed.urlPathEncoded)"))
-        }
-        calls.append(Call(method: "POST", path: "/api/logout"))
-        return calls
-    }
-}
 
 enum APIError: LocalizedError, Equatable {
     case notConfigured

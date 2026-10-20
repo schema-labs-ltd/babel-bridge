@@ -7,21 +7,16 @@ import XCTest
 
 @MainActor
 final class ServerSignOutTests: XCTestCase {
-    func testSignOutPlanRemovesPushRegistrationBeforeLogout() {
+    func testRemovalPathDeletesOnlyThisInstallation() {
         XCTAssertEqual(
-            BackendSignOutPlan.calls(installationID: "install/1"),
-            [
-                BackendSignOutPlan.Call(method: "DELETE", path: "/api/push/devices/install%2F1"),
-                BackendSignOutPlan.Call(method: "POST", path: "/api/logout"),
-            ]
+            APIClient.pushDeviceDeletionPath(installationID: "install/1"),
+            "/api/push/devices/install%2F1"
         )
-        XCTAssertEqual(
-            BackendSignOutPlan.calls(installationID: " \n "),
-            [BackendSignOutPlan.Call(method: "POST", path: "/api/logout")]
-        )
+        XCTAssertNil(APIClient.pushDeviceDeletionPath(installationID: " \n "))
+        XCTAssertFalse(APIClient.pushDeviceDeletionPath(installationID: "install/1")?.contains("logout") == true)
     }
 
-    func testForgettingAnOnlineServerRevokesTheTokenAndPushRegistration() async throws {
+    func testForgettingAnOnlineServerRemovesThePushRegistration() async throws {
         let harness = try Harness()
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
@@ -31,16 +26,11 @@ final class ServerSignOutTests: XCTestCase {
         await session.forgetServer()
 
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertEqual(signOut.map(\.method), ["DELETE", "POST"])
-        XCTAssertEqual(signOut.map(\.path), [
-            "/api/push/devices/\(installationID)",
-            "/api/logout",
-        ])
-        XCTAssertEqual(signOut.map(\.authorization), [
-            "Bearer session-token",
-            "Bearer session-token",
-        ])
-        await harness.assertSignedOut(session)
+        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
+        XCTAssertEqual(signOut.map(\.path), ["/api/push/devices/\(installationID)"])
+        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token"])
+        XCTAssertNoLogout(signOut)
+        await harness.assertForgotten(session)
         let callsAfterForget = ServerSignOutURLProtocol.state.requests.count
         await session.registerPushDevice(token: "fixture-device-token", installationID: installationID, environment: "sandbox")
         XCTAssertEqual(ServerSignOutURLProtocol.state.requests.count, callsAfterForget)
@@ -56,12 +46,13 @@ final class ServerSignOutTests: XCTestCase {
         await session.forgetServer()
 
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertEqual(signOut.map(\.method), ["DELETE", "POST"])
-        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token", "Bearer session-token"])
-        await harness.assertSignedOut(session)
+        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
+        XCTAssertEqual(signOut.map(\.authorization), ["Bearer session-token"])
+        XCTAssertNoLogout(signOut)
+        await harness.assertForgotten(session)
     }
 
-    func testRejectedPushRemovalStillSignsOutAndClearsTheDevice() async throws {
+    func testRejectedPushRemovalStillClearsTheDevice() async throws {
         let harness = try Harness()
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
@@ -71,12 +62,15 @@ final class ServerSignOutTests: XCTestCase {
         await session.forgetServer()
 
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertEqual(signOut.map(\.method), ["DELETE", "POST"])
-        XCTAssertEqual(signOut.map(\.path).last, "/api/logout")
-        await harness.assertSignedOut(session)
+        XCTAssertEqual(signOut.map(\.method), ["DELETE"])
+        XCTAssertEqual(signOut.map(\.path), [
+            "/api/push/devices/\(PushNotificationCoordinator.shared.currentInstallationID)",
+        ])
+        XCTAssertNoLogout(signOut)
+        await harness.assertForgotten(session)
     }
 
-    func testUnauthorizedSignOutDoesNotSignInAgain() async throws {
+    func testUnauthorizedPushRemovalDoesNotSignInAgain() async throws {
         let harness = try Harness()
         defer { harness.cleanup() }
         let session = try await harness.signedInSession()
@@ -88,10 +82,10 @@ final class ServerSignOutTests: XCTestCase {
         let signOut = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
         XCTAssertEqual(signOut.map(\.path), [
             "/api/push/devices/\(PushNotificationCoordinator.shared.currentInstallationID)",
-            "/api/logout",
         ])
         XCTAssertFalse(signOut.contains { $0.path == "/api/auth" || $0.path == "/api/auth/check" })
-        await harness.assertSignedOut(session)
+        XCTAssertNoLogout(signOut)
+        await harness.assertForgotten(session)
     }
 
     func testDisconnectDoesNotForgetTheServerOrSignOut() async throws {
@@ -108,8 +102,17 @@ final class ServerSignOutTests: XCTestCase {
         XCTAssertEqual(harness.credentials.clearCount, 0)
         XCTAssertFalse(session.contacts.isEmpty)
         let later = Array(ServerSignOutURLProtocol.state.requests.dropFirst(before))
-        XCTAssertFalse(later.contains { $0.path == "/api/logout" || $0.method == "DELETE" })
+        XCTAssertFalse(later.contains { $0.method == "DELETE" })
+        XCTAssertNoLogout(later)
     }
+}
+
+private func XCTAssertNoLogout(
+    _ requests: [ServerSignOutURLProtocol.Exchange],
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    XCTAssertFalse(requests.contains { $0.path == "/api/logout" }, "forgetting a server must not call /api/logout", file: file, line: line)
 }
 
 @MainActor
@@ -152,7 +155,7 @@ private struct Harness {
         return session
     }
 
-    func assertSignedOut(_ session: AppSession, file: StaticString = #filePath, line: UInt = #line) async {
+    func assertForgotten(_ session: AppSession, file: StaticString = #filePath, line: UInt = #line) async {
         XCTAssertEqual(session.phase, .needsConfiguration, file: file, line: line)
         XCTAssertNil(session.configuration, file: file, line: line)
         XCTAssertNil(session.selectedContactID, file: file, line: line)
@@ -240,7 +243,7 @@ private final class ServerSignOutURLProtocol: URLProtocol, @unchecked Sendable {
         let path = request.url?.path ?? ""
         let method = request.httpMethod ?? "GET"
         let mode = Self.state.record(request)
-        let signOut = method == "DELETE" || path == "/api/logout"
+        let signOut = method == "DELETE" && path.hasPrefix("/api/push/devices/")
         if signOut {
             switch mode {
             case .offline:
