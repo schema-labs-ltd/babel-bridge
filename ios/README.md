@@ -34,9 +34,18 @@ validation, and silent APNs payloads.
 
 ## Generate and open
 
+The committed `WhatsAppTranslator.xcodeproj` is generated from `project.yml`.
+Xcode Cloud regenerates it after clone with `ios/ci_scripts/ci_post_clone.sh`,
+which installs XcodeGen 2.45.4. Regenerate locally with that same release so the
+project stays aligned with CI:
+
 ```bash
+WORKDIR=$(mktemp -d)
+curl -fsSL -o "$WORKDIR/xcodegen.zip" \
+  https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip
+unzip -q "$WORKDIR/xcodegen.zip" -d "$WORKDIR"
 cd ios
-xcodegen generate
+"$WORKDIR/xcodegen/bin/xcodegen" generate
 open WhatsAppTranslator.xcodeproj
 ```
 
@@ -44,6 +53,48 @@ Use the `WhatsAppTranslator` scheme for iPhone and iPad, or the
 `BabelBridgeMac` scheme for the native Mac app. The Mac target is built with the
 macOS SDK and SwiftUI/AppKit; it is not Mac Catalyst or an iPad compatibility
 build.
+
+`WhatsAppTranslator` still runs unit tests and `ConversationTranslationUITests`.
+`WhatsAppTranslatorUnitTests` runs `WhatsAppTranslatorTests` only.
+`BabelBridgeMac` runs `BabelBridgeMacTests` only. `BabelBridgeWatch` runs the
+watch UI tests.
+
+## Xcode Cloud
+
+`ios/ci_scripts/ci_post_clone.sh` is the repo-side hook. It downloads XcodeGen
+2.45.4 from the GitHub release zip, runs `xcodegen generate` in `ios/`, and
+prints a warning plus a diff stat if the committed
+`WhatsAppTranslator.xcodeproj` differs. The warning does not fail the build.
+Generation failure does. The script does not print the environment.
+
+The owner creates two workflows in Xcode. This repository does not define them.
+
+**PR – Build & Test** runs on pull requests into `main` that touch `ios/` or
+`web/public/sounds/`. It tests `WhatsAppTranslatorUnitTests` on one iPhone
+simulator and `BabelBridgeMac`. Those schemes run unit tests only, so
+`ConversationTranslationUITests` and the watch UI tests stay out of CI. It is
+not a required GitHub check.
+
+**Main – TestFlight (internal)** runs on merges to `main` with the same file
+filter. It archives the iOS and macOS apps and sends them to the internal
+TestFlight group. Xcode Cloud assigns the build number. `CURRENT_PROJECT_VERSION`
+in `project.yml` stays as the local value and is not bumped for cloud builds.
+`MARKETING_VERSION` is still changed on purpose for a new version.
+
+One-time setup, done in Xcode and App Store Connect:
+
+1. Start Xcode Cloud from the Report navigator (Cloud, then Get Started) and
+   grant the Xcode Cloud GitHub app access to this repository.
+2. Confirm an internal TestFlight tester group exists.
+3. Note the highest build already uploaded for iOS and for macOS, then set Next
+   Build Number to one above that highest build before the TestFlight workflow
+   runs for the first time.
+4. Create both workflows on a released Xcode 26 environment. Point the PR
+   workflow at `WhatsAppTranslatorUnitTests` and `BabelBridgeMac`.
+
+The Apple Developer Program includes 25 Xcode Cloud hours a month. Put
+`[ci skip]` in the commit message for work-in-progress pushes that do not need
+a cloud build.
 
 The first-run screen asks for the backend web address and password. These are
 stored in the system Keychain. The client authenticates against `/api/auth`,

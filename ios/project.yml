@@ -374,6 +374,15 @@ schemes:
           parallelizable: false
         - name: ConversationTranslationUITests
           parallelizable: false
+  WhatsAppTranslatorUnitTests:
+    build:
+      targets:
+        WhatsAppTranslator: all
+        WhatsAppTranslatorTests: [test]
+    test:
+      targets:
+        - name: WhatsAppTranslatorTests
+          parallelizable: false
   BabelBridgeMac:
     build:
       targets:

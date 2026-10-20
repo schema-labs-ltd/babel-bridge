@@ -2,13 +2,14 @@
 
 ## TestFlight release completion gate
 
-- After every completed request that changes this application, publish a new TestFlight build before treating the work as complete.
-- Always increment the shared build number and update both native Apple targets in TestFlight: `WhatsAppTranslator` for iOS/iPadOS and `BabelBridgeMac` for macOS.
-- Test, archive, and upload both targets. Do not assume an iOS upload also updates macOS, or that a backend/web deployment removes the need for the native TestFlight releases.
-- Verify in Xcode that both uploads completed successfully. App Store Connect processing and TestFlight availability checks are not required for completion. Report the version and build number for each platform in the final handoff.
-- If either upload cannot be completed, do not describe the request as fully released; report the exact blocker and which platform remains outstanding.
+- TestFlight builds of `WhatsAppTranslator` (iOS/iPadOS) and `BabelBridgeMac` (macOS) come from the Xcode Cloud workflow `Main – TestFlight (internal)` when a pull request merges to `main`.
+- Agents must not bump `CURRENT_PROJECT_VERSION` and must not upload to TestFlight by hand. Xcode Cloud assigns the build number from the Next Build Number in App Store Connect. A manual upload collides with those numbers unless Next Build Number is raised first.
+- A change counts as shipped when the Xcode Cloud build for its merge commit succeeds. The handoff reports that Xcode Cloud build number. App Store Connect processing and TestFlight availability checks are not required for completion.
+- If the Xcode Cloud build for the merge commit does not succeed, do not describe the request as fully released; report the exact blocker and which platform remains outstanding.
+- `MARKETING_VERSION` is still bumped deliberately when shipping a new version.
 
 ## Apple build and release workflow
 
-- Always use the Xcode application through Computer Use for Apple builds, tests, archives, signing, and TestFlight uploads. Do not use command-line xcodebuild or the build runner for these actions.
+- Pull requests should pass the Xcode Cloud workflow `PR – Build & Test`. That workflow is not a required GitHub check.
+- Manual builds in the Xcode application stay appropriate for local debugging. Always use the Xcode application through Computer Use for local Apple builds, tests, archives, and signing. Do not use command-line xcodebuild or the build runner for these actions.
 - Run storage preflight before building, use task-owned DerivedData and serial local tests, and preserve release archives and symbols.
