@@ -1,0 +1,413 @@
+# Required-check pattern: `changes` detects Apple paths, `build` does the
+# expensive work, and `apple` always reports a status. Require `apple / apple`.
+# There is no workflow-level paths filter, because that leaves the check pending.
+name: apple
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      apple: ${{ steps.filter.outputs.apple }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Apple paths
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -eu
+          matches_apple() {
+            case "$1" in
+              ios/*|web/public/sounds/*|.github/workflows/apple.yml) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          expect_match() {
+            if matches_apple "$1"; then
+              got=yes
+            else
+              got=no
+            fi
+            if [ "$got" != "$2" ]; then
+              echo "error: path filter mismatch for $1 (expected $2, got $got)"
+              exit 1
+            fi
+          }
+          expect_match "ios/project.yml" yes
+          expect_match "ios/WhatsAppTranslator/App/AppSession.swift" yes
+          expect_match "web/public/sounds/tone.wav" yes
+          expect_match ".github/workflows/apple.yml" yes
+          expect_match "src/main.rs" no
+          expect_match "web/src/App.tsx" no
+          expect_match "AGENTS.md" no
+          expect_match ".github/workflows/ci.yml" no
+
+          case "$BASE_SHA" in
+            ""|0000000000000000000000000000000000000000)
+              echo "apple=true" >> "$GITHUB_OUTPUT"
+              echo "No base revision; running Apple jobs."
+              exit 0
+              ;;
+          esac
+          if ! printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+            echo "error: base revision is not a commit sha"
+            exit 1
+          fi
+          if ! printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+            echo "error: head revision is not a commit sha"
+            exit 1
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$BASE_SHA"
+          fi
+          if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$HEAD_SHA"
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            range="${BASE_SHA}...${HEAD_SHA}"
+          else
+            range="${BASE_SHA}..${HEAD_SHA}"
+          fi
+          git diff --name-only --no-renames "$range" > "$RUNNER_TEMP/changed-files.txt"
+          apple=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if matches_apple "$file"; then
+              apple=true
+              echo "apple path: $file"
+            fi
+          done < "$RUNNER_TEMP/changed-files.txt"
+          echo "apple=${apple}" >> "$GITHUB_OUTPUT"
+          echo "Apple paths changed: ${apple}"
+
+  build:
+    name: ${{ matrix.platform }}
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
+    runs-on: macos-26
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            build_scheme: WhatsAppTranslator
+            test_scheme: WhatsAppTranslatorUnitTests
+            destination: platform=iOS Simulator,name=iPhone 17,OS=26.5
+            only_testing: WhatsAppTranslatorTests
+            extra_build_settings: ""
+          - platform: macos
+            build_scheme: BabelBridgeMac
+            test_scheme: BabelBridgeMac
+            destination: platform=macOS,arch=arm64
+            only_testing: BabelBridgeMacTests
+            extra_build_settings: ENABLE_HARDENED_RUNTIME=NO
+    env:
+      PLATFORM: ${{ matrix.platform }}
+      BUILD_SCHEME: ${{ matrix.build_scheme }}
+      TEST_SCHEME: ${{ matrix.test_scheme }}
+      DESTINATION: ${{ matrix.destination }}
+      ONLY_TESTING: ${{ matrix.only_testing }}
+      EXTRA_BUILD_SETTINGS: ${{ matrix.extra_build_settings }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk if the runner is low on space
+        run: |
+          set -eu
+          avail_kb=$(df -Pk / | awk 'NR==2 { print $4 }')
+          echo "Disk available: $((avail_kb / 1024 / 1024)) GiB"
+          if [ "$avail_kb" -lt 26214400 ]; then
+            echo "Removing unused Xcode installations to free disk."
+            for app in /Applications/Xcode_*.app; do
+              [ -e "$app" ] || continue
+              case "$app" in
+                /Applications/Xcode_26.6.app) ;;
+                *) sudo -n rm -rf "$app" ;;
+              esac
+            done
+            avail_kb=$(df -Pk / | awk 'NR==2 { print $4 }')
+            echo "Disk available after cleanup: $((avail_kb / 1024 / 1024)) GiB"
+          fi
+
+      - name: Select Xcode 26.6
+        run: |
+          set -eu
+          xcode_app="/Applications/Xcode_26.6.app"
+          if [ ! -d "${xcode_app}/Contents/Developer" ]; then
+            echo "error: Xcode 26.6 is not installed at ${xcode_app}"
+            echo "Installed Xcode apps:"
+            ls -d /Applications/Xcode*.app 2>/dev/null || echo "(none)"
+            exit 1
+          fi
+          sudo -n xcode-select -s "$xcode_app"
+          echo "DEVELOPER_DIR=${xcode_app}/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcode_line=$(xcodebuild -version | awk 'NR==1 { print $2 }')
+          case "$xcode_line" in
+            26.6*) ;;
+            *)
+              echo "error: expected Xcode 26.6, found ${xcode_line}"
+              exit 1
+              ;;
+          esac
+          swift_line=$(xcrun swift --version | grep -F "Swift version" | head -n 1)
+          echo "$swift_line"
+          case "$swift_line" in
+            *"Swift version 6."*) ;;
+            *)
+              echo "error: expected Swift 6.x"
+              exit 1
+              ;;
+          esac
+
+      - name: Cache XcodeGen
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/xcodegen-2.45.4
+          key: xcodegen-2.45.4-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install XcodeGen 2.45.4
+        run: |
+          set -eu
+          version=2.45.4
+          cache="${HOME}/Library/Caches/xcodegen-${version}"
+          bin="${cache}/xcodegen/bin/xcodegen"
+          if [ ! -x "$bin" ]; then
+            rm -rf "$cache"
+            mkdir -p "$cache"
+            work=$(mktemp -d)
+            curl -fsSL -o "$work/xcodegen.zip" \
+              "https://github.com/yonaskolb/XcodeGen/releases/download/${version}/xcodegen.zip"
+            unzip -q "$work/xcodegen.zip" -d "$cache"
+            rm -rf "$work"
+            chmod +x "$bin"
+          fi
+          version_line=$("$bin" --version 2>&1 || true)
+          echo "$version_line"
+          case "$version_line" in
+            *2.45.4*) ;;
+            *)
+              echo "error: expected XcodeGen 2.45.4"
+              exit 1
+              ;;
+          esac
+          echo "XCODEGEN_BIN=${bin}" >> "$GITHUB_ENV"
+
+      - name: Cache SPM and DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            .deriveddata
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: derived-${{ matrix.platform }}-${{ runner.os }}-xcode-26.6-${{ hashFiles('ios/**', 'web/public/sounds/**') }}
+          restore-keys: |
+            derived-${{ matrix.platform }}-${{ runner.os }}-xcode-26.6-
+
+      - name: Generate Xcode project
+        id: generate
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/ios"
+          "$XCODEGEN_BIN" generate
+          if ! git diff --quiet -- WhatsAppTranslator.xcodeproj; then
+            echo "error: committed WhatsAppTranslator.xcodeproj differs from XcodeGen 2.45.4"
+            git status --porcelain -- WhatsAppTranslator.xcodeproj
+            git diff --stat -- WhatsAppTranslator.xcodeproj
+            git --no-pager diff -- WhatsAppTranslator.xcodeproj | head -n 160 || true
+            exit 1
+          fi
+
+      - name: Upload generated project
+        if: failure() && steps.generate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodeproj-${{ matrix.platform }}
+          path: ios/WhatsAppTranslator.xcodeproj
+          if-no-files-found: ignore
+
+      - name: Check destination
+        run: |
+          set -eu
+          if [ "$PLATFORM" = "ios" ]; then
+            if ! xcrun simctl list devices available | awk '
+              /^-- iOS 26.5 --/ { section = 1; next }
+              /^-- / { section = 0 }
+              section && $0 ~ /^[[:space:]]*iPhone 17 \(/ { found = 1 }
+              END { exit found ? 0 : 1 }
+            '; then
+              echo "error: iPhone 17 simulator for iOS 26.5 is not installed on this image."
+              xcrun simctl list devices available
+              exit 1
+            fi
+            echo "Using iPhone 17 simulator on iOS 26.5."
+          else
+            machine=$(uname -m)
+            if [ "$machine" != "arm64" ]; then
+              echo "error: BabelBridgeMac expects an arm64 runner, found ${machine}."
+              exit 1
+            fi
+            echo "Using macOS arm64."
+          fi
+
+      - name: xcodebuild build
+        run: |
+          set -eu
+          derived="${GITHUB_WORKSPACE}/.deriveddata/${PLATFORM}"
+          mkdir -p "$derived"
+          logfile="${RUNNER_TEMP}/xcodebuild-${PLATFORM}-build.log"
+          cd "$GITHUB_WORKSPACE/ios"
+          args=(
+            build
+            -project WhatsAppTranslator.xcodeproj
+            -scheme "$BUILD_SCHEME"
+            -configuration Debug
+            -destination "$DESTINATION"
+            -derivedDataPath "$derived"
+            -jobs 2
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            "CODE_SIGN_IDENTITY="
+            "DEVELOPMENT_TEAM="
+            CODE_SIGN_STYLE=Manual
+            "CODE_SIGN_ENTITLEMENTS="
+            COMPILER_INDEX_STORE_ENABLE=NO
+            ENABLE_PREVIEWS=NO
+          )
+          if [ -n "${EXTRA_BUILD_SETTINGS:-}" ]; then
+            args+=("$EXTRA_BUILD_SETTINGS")
+          fi
+          echo "xcodebuild build -scheme ${BUILD_SCHEME} -destination ${DESTINATION}"
+          set +e
+          xcodebuild "${args[@]}" 2>&1 | tee "$logfile"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "xcodebuild build failed with status ${status}"
+            grep -E "error:|fatal error:|BUILD FAILED" "$logfile" | tail -n 80 || true
+            tail -n 40 "$logfile"
+            exit "$status"
+          fi
+          if ! grep -q "BUILD SUCCEEDED" "$logfile"; then
+            echo "error: xcodebuild build did not succeed"
+            tail -n 40 "$logfile"
+            exit 1
+          fi
+          echo "xcodebuild build succeeded for ${BUILD_SCHEME}"
+
+      - name: xcodebuild test
+        run: |
+          set -eu
+          derived="${GITHUB_WORKSPACE}/.deriveddata/${PLATFORM}"
+          mkdir -p "$derived"
+          logfile="${RUNNER_TEMP}/xcodebuild-${PLATFORM}-test.log"
+          cd "$GITHUB_WORKSPACE/ios"
+          args=(
+            test
+            -project WhatsAppTranslator.xcodeproj
+            -scheme "$TEST_SCHEME"
+            -configuration Debug
+            -destination "$DESTINATION"
+            -derivedDataPath "$derived"
+            -only-testing:"$ONLY_TESTING"
+            -jobs 2
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            "CODE_SIGN_IDENTITY="
+            "DEVELOPMENT_TEAM="
+            CODE_SIGN_STYLE=Manual
+            "CODE_SIGN_ENTITLEMENTS="
+            COMPILER_INDEX_STORE_ENABLE=NO
+            ENABLE_PREVIEWS=NO
+          )
+          if [ -n "${EXTRA_BUILD_SETTINGS:-}" ]; then
+            args+=("$EXTRA_BUILD_SETTINGS")
+          fi
+          echo "xcodebuild test -scheme ${TEST_SCHEME} -destination ${DESTINATION} -only-testing:${ONLY_TESTING}"
+          set +e
+          xcodebuild "${args[@]}" 2>&1 | tee "$logfile"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "xcodebuild test failed with status ${status}"
+            grep -E "error:|fatal error:|failed|Executed [0-9]+ tests?" "$logfile" | tail -n 120 || true
+            tail -n 60 "$logfile"
+            exit "$status"
+          fi
+          count_line=$(grep -E "Executed [0-9]+ tests?" "$logfile" | tail -n 1 || true)
+          echo "xcodebuild test count: ${count_line}"
+          count=$(printf '%s\n' "$count_line" | sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p')
+          if [ -z "$count" ] || [ "$count" -eq 0 ]; then
+            echo "error: xcodebuild test did not report any tests"
+            tail -n 40 "$logfile"
+            exit 1
+          fi
+
+  apple:
+    name: apple
+    needs: [changes, build]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Report Apple check
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          NEEDED: ${{ needs.changes.outputs.apple }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          set -eu
+          echo "changes=${CHANGES_RESULT} apple_paths=${NEEDED} build=${BUILD_RESULT}"
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "Changes detection did not succeed."
+            exit 1
+          fi
+          case "$NEEDED" in
+            true)
+              if [ "$BUILD_RESULT" != "success" ]; then
+                echo "Apple build or tests did not succeed (${BUILD_RESULT})."
+                exit 1
+              fi
+              echo "Apple build and unit tests passed."
+              ;;
+            false)
+              if [ "$BUILD_RESULT" != "skipped" ]; then
+                echo "Apple builds were not skipped for a non-Apple change (${BUILD_RESULT})."
+                exit 1
+              fi
+              echo "No Apple paths changed. Passed without a build."
+              ;;
+            *)
+              echo "Changes job did not report whether Apple paths changed."
+              exit 1
+              ;;
+          esac

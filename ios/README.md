@@ -59,6 +59,69 @@ build.
 `BabelBridgeMac` runs `BabelBridgeMacTests` only. `BabelBridgeWatch` runs the
 watch UI tests.
 
+## GitHub Actions
+
+Pull requests and pushes to `main` run `.github/workflows/apple.yml`. The check
+to require is `apple / apple`. It passes without a build when the diff does not
+touch `ios/`, `web/public/sounds/`, or that workflow file. When those paths
+change, the `macos-26` runner selects Xcode 26.6 (Swift 6), installs XcodeGen
+2.45.4, and regenerates the project. The job fails if
+`WhatsAppTranslator.xcodeproj` differs from `project.yml`. It builds
+`WhatsAppTranslator` for the iPhone 17 simulator on iOS 26.5, including the
+embedded watch app and extensions, and builds `BabelBridgeMac` for macOS arm64.
+Signing is disabled. Tests are `WhatsAppTranslatorUnitTests` and
+`BabelBridgeMacTests` only. A generated project that differs from the committed
+`WhatsAppTranslator.xcodeproj` fails this check. The Xcode Cloud hook prints a
+warning for the same drift and continues.
+
+From a machine with Xcode 26.6, the same build and test is:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+cd ios
+# Install XcodeGen 2.45.4 and generate, using the commands in the section above.
+git diff --exit-code -- WhatsAppTranslator.xcodeproj
+
+xcodebuild build \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme WhatsAppTranslator \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+
+xcodebuild test \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme WhatsAppTranslatorUnitTests \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+  -only-testing:WhatsAppTranslatorTests \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+
+xcodebuild build \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme BabelBridgeMac \
+  -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' \
+  ENABLE_HARDENED_RUNTIME=NO \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+
+xcodebuild test \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme BabelBridgeMac \
+  -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' \
+  -only-testing:BabelBridgeMacTests \
+  ENABLE_HARDENED_RUNTIME=NO \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+```
+
+The macOS commands turn the hardened runtime off for that unsigned run. The
+project setting stays on for signed archives.
+
 ## Xcode Cloud
 
 `ios/ci_scripts/ci_post_clone.sh` is the repo-side hook. It downloads XcodeGen
