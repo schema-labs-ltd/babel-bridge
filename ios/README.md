@@ -59,6 +59,69 @@ build.
 `BabelBridgeMac` runs `BabelBridgeMacTests` only. `BabelBridgeWatch` runs the
 watch UI tests.
 
+## GitHub Actions
+
+Pull requests and pushes to `main` run `.github/workflows/apple.yml`. The check
+to require is `apple / apple`. It passes without a build when the diff does not
+touch `ios/`, `web/public/sounds/`, or that workflow file. When those paths
+change, the `macos-26` runner selects Xcode 26.6 (Swift 6), installs XcodeGen
+2.45.4, and regenerates the project. The job fails if
+`WhatsAppTranslator.xcodeproj` differs from `project.yml`. It builds
+`WhatsAppTranslator` for the iPhone 17 simulator on iOS 26.5, including the
+embedded watch app and extensions, and builds `BabelBridgeMac` for macOS arm64.
+Signing is disabled. Tests are `WhatsAppTranslatorUnitTests` and
+`BabelBridgeMacTests` only. A generated project that differs from the committed
+`WhatsAppTranslator.xcodeproj` fails this check. The Xcode Cloud hook prints a
+warning for the same drift and continues.
+
+From a machine with Xcode 26.6, the same build and test is:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+cd ios
+# Install XcodeGen 2.45.4 and generate, using the commands in the section above.
+git diff --exit-code -- WhatsAppTranslator.xcodeproj
+
+xcodebuild build \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme WhatsAppTranslator \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+
+xcodebuild test \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme WhatsAppTranslatorUnitTests \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+  -only-testing:WhatsAppTranslatorTests \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+
+xcodebuild build \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme BabelBridgeMac \
+  -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' \
+  ENABLE_HARDENED_RUNTIME=NO \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+
+xcodebuild test \
+  -project WhatsAppTranslator.xcodeproj \
+  -scheme BabelBridgeMac \
+  -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' \
+  -only-testing:BabelBridgeMacTests \
+  ENABLE_HARDENED_RUNTIME=NO \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+  DEVELOPMENT_TEAM= CODE_SIGN_STYLE=Manual CODE_SIGN_ENTITLEMENTS=
+```
+
+The macOS commands turn the hardened runtime off for that unsigned run. The
+project setting stays on for signed archives.
+
 ## Xcode Cloud
 
 `ios/ci_scripts/ci_post_clone.sh` is the repo-side hook. It downloads XcodeGen
@@ -67,30 +130,29 @@ prints a warning plus a diff stat if the committed
 `WhatsAppTranslator.xcodeproj` differs. The warning does not fail the build.
 Generation failure does. The script does not print the environment.
 
-The owner creates two workflows in Xcode. This repository does not define them.
+Pull-request builds and unit tests are the GitHub Actions check `apple / apple`.
+Xcode Cloud keeps workflow B, **Main – TestFlight (internal)**. This repository
+does not define that workflow. Simon creates it in Xcode. These steps are for
+workflow B only. Do not create workflow A (`PR – Build & Test`).
 
-**PR – Build & Test** runs on pull requests into `main` that touch `ios/` or
-`web/public/sounds/`. It tests `WhatsAppTranslatorUnitTests` on one iPhone
-simulator and `BabelBridgeMac`. Those schemes run unit tests only, so
-`ConversationTranslationUITests` and the watch UI tests stay out of CI. It is
-not a required GitHub check.
+**Main – TestFlight (internal)** runs on merges to `main` that touch `ios/` or
+`web/public/sounds/`. It archives the iOS and macOS apps and sends them to the
+internal TestFlight group. Xcode Cloud assigns the build number.
+`CURRENT_PROJECT_VERSION` in `project.yml` stays as the local value and is not
+bumped for cloud builds. `MARKETING_VERSION` is still changed on purpose for a
+new version. Signing stays with Xcode Cloud managed signing.
 
-**Main – TestFlight (internal)** runs on merges to `main` with the same file
-filter. It archives the iOS and macOS apps and sends them to the internal
-TestFlight group. Xcode Cloud assigns the build number. `CURRENT_PROJECT_VERSION`
-in `project.yml` stays as the local value and is not bumped for cloud builds.
-`MARKETING_VERSION` is still changed on purpose for a new version.
-
-One-time setup, done in Xcode and App Store Connect:
+One-time setup for workflow B, done in Xcode and App Store Connect:
 
 1. Start Xcode Cloud from the Report navigator (Cloud, then Get Started) and
    grant the Xcode Cloud GitHub app access to this repository.
 2. Confirm an internal TestFlight tester group exists.
 3. Note the highest build already uploaded for iOS and for macOS, then set Next
-   Build Number to one above that highest build before the TestFlight workflow
-   runs for the first time.
-4. Create both workflows on a released Xcode 26 environment. Point the PR
-   workflow at `WhatsAppTranslatorUnitTests` and `BabelBridgeMac`.
+   Build Number to one above that highest build before workflow B runs for the
+   first time. That keeps the cloud build number from colliding with an
+   existing upload.
+4. Create **Main – TestFlight (internal)** on a released Xcode 26 environment.
+   Archive both apps and upload them to the internal group.
 
 The Apple Developer Program includes 25 Xcode Cloud hours a month. Put
 `[ci skip]` in the commit message for work-in-progress pushes that do not need
