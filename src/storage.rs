@@ -9,7 +9,8 @@ use tracing::info;
 
 use crate::link_preview::LinkPreview;
 use crate::oauth::{
-    AccessToken, AuthorizationCode, OAuthClientRegistration, PendingAuthorization, RefreshToken,
+    oauth_secret_hash, oauth_secret_hashes_equal, AccessToken, AuthorizationCode,
+    OAuthClientRegistration, PendingAuthorization, RefreshToken,
 };
 use crate::translation::UsageInfo;
 mod identity;
@@ -167,6 +168,44 @@ impl StyleProfile {
     pub fn is_global(&self) -> bool {
         self.contact_id == Self::GLOBAL_ID
     }
+}
+
+fn table_column_names(conn: &Connection, table: &str) -> Result<Vec<String>> {
+    let pragma = match table {
+        "oauth_access_tokens" => "PRAGMA table_info(oauth_access_tokens)",
+        "oauth_refresh_tokens" => "PRAGMA table_info(oauth_refresh_tokens)",
+        "oauth_authorization_codes" => "PRAGMA table_info(oauth_authorization_codes)",
+        _ => anyhow::bail!("unknown oauth table"),
+    };
+    let mut stmt = conn.prepare(pragma)?;
+    let names = stmt
+        .query_map([], |row| row.get(1))?
+        .collect::<std::result::Result<Vec<String>, _>>()?;
+    Ok(names)
+}
+
+fn column_exists(columns: &[String], name: &str) -> bool {
+    columns.iter().any(|column| column == name)
+}
+
+fn table_count(conn: &Connection, sql: &str) -> Result<i64> {
+    Ok(conn.query_row(sql, [], |row| row.get(0))?)
+}
+
+fn ensure_no_null_hashes(conn: &Connection, sql: &str, message: &str) -> Result<()> {
+    let missing: i64 = conn.query_row(sql, [], |row| row.get(0))?;
+    if missing != 0 {
+        anyhow::bail!("{message}");
+    }
+    Ok(())
+}
+
+fn ensure_row_count(before: i64, inserted: usize, migration: &str) -> Result<()> {
+    let inserted = i64::try_from(inserted).context("oauth hash migration row count")?;
+    if inserted != before {
+        anyhow::bail!("{migration} changed the row count");
+    }
+    Ok(())
 }
 
 /// Thread-safe message store backed by SQLite
@@ -545,9 +584,9 @@ impl MessageStore {
                 expires_at INTEGER NOT NULL
             );
 
-            -- Authorization codes (after user approves, before token exchange)
+            -- Authorization codes are stored as SHA-256 hashes.
             CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
-                code TEXT PRIMARY KEY,
+                code_hash TEXT PRIMARY KEY,
                 client_id TEXT NOT NULL,
                 redirect_uri TEXT NOT NULL,
                 code_challenge TEXT NOT NULL,
@@ -558,19 +597,20 @@ impl MessageStore {
                 used INTEGER DEFAULT 0
             );
 
-            -- Access tokens. refresh_token links the grant that minted this access token.
+            -- Access tokens are stored as SHA-256 hashes.
+            -- refresh_token_hash links the grant that minted this access token.
             CREATE TABLE IF NOT EXISTS oauth_access_tokens (
-                token TEXT PRIMARY KEY,
+                token_hash TEXT PRIMARY KEY,
                 client_id TEXT NOT NULL,
                 scope TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 expires_at INTEGER NOT NULL,
-                refresh_token TEXT
+                refresh_token_hash TEXT
             );
 
-            -- Refresh tokens
+            -- Refresh tokens are stored as SHA-256 hashes.
             CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
-                token TEXT PRIMARY KEY,
+                token_hash TEXT PRIMARY KEY,
                 client_id TEXT NOT NULL,
                 scope TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
@@ -615,19 +655,20 @@ impl MessageStore {
         self.migrate_invalidate_unverified_language_labels(&conn)?;
         self.migrate_device_jids(&conn)?;
         self.migrate_oauth_access_refresh_link(&conn)?;
+        self.migrate_oauth_secret_hashes(&conn)?;
 
         Ok(())
     }
 
     /// Link each access token to the refresh token from the same grant.
-    /// Existing databases keep their rows and gain a nullable column.
+    /// Legacy databases keep their rows and gain a nullable plaintext column.
+    /// Hashed databases already store that link as `refresh_token_hash`.
     fn migrate_oauth_access_refresh_link(&self, conn: &Connection) -> Result<()> {
-        let has_refresh_token: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('oauth_access_tokens') WHERE name = 'refresh_token')",
-            [],
-            |row| row.get(0),
-        )?;
-        if !has_refresh_token {
+        let columns = table_column_names(conn, "oauth_access_tokens")?;
+        if !column_exists(&columns, "token") {
+            return Ok(());
+        }
+        if !column_exists(&columns, "refresh_token") {
             conn.execute(
                 "ALTER TABLE oauth_access_tokens ADD COLUMN refresh_token TEXT",
                 [],
@@ -637,6 +678,301 @@ impl MessageStore {
             "CREATE INDEX IF NOT EXISTS idx_oauth_access_refresh ON oauth_access_tokens(refresh_token)",
             [],
         )?;
+        Ok(())
+    }
+
+    /// Store only SHA-256 hashes of OAuth secrets.
+    ///
+    /// Each table is migrated in stages so a restart can resume: add hash
+    /// columns, fill only missing hashes, then rebuild the table without the
+    /// plaintext primary key. SQLite cannot drop a primary key column in place.
+    /// A later run sees hash columns only and leaves the rows unchanged.
+    fn migrate_oauth_secret_hashes(&self, conn: &Connection) -> Result<()> {
+        self.migrate_refresh_token_hashes(conn)?;
+        self.migrate_access_token_hashes(conn)?;
+        self.migrate_authorization_code_hashes(conn)?;
+        Ok(())
+    }
+
+    fn migrate_refresh_token_hashes(&self, conn: &Connection) -> Result<()> {
+        let columns = table_column_names(conn, "oauth_refresh_tokens")?;
+        if !column_exists(&columns, "token") {
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_oauth_refresh_expires ON oauth_refresh_tokens(expires_at)",
+                [],
+            )?;
+            return Ok(());
+        }
+        if !column_exists(&columns, "token_hash") {
+            conn.execute(
+                "ALTER TABLE oauth_refresh_tokens ADD COLUMN token_hash TEXT",
+                [],
+            )?;
+        }
+
+        let pending = {
+            let mut stmt =
+                conn.prepare("SELECT token FROM oauth_refresh_tokens WHERE token_hash IS NULL")?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            rows
+        };
+        for token in pending {
+            conn.execute(
+                "UPDATE oauth_refresh_tokens SET token_hash = ?1 WHERE token = ?2 AND token_hash IS NULL",
+                params![oauth_secret_hash(&token), token],
+            )?;
+        }
+        ensure_no_null_hashes(
+            conn,
+            "SELECT COUNT(*) FROM oauth_refresh_tokens WHERE token_hash IS NULL",
+            "oauth refresh token hash backfill left rows incomplete",
+        )?;
+
+        let tx = conn.unchecked_transaction()?;
+        let before = table_count(&tx, "SELECT COUNT(*) FROM oauth_refresh_tokens")?;
+        tx.execute_batch(
+            "
+            DROP TABLE IF EXISTS oauth_refresh_tokens__hashed;
+            CREATE TABLE oauth_refresh_tokens__hashed (
+                token_hash TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            );
+            ",
+        )?;
+        let inserted = tx.execute(
+            "
+            INSERT INTO oauth_refresh_tokens__hashed (token_hash, client_id, scope, created_at, expires_at)
+            SELECT token_hash, client_id, scope, created_at, expires_at
+            FROM oauth_refresh_tokens
+            ",
+            [],
+        )?;
+        ensure_row_count(before, inserted, "oauth refresh token hash migration")?;
+        tx.execute_batch(
+            "
+            DROP TABLE oauth_refresh_tokens;
+            ALTER TABLE oauth_refresh_tokens__hashed RENAME TO oauth_refresh_tokens;
+            CREATE INDEX IF NOT EXISTS idx_oauth_refresh_expires ON oauth_refresh_tokens(expires_at);
+            ",
+        )?;
+        let after = table_count(&tx, "SELECT COUNT(*) FROM oauth_refresh_tokens")?;
+        if after != before {
+            anyhow::bail!("oauth refresh token hash migration changed the row count");
+        }
+        tx.commit()?;
+        info!("OAuth refresh tokens are stored as hashes");
+        Ok(())
+    }
+
+    fn migrate_access_token_hashes(&self, conn: &Connection) -> Result<()> {
+        let columns = table_column_names(conn, "oauth_access_tokens")?;
+        if !column_exists(&columns, "token") {
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_oauth_access_expires ON oauth_access_tokens(expires_at)",
+                [],
+            )?;
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_oauth_access_refresh ON oauth_access_tokens(refresh_token_hash)",
+                [],
+            )?;
+            return Ok(());
+        }
+        if !column_exists(&columns, "refresh_token") {
+            conn.execute(
+                "ALTER TABLE oauth_access_tokens ADD COLUMN refresh_token TEXT",
+                [],
+            )?;
+        }
+        if !column_exists(&columns, "token_hash") {
+            conn.execute(
+                "ALTER TABLE oauth_access_tokens ADD COLUMN token_hash TEXT",
+                [],
+            )?;
+        }
+        if !column_exists(&columns, "refresh_token_hash") {
+            conn.execute(
+                "ALTER TABLE oauth_access_tokens ADD COLUMN refresh_token_hash TEXT",
+                [],
+            )?;
+        }
+
+        let pending = {
+            let mut stmt = conn.prepare(
+                "
+                SELECT token, token_hash, refresh_token, refresh_token_hash
+                FROM oauth_access_tokens
+                WHERE token_hash IS NULL
+                   OR (
+                        refresh_token IS NOT NULL
+                        AND refresh_token != ''
+                        AND refresh_token_hash IS NULL
+                   )
+                ",
+            )?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            rows
+        };
+        for (token, existing_hash, refresh_token, existing_link) in pending {
+            let token_hash = existing_hash.unwrap_or_else(|| oauth_secret_hash(&token));
+            let refresh_token_hash = match existing_link {
+                Some(link) => Some(link),
+                None => refresh_token
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+                    .map(oauth_secret_hash),
+            };
+            conn.execute(
+                "
+                UPDATE oauth_access_tokens
+                SET token_hash = ?1, refresh_token_hash = ?2
+                WHERE token = ?3
+                ",
+                params![token_hash, refresh_token_hash, token],
+            )?;
+        }
+        ensure_no_null_hashes(
+            conn,
+            "SELECT COUNT(*) FROM oauth_access_tokens WHERE token_hash IS NULL",
+            "oauth access token hash backfill left rows incomplete",
+        )?;
+
+        let tx = conn.unchecked_transaction()?;
+        let before = table_count(&tx, "SELECT COUNT(*) FROM oauth_access_tokens")?;
+        tx.execute_batch(
+            "
+            DROP TABLE IF EXISTS oauth_access_tokens__hashed;
+            CREATE TABLE oauth_access_tokens__hashed (
+                token_hash TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                refresh_token_hash TEXT
+            );
+            ",
+        )?;
+        let inserted = tx.execute(
+            "
+            INSERT INTO oauth_access_tokens__hashed (
+                token_hash, client_id, scope, created_at, expires_at, refresh_token_hash
+            )
+            SELECT token_hash, client_id, scope, created_at, expires_at, refresh_token_hash
+            FROM oauth_access_tokens
+            ",
+            [],
+        )?;
+        ensure_row_count(before, inserted, "oauth access token hash migration")?;
+        tx.execute_batch(
+            "
+            DROP TABLE oauth_access_tokens;
+            ALTER TABLE oauth_access_tokens__hashed RENAME TO oauth_access_tokens;
+            CREATE INDEX IF NOT EXISTS idx_oauth_access_expires ON oauth_access_tokens(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_oauth_access_refresh ON oauth_access_tokens(refresh_token_hash);
+            ",
+        )?;
+        let after = table_count(&tx, "SELECT COUNT(*) FROM oauth_access_tokens")?;
+        if after != before {
+            anyhow::bail!("oauth access token hash migration changed the row count");
+        }
+        tx.commit()?;
+        info!("OAuth access tokens are stored as hashes");
+        Ok(())
+    }
+
+    fn migrate_authorization_code_hashes(&self, conn: &Connection) -> Result<()> {
+        let columns = table_column_names(conn, "oauth_authorization_codes")?;
+        if !column_exists(&columns, "code") {
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON oauth_authorization_codes(expires_at)",
+                [],
+            )?;
+            return Ok(());
+        }
+        if !column_exists(&columns, "code_hash") {
+            conn.execute(
+                "ALTER TABLE oauth_authorization_codes ADD COLUMN code_hash TEXT",
+                [],
+            )?;
+        }
+
+        let pending = {
+            let mut stmt =
+                conn.prepare("SELECT code FROM oauth_authorization_codes WHERE code_hash IS NULL")?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            rows
+        };
+        for code in pending {
+            conn.execute(
+                "UPDATE oauth_authorization_codes SET code_hash = ?1 WHERE code = ?2 AND code_hash IS NULL",
+                params![oauth_secret_hash(&code), code],
+            )?;
+        }
+        ensure_no_null_hashes(
+            conn,
+            "SELECT COUNT(*) FROM oauth_authorization_codes WHERE code_hash IS NULL",
+            "oauth authorization code hash backfill left rows incomplete",
+        )?;
+
+        let tx = conn.unchecked_transaction()?;
+        let before = table_count(&tx, "SELECT COUNT(*) FROM oauth_authorization_codes")?;
+        tx.execute_batch(
+            "
+            DROP TABLE IF EXISTS oauth_authorization_codes__hashed;
+            CREATE TABLE oauth_authorization_codes__hashed (
+                code_hash TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL,
+                redirect_uri TEXT NOT NULL,
+                code_challenge TEXT NOT NULL,
+                code_challenge_method TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                used INTEGER DEFAULT 0
+            );
+            ",
+        )?;
+        let inserted = tx.execute(
+            "
+            INSERT INTO oauth_authorization_codes__hashed (
+                code_hash, client_id, redirect_uri, code_challenge, code_challenge_method,
+                scope, created_at, expires_at, used
+            )
+            SELECT code_hash, client_id, redirect_uri, code_challenge, code_challenge_method,
+                   scope, created_at, expires_at, used
+            FROM oauth_authorization_codes
+            ",
+            [],
+        )?;
+        ensure_row_count(before, inserted, "oauth authorization code hash migration")?;
+        tx.execute_batch(
+            "
+            DROP TABLE oauth_authorization_codes;
+            ALTER TABLE oauth_authorization_codes__hashed RENAME TO oauth_authorization_codes;
+            CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON oauth_authorization_codes(expires_at);
+            ",
+        )?;
+        let after = table_count(&tx, "SELECT COUNT(*) FROM oauth_authorization_codes")?;
+        if after != before {
+            anyhow::bail!("oauth authorization code hash migration changed the row count");
+        }
+        tx.commit()?;
+        info!("OAuth authorization codes are stored as hashes");
         Ok(())
     }
 
@@ -2645,18 +2981,19 @@ impl MessageStore {
         }
     }
 
-    /// Store an authorization code
+    /// Store an authorization code as a SHA-256 hash.
     pub fn oauth_store_authorization_code(&self, code: &AuthorizationCode) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        let code_hash = oauth_secret_hash(&code.code);
 
         conn.execute(
             r#"
             INSERT INTO oauth_authorization_codes 
-            (code, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_at, expires_at, used)
+            (code_hash, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_at, expires_at, used)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             "#,
             params![
-                code.code,
+                code_hash,
                 code.client_id,
                 code.redirect_uri,
                 code.code_challenge,
@@ -2671,43 +3008,49 @@ impl MessageStore {
         Ok(())
     }
 
-    /// Get an authorization code (and mark it as used)
+    /// Get an authorization code by the hash of the presented code, and mark it as used.
     pub fn oauth_use_authorization_code(&self, code: &str) -> Result<Option<AuthorizationCode>> {
         let conn = self.conn.lock().unwrap();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
+        let code_hash = oauth_secret_hash(code);
 
         let result = conn.query_row(
             r#"
-            SELECT code, client_id, redirect_uri, code_challenge, code_challenge_method, 
+            SELECT code_hash, client_id, redirect_uri, code_challenge, code_challenge_method, 
                    scope, created_at, expires_at, used
             FROM oauth_authorization_codes 
-            WHERE code = ? AND expires_at > ? AND used = 0
+            WHERE code_hash = ? AND expires_at > ? AND used = 0
             "#,
-            params![code, now],
+            params![code_hash, now],
             |row| {
-                Ok(AuthorizationCode {
-                    code: row.get(0)?,
-                    client_id: row.get(1)?,
-                    redirect_uri: row.get(2)?,
-                    code_challenge: row.get(3)?,
-                    code_challenge_method: row.get(4)?,
-                    scope: row.get(5)?,
-                    created_at: row.get(6)?,
-                    expires_at: row.get(7)?,
-                    used: row.get::<_, i32>(8)? != 0,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    AuthorizationCode {
+                        code: code.to_string(),
+                        client_id: row.get(1)?,
+                        redirect_uri: row.get(2)?,
+                        code_challenge: row.get(3)?,
+                        code_challenge_method: row.get(4)?,
+                        scope: row.get(5)?,
+                        created_at: row.get(6)?,
+                        expires_at: row.get(7)?,
+                        used: row.get::<_, i32>(8)? != 0,
+                    },
+                ))
             },
         );
 
         match result {
-            Ok(auth_code) => {
-                // Mark as used
+            Ok((stored_hash, auth_code)) => {
+                if !oauth_secret_hashes_equal(&stored_hash, &code_hash) {
+                    return Ok(None);
+                }
                 conn.execute(
-                    "UPDATE oauth_authorization_codes SET used = 1 WHERE code = ?",
-                    params![code],
+                    "UPDATE oauth_authorization_codes SET used = 1 WHERE code_hash = ?",
+                    params![code_hash],
                 )?;
                 Ok(Some(auth_code))
             }
@@ -2716,77 +3059,93 @@ impl MessageStore {
         }
     }
 
-    /// Store an access token
+    /// Store an access token as a SHA-256 hash. The refresh-token link is hashed too.
     pub fn oauth_store_access_token(&self, token: &AccessToken) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        let token_hash = oauth_secret_hash(&token.token);
+        let refresh_token_hash = token
+            .refresh_token
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .map(oauth_secret_hash);
 
         conn.execute(
             r#"
-            INSERT INTO oauth_access_tokens (token, client_id, scope, created_at, expires_at, refresh_token)
+            INSERT INTO oauth_access_tokens (token_hash, client_id, scope, created_at, expires_at, refresh_token_hash)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             "#,
             params![
-                token.token,
+                token_hash,
                 token.client_id,
                 token.scope,
                 token.created_at,
                 token.expires_at,
-                token.refresh_token,
+                refresh_token_hash,
             ],
         )?;
 
         Ok(())
     }
 
-    /// Validate an access token
+    /// Validate an access token by the hash of the presented token.
     pub fn oauth_validate_access_token(&self, token: &str) -> Result<Option<AccessToken>> {
         let conn = self.conn.lock().unwrap();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
+        let token_hash = oauth_secret_hash(token);
 
         let result = conn.query_row(
             r#"
-            SELECT token, client_id, scope, created_at, expires_at, refresh_token
+            SELECT token_hash, client_id, scope, created_at, expires_at
             FROM oauth_access_tokens 
-            WHERE token = ? AND expires_at > ?
+            WHERE token_hash = ? AND expires_at > ?
               AND EXISTS (
                 SELECT 1 FROM oauth_clients
                 WHERE oauth_clients.client_id = oauth_access_tokens.client_id
               )
             "#,
-            params![token, now],
+            params![token_hash, now],
             |row| {
-                Ok(AccessToken {
-                    token: row.get(0)?,
-                    client_id: row.get(1)?,
-                    scope: row.get(2)?,
-                    created_at: row.get(3)?,
-                    expires_at: row.get(4)?,
-                    refresh_token: row.get(5)?,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    AccessToken {
+                        token: token.to_string(),
+                        client_id: row.get(1)?,
+                        scope: row.get(2)?,
+                        created_at: row.get(3)?,
+                        expires_at: row.get(4)?,
+                        refresh_token: None,
+                    },
+                ))
             },
         );
 
         match result {
-            Ok(t) => Ok(Some(t)),
+            Ok((stored_hash, access_token)) => {
+                if !oauth_secret_hashes_equal(&stored_hash, &token_hash) {
+                    return Ok(None);
+                }
+                Ok(Some(access_token))
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
 
-    /// Store a refresh token
+    /// Store a refresh token as a SHA-256 hash.
     pub fn oauth_store_refresh_token(&self, token: &RefreshToken) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        let token_hash = oauth_secret_hash(&token.token);
 
         conn.execute(
             r#"
-            INSERT INTO oauth_refresh_tokens (token, client_id, scope, created_at, expires_at)
+            INSERT INTO oauth_refresh_tokens (token_hash, client_id, scope, created_at, expires_at)
             VALUES (?1, ?2, ?3, ?4, ?5)
             "#,
             params![
-                token.token,
+                token_hash,
                 token.client_id,
                 token.scope,
                 token.created_at,
@@ -2797,38 +3156,47 @@ impl MessageStore {
         Ok(())
     }
 
-    /// Validate and get a refresh token
+    /// Validate and get a refresh token by the hash of the presented token.
     pub fn oauth_get_refresh_token(&self, token: &str) -> Result<Option<RefreshToken>> {
         let conn = self.conn.lock().unwrap();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
+        let token_hash = oauth_secret_hash(token);
 
         let result = conn.query_row(
             r#"
-            SELECT token, client_id, scope, created_at, expires_at
+            SELECT token_hash, client_id, scope, created_at, expires_at
             FROM oauth_refresh_tokens 
-            WHERE token = ? AND expires_at > ?
+            WHERE token_hash = ? AND expires_at > ?
               AND EXISTS (
                 SELECT 1 FROM oauth_clients
                 WHERE oauth_clients.client_id = oauth_refresh_tokens.client_id
               )
             "#,
-            params![token, now],
+            params![token_hash, now],
             |row| {
-                Ok(RefreshToken {
-                    token: row.get(0)?,
-                    client_id: row.get(1)?,
-                    scope: row.get(2)?,
-                    created_at: row.get(3)?,
-                    expires_at: row.get(4)?,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    RefreshToken {
+                        token: token.to_string(),
+                        client_id: row.get(1)?,
+                        scope: row.get(2)?,
+                        created_at: row.get(3)?,
+                        expires_at: row.get(4)?,
+                    },
+                ))
             },
         );
 
         match result {
-            Ok(t) => Ok(Some(t)),
+            Ok((stored_hash, refresh_token)) => {
+                if !oauth_secret_hashes_equal(&stored_hash, &token_hash) {
+                    return Ok(None);
+                }
+                Ok(Some(refresh_token))
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
@@ -2836,15 +3204,16 @@ impl MessageStore {
 
     /// Revoke the access token a caller presented, plus the refresh token stored on that same row.
     ///
-    /// An access token with no grant link drops only that row. OAuth client ids are one
-    /// registration, not one device, so this never selects a refresh token by client id.
-    /// An unknown or already-removed token is a no-op.
+    /// The stored link is the hash of the refresh token. An access token with no grant link
+    /// drops only that row. OAuth client ids are one registration, not one device, so this
+    /// never selects a refresh token by client id. An unknown or already-removed token is a no-op.
     pub fn oauth_revoke_access_session(&self, token: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        let token_hash = oauth_secret_hash(token);
         let linked_refresh = conn
             .query_row(
-                "SELECT refresh_token FROM oauth_access_tokens WHERE token = ?1",
-                params![token],
+                "SELECT refresh_token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                params![token_hash],
                 |row| row.get::<_, Option<String>>(0),
             )
             .optional()?;
@@ -2852,36 +3221,37 @@ impl MessageStore {
             return Ok(());
         };
 
-        if let Some(refresh) = linked_refresh.filter(|value| !value.is_empty()) {
+        if let Some(refresh_hash) = linked_refresh.filter(|value| !value.is_empty()) {
             conn.execute(
-                "DELETE FROM oauth_refresh_tokens WHERE token = ?1",
-                params![refresh],
+                "DELETE FROM oauth_refresh_tokens WHERE token_hash = ?1",
+                params![refresh_hash],
             )?;
             conn.execute(
-                "DELETE FROM oauth_access_tokens WHERE token = ?1 OR refresh_token = ?2",
-                params![token, refresh],
+                "DELETE FROM oauth_access_tokens WHERE token_hash = ?1 OR refresh_token_hash = ?2",
+                params![token_hash, refresh_hash],
             )?;
         } else {
             conn.execute(
-                "DELETE FROM oauth_access_tokens WHERE token = ?1",
-                params![token],
+                "DELETE FROM oauth_access_tokens WHERE token_hash = ?1",
+                params![token_hash],
             )?;
         }
 
         Ok(())
     }
 
-    /// Revoke a token (access or refresh)
+    /// Revoke a token (access or refresh) by the hash of the presented token.
     pub fn oauth_revoke_token(&self, token: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        let token_hash = oauth_secret_hash(token);
 
         conn.execute(
-            "DELETE FROM oauth_access_tokens WHERE token = ?",
-            params![token],
+            "DELETE FROM oauth_access_tokens WHERE token_hash = ?",
+            params![token_hash],
         )?;
         conn.execute(
-            "DELETE FROM oauth_refresh_tokens WHERE token = ?",
-            params![token],
+            "DELETE FROM oauth_refresh_tokens WHERE token_hash = ?",
+            params![token_hash],
         )?;
 
         Ok(())
@@ -3219,7 +3589,8 @@ impl Clone for MessageStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{table_column_names, *};
+    use crate::oauth::oauth_secret_hash;
     use std::path::PathBuf;
 
     pub(super) fn test_store() -> (MessageStore, PathBuf) {
@@ -4456,30 +4827,22 @@ mod tests {
         store
             .oauth_store_client(&test_oauth_client("client_existing"))
             .expect("client");
-        store
-            .oauth_store_access_token(&linked_access_token(
-                "existing-access",
-                "client_existing",
-                None,
-            ))
-            .expect("access");
-        drop(store);
+        store.close().expect("close");
 
         {
             let conn = Connection::open(data_dir.join("messages.db")).expect("open database");
             conn.execute_batch(
                 "
-                CREATE TABLE oauth_access_tokens_legacy (
+                DROP TABLE oauth_access_tokens;
+                CREATE TABLE oauth_access_tokens (
                     token TEXT PRIMARY KEY,
                     client_id TEXT NOT NULL,
                     scope TEXT NOT NULL,
                     created_at INTEGER NOT NULL,
                     expires_at INTEGER NOT NULL
                 );
-                INSERT INTO oauth_access_tokens_legacy (token, client_id, scope, created_at, expires_at)
-                SELECT token, client_id, scope, created_at, expires_at FROM oauth_access_tokens;
-                DROP TABLE oauth_access_tokens;
-                ALTER TABLE oauth_access_tokens_legacy RENAME TO oauth_access_tokens;
+                INSERT INTO oauth_access_tokens (token, client_id, scope, created_at, expires_at)
+                VALUES ('existing-access', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807);
                 ",
             )
             .expect("restore legacy access token table");
@@ -4491,6 +4854,18 @@ mod tests {
             .expect("validate")
             .expect("existing token");
         assert!(token.refresh_token.is_none());
+        {
+            let conn = store.conn.lock().expect("database lock");
+            let link: Option<String> = conn
+                .query_row(
+                    "SELECT refresh_token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                    params![oauth_secret_hash("existing-access")],
+                    |row| row.get(0),
+                )
+                .expect("link");
+            assert!(link.is_none());
+            assert_oauth_secret_schema(&conn);
+        }
         store
             .oauth_store_access_token(&linked_access_token(
                 "linked-access",
@@ -4498,11 +4873,606 @@ mod tests {
                 Some("refresh-existing"),
             ))
             .expect("store linked token");
+        store
+            .oauth_store_refresh_token(&stored_refresh_token("refresh-existing", "client_existing"))
+            .expect("store refresh");
         let linked = store
             .oauth_validate_access_token("linked-access")
             .expect("validate linked")
             .expect("linked token");
-        assert_eq!(linked.refresh_token.as_deref(), Some("refresh-existing"));
+        assert_eq!(linked.client_id, "client_existing");
+        assert!(linked.refresh_token.is_none());
+        {
+            let conn = store.conn.lock().expect("database lock");
+            let link: String = conn
+                .query_row(
+                    "SELECT refresh_token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                    params![oauth_secret_hash("linked-access")],
+                    |row| row.get(0),
+                )
+                .expect("hashed link");
+            assert_eq!(link, oauth_secret_hash("refresh-existing"));
+            assert_ne!(link, "refresh-existing");
+        }
+        store
+            .oauth_revoke_access_session("linked-access")
+            .expect("revoke linked grant");
+        assert!(store
+            .oauth_get_refresh_token("refresh-existing")
+            .expect("refresh")
+            .is_none());
+        assert!(store
+            .oauth_validate_access_token("existing-access")
+            .expect("legacy access")
+            .is_some());
+
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    fn authorization_code(code: &str) -> AuthorizationCode {
+        AuthorizationCode {
+            code: code.to_string(),
+            client_id: "client_test".to_string(),
+            redirect_uri: "http://127.0.0.1:8787/callback".to_string(),
+            code_challenge: "challenge".to_string(),
+            code_challenge_method: "S256".to_string(),
+            scope: "whatsapp.read".to_string(),
+            created_at: 1_700_000_000,
+            expires_at: i64::MAX,
+            used: false,
+        }
+    }
+
+    fn assert_oauth_secret_schema(conn: &Connection) {
+        let access = table_column_names(conn, "oauth_access_tokens").expect("access columns");
+        assert!(access.iter().any(|column| column == "token_hash"));
+        assert!(access.iter().any(|column| column == "refresh_token_hash"));
+        assert!(!access.iter().any(|column| column == "token"));
+        assert!(!access.iter().any(|column| column == "refresh_token"));
+
+        let refresh = table_column_names(conn, "oauth_refresh_tokens").expect("refresh columns");
+        assert!(refresh.iter().any(|column| column == "token_hash"));
+        assert!(!refresh.iter().any(|column| column == "token"));
+
+        let codes = table_column_names(conn, "oauth_authorization_codes").expect("code columns");
+        assert!(codes.iter().any(|column| column == "code_hash"));
+        assert!(!codes.iter().any(|column| column == "code"));
+    }
+
+    fn oauth_row_count(conn: &Connection, sql: &str) -> i64 {
+        conn.query_row(sql, [], |row| row.get(0)).expect("count")
+    }
+
+    #[test]
+    fn issued_oauth_secrets_are_stored_as_hashes() {
+        let (store, data_dir) = test_store();
+        store
+            .oauth_store_client(&test_oauth_client("client_test"))
+            .expect("client");
+        store
+            .oauth_store_refresh_token(&stored_refresh_token("refresh-token", "client_test"))
+            .expect("refresh");
+        store
+            .oauth_store_access_token(&linked_access_token(
+                "access-token",
+                "client_test",
+                Some("refresh-token"),
+            ))
+            .expect("access");
+        store
+            .oauth_store_authorization_code(&authorization_code("auth-code"))
+            .expect("code");
+
+        {
+            let conn = store.conn.lock().expect("database lock");
+            assert_oauth_secret_schema(&conn);
+            let stored_access: String = conn
+                .query_row("SELECT token_hash FROM oauth_access_tokens", [], |row| {
+                    row.get(0)
+                })
+                .expect("access hash");
+            assert_ne!(stored_access, "access-token");
+            assert_eq!(stored_access, oauth_secret_hash("access-token"));
+            let stored_link: String = conn
+                .query_row(
+                    "SELECT refresh_token_hash FROM oauth_access_tokens",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("link hash");
+            assert_ne!(stored_link, "refresh-token");
+            assert_eq!(stored_link, oauth_secret_hash("refresh-token"));
+            let stored_refresh: String = conn
+                .query_row("SELECT token_hash FROM oauth_refresh_tokens", [], |row| {
+                    row.get(0)
+                })
+                .expect("refresh hash");
+            assert_eq!(stored_refresh, stored_link);
+            let stored_code: String = conn
+                .query_row(
+                    "SELECT code_hash FROM oauth_authorization_codes",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("code hash");
+            assert_ne!(stored_code, "auth-code");
+            assert_eq!(stored_code, oauth_secret_hash("auth-code"));
+        }
+
+        assert!(store
+            .oauth_validate_access_token("access-token")
+            .expect("lookup access")
+            .is_some());
+        assert!(store
+            .oauth_validate_access_token("wrong-access")
+            .expect("reject access")
+            .is_none());
+        assert!(store
+            .oauth_get_refresh_token("refresh-token")
+            .expect("lookup refresh")
+            .is_some());
+        let used = store
+            .oauth_use_authorization_code("auth-code")
+            .expect("lookup code")
+            .expect("code");
+        assert_eq!(used.code, "auth-code");
+        assert_eq!(used.client_id, "client_test");
+        assert!(store
+            .oauth_use_authorization_code("auth-code")
+            .expect("second use")
+            .is_none());
+
+        drop(store);
+        let reopened = MessageStore::new(&data_dir).expect("reopen hashed database");
+        assert!(reopened
+            .oauth_validate_access_token("access-token")
+            .expect("lookup after second open")
+            .is_some());
+        {
+            let conn = reopened.conn.lock().expect("database lock");
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_access_tokens"),
+                1
+            );
+            assert_oauth_secret_schema(&conn);
+        }
+
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn plaintext_oauth_secrets_work_after_hash_migration() {
+        let (store, data_dir) = test_store();
+        store
+            .oauth_store_client(&test_oauth_client("client_existing"))
+            .expect("client");
+        store.close().expect("close");
+
+        {
+            let conn = Connection::open(data_dir.join("messages.db")).expect("open database");
+            conn.execute_batch(
+                "
+                DROP TABLE oauth_access_tokens;
+                DROP TABLE oauth_refresh_tokens;
+                DROP TABLE oauth_authorization_codes;
+                CREATE TABLE oauth_access_tokens (
+                    token TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    refresh_token TEXT
+                );
+                CREATE TABLE oauth_refresh_tokens (
+                    token TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                );
+                CREATE TABLE oauth_authorization_codes (
+                    code TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    redirect_uri TEXT NOT NULL,
+                    code_challenge TEXT NOT NULL,
+                    code_challenge_method TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    used INTEGER DEFAULT 0
+                );
+                INSERT INTO oauth_refresh_tokens (token, client_id, scope, created_at, expires_at)
+                VALUES ('legacy-refresh', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807);
+                INSERT INTO oauth_access_tokens (token, client_id, scope, created_at, expires_at, refresh_token)
+                VALUES ('legacy-access', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807, 'legacy-refresh');
+                INSERT INTO oauth_access_tokens (token, client_id, scope, created_at, expires_at, refresh_token)
+                VALUES ('expired-access', 'client_existing', 'whatsapp.read', 1700000000, 1, NULL);
+                INSERT INTO oauth_authorization_codes (
+                    code, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_at, expires_at, used
+                ) VALUES (
+                    'legacy-code', 'client_existing', 'http://127.0.0.1:8787/callback', 'challenge', 'S256', 'whatsapp.read', 1700000000, 9223372036854775807, 0
+                );
+                ",
+            )
+            .expect("install plaintext oauth rows");
+        }
+
+        let store = MessageStore::new(&data_dir).expect("migrate");
+        assert!(store
+            .oauth_validate_access_token("legacy-access")
+            .expect("legacy access")
+            .is_some());
+        assert!(store
+            .oauth_validate_access_token("expired-access")
+            .expect("expired access")
+            .is_none());
+        assert!(store
+            .oauth_get_refresh_token("legacy-refresh")
+            .expect("legacy refresh")
+            .is_some());
+        assert!(store
+            .oauth_use_authorization_code("legacy-code")
+            .expect("legacy code")
+            .is_some());
+        {
+            let conn = store.conn.lock().expect("database lock");
+            assert_oauth_secret_schema(&conn);
+            let link: String = conn
+                .query_row(
+                    "SELECT refresh_token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                    params![oauth_secret_hash("legacy-access")],
+                    |row| row.get(0),
+                )
+                .expect("link");
+            assert_eq!(link, oauth_secret_hash("legacy-refresh"));
+            assert_ne!(link, "legacy-refresh");
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_access_tokens"),
+                2
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_refresh_tokens"),
+                1
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_authorization_codes"),
+                1
+            );
+        }
+
+        store
+            .oauth_revoke_access_session("legacy-access")
+            .expect("revoke migrated grant");
+        assert!(store
+            .oauth_validate_access_token("legacy-access")
+            .expect("revoked access")
+            .is_none());
+        assert!(store
+            .oauth_get_refresh_token("legacy-refresh")
+            .expect("revoked refresh")
+            .is_none());
+        assert!(store
+            .oauth_validate_access_token("expired-access")
+            .expect("expired row remains unvalidated")
+            .is_none());
+
+        drop(store);
+        let reopened = MessageStore::new(&data_dir).expect("second migration");
+        {
+            let conn = reopened.conn.lock().expect("database lock");
+            assert_oauth_secret_schema(&conn);
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_access_tokens"),
+                1
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_refresh_tokens"),
+                0
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn oauth_hash_migration_resumes_a_partial_backfill() {
+        let (store, data_dir) = test_store();
+        store
+            .oauth_store_client(&test_oauth_client("client_existing"))
+            .expect("client");
+        store.close().expect("close");
+
+        let access_done = oauth_secret_hash("access-done");
+        let refresh_done = oauth_secret_hash("refresh-done");
+        let refresh_link = oauth_secret_hash("refresh-link");
+        {
+            let conn = Connection::open(data_dir.join("messages.db")).expect("open database");
+            conn.execute_batch(
+                "
+                DROP TABLE oauth_access_tokens;
+                DROP TABLE oauth_refresh_tokens;
+                DROP TABLE oauth_authorization_codes;
+                CREATE TABLE oauth_access_tokens (
+                    token TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    refresh_token TEXT,
+                    token_hash TEXT,
+                    refresh_token_hash TEXT
+                );
+                CREATE TABLE oauth_refresh_tokens (
+                    token TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    token_hash TEXT
+                );
+                CREATE TABLE oauth_authorization_codes (
+                    code TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL,
+                    redirect_uri TEXT NOT NULL,
+                    code_challenge TEXT NOT NULL,
+                    code_challenge_method TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    used INTEGER DEFAULT 0,
+                    code_hash TEXT
+                );
+                ",
+            )
+            .expect("partial schema");
+            conn.execute(
+                "
+                INSERT INTO oauth_access_tokens (
+                    token, client_id, scope, created_at, expires_at, refresh_token, token_hash, refresh_token_hash
+                ) VALUES ('access-done', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807, 'refresh-done', ?1, ?2)
+                ",
+                params![access_done, refresh_done],
+            )
+            .expect("finished access row");
+            conn.execute(
+                "
+                INSERT INTO oauth_access_tokens (
+                    token, client_id, scope, created_at, expires_at, refresh_token, token_hash, refresh_token_hash
+                ) VALUES ('access-link-pending', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807, 'refresh-link', ?1, NULL)
+                ",
+                params![oauth_secret_hash("access-link-pending")],
+            )
+            .expect("link pending row");
+            conn.execute(
+                "
+                INSERT INTO oauth_access_tokens (
+                    token, client_id, scope, created_at, expires_at, refresh_token, token_hash, refresh_token_hash
+                ) VALUES ('access-pending', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807, 'refresh-pending', NULL, NULL)
+                ",
+                [],
+            )
+            .expect("pending access row");
+            conn.execute(
+                "
+                INSERT INTO oauth_refresh_tokens (token, client_id, scope, created_at, expires_at, token_hash)
+                VALUES ('refresh-done', 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807, ?1)
+                ",
+                params![refresh_done],
+            )
+            .expect("finished refresh row");
+            for token in ["refresh-link", "refresh-pending"] {
+                conn.execute(
+                    "
+                    INSERT INTO oauth_refresh_tokens (token, client_id, scope, created_at, expires_at, token_hash)
+                    VALUES (?1, 'client_existing', 'whatsapp.read', 1700000000, 9223372036854775807, NULL)
+                    ",
+                    params![token],
+                )
+                .expect("pending refresh row");
+            }
+            conn.execute(
+                "
+                INSERT INTO oauth_authorization_codes (
+                    code, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_at, expires_at, used, code_hash
+                ) VALUES (
+                    'code-done', 'client_existing', 'http://127.0.0.1:8787/callback', 'challenge', 'S256', 'whatsapp.read', 1700000000, 9223372036854775807, 0, ?1
+                )
+                ",
+                params![oauth_secret_hash("code-done")],
+            )
+            .expect("finished code");
+            conn.execute(
+                "
+                INSERT INTO oauth_authorization_codes (
+                    code, client_id, redirect_uri, code_challenge, code_challenge_method, scope, created_at, expires_at, used, code_hash
+                ) VALUES (
+                    'code-pending', 'client_existing', 'http://127.0.0.1:8787/callback', 'challenge', 'S256', 'whatsapp.read', 1700000000, 9223372036854775807, 0, NULL
+                )
+                ",
+                [],
+            )
+            .expect("pending code");
+        }
+
+        let store = MessageStore::new(&data_dir).expect("resume migration");
+        for token in ["access-done", "access-link-pending", "access-pending"] {
+            assert!(
+                store
+                    .oauth_validate_access_token(token)
+                    .expect("validate")
+                    .is_some(),
+                "{token}"
+            );
+        }
+        for token in ["refresh-done", "refresh-link", "refresh-pending"] {
+            assert!(
+                store
+                    .oauth_get_refresh_token(token)
+                    .expect("refresh")
+                    .is_some(),
+                "{token}"
+            );
+        }
+        assert!(store
+            .oauth_use_authorization_code("code-pending")
+            .expect("pending code")
+            .is_some());
+        {
+            let conn = store.conn.lock().expect("database lock");
+            assert_oauth_secret_schema(&conn);
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_access_tokens"),
+                3
+            );
+            assert_eq!(
+                oauth_row_count(
+                    &conn,
+                    "SELECT COUNT(DISTINCT token_hash) FROM oauth_access_tokens"
+                ),
+                3
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_refresh_tokens"),
+                3
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_authorization_codes"),
+                2
+            );
+            let done_link: String = conn
+                .query_row(
+                    "SELECT refresh_token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                    params![access_done],
+                    |row| row.get(0),
+                )
+                .expect("done link");
+            assert_eq!(done_link, refresh_done);
+            let pending_link: String = conn
+                .query_row(
+                    "SELECT refresh_token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                    params![oauth_secret_hash("access-link-pending")],
+                    |row| row.get(0),
+                )
+                .expect("pending link");
+            assert_eq!(pending_link, refresh_link);
+            let pending_access: String = conn
+                .query_row(
+                    "SELECT token_hash FROM oauth_access_tokens WHERE token_hash = ?1",
+                    params![oauth_secret_hash("access-pending")],
+                    |row| row.get(0),
+                )
+                .expect("pending access");
+            assert_eq!(pending_access, oauth_secret_hash("access-pending"));
+        }
+
+        store
+            .oauth_revoke_access_session("access-done")
+            .expect("revoke finished grant");
+        assert!(store
+            .oauth_get_refresh_token("refresh-done")
+            .expect("revoked refresh")
+            .is_none());
+        assert!(store
+            .oauth_validate_access_token("access-pending")
+            .expect("other access")
+            .is_some());
+        assert!(store
+            .oauth_get_refresh_token("refresh-pending")
+            .expect("other refresh")
+            .is_some());
+
+        drop(store);
+        let reopened = MessageStore::new(&data_dir).expect("run migration again");
+        assert!(reopened
+            .oauth_validate_access_token("access-pending")
+            .expect("still valid")
+            .is_some());
+        assert!(reopened
+            .oauth_validate_access_token("access-done")
+            .expect("stays revoked")
+            .is_none());
+        {
+            let conn = reopened.conn.lock().expect("database lock");
+            assert_oauth_secret_schema(&conn);
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_access_tokens"),
+                2
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_refresh_tokens"),
+                2
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_authorization_codes"),
+                2
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn hashed_oauth_secrets_expire_and_cleanup() {
+        let (store, data_dir) = test_store();
+        store
+            .oauth_store_client(&test_oauth_client("client_test"))
+            .expect("client");
+        let mut expired_access = linked_access_token("expired-access", "client_test", None);
+        expired_access.expires_at = 1;
+        store
+            .oauth_store_access_token(&expired_access)
+            .expect("expired access");
+        let mut expired_refresh = stored_refresh_token("expired-refresh", "client_test");
+        expired_refresh.expires_at = 1;
+        store
+            .oauth_store_refresh_token(&expired_refresh)
+            .expect("expired refresh");
+        let mut expired_code = authorization_code("expired-code");
+        expired_code.expires_at = 1;
+        store
+            .oauth_store_authorization_code(&expired_code)
+            .expect("expired code");
+        store
+            .oauth_store_access_token(&linked_access_token("live-access", "client_test", None))
+            .expect("live access");
+
+        assert!(store
+            .oauth_validate_access_token("expired-access")
+            .expect("expired access")
+            .is_none());
+        assert!(store
+            .oauth_get_refresh_token("expired-refresh")
+            .expect("expired refresh")
+            .is_none());
+        assert!(store
+            .oauth_use_authorization_code("expired-code")
+            .expect("expired code")
+            .is_none());
+        assert!(store
+            .oauth_validate_access_token("live-access")
+            .expect("live access")
+            .is_some());
+
+        store.oauth_cleanup_expired().expect("cleanup");
+        {
+            let conn = store.conn.lock().expect("database lock");
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_access_tokens"),
+                1
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_refresh_tokens"),
+                0
+            );
+            assert_eq!(
+                oauth_row_count(&conn, "SELECT COUNT(*) FROM oauth_authorization_codes"),
+                0
+            );
+        }
+        assert!(store
+            .oauth_validate_access_token("live-access")
+            .expect("live access after cleanup")
+            .is_some());
 
         let _ = std::fs::remove_dir_all(data_dir);
     }
