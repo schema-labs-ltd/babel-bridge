@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -111,11 +112,16 @@ type Client struct {
 // stderrLogger creates a logger that writes to stderr (not stdout)
 // This prevents log output from mixing with our JSON protocol on stdout
 func stderrLogger(module string, verbose bool) waLog.Logger {
-	// whatsmeow debug lines include push names. Verbose mode still records
-	// event types below; the library logger stays at warn and is redacted.
+	return newBridgeLogger(module, verbose, os.Stderr)
+}
+
+func newBridgeLogger(module string, verbose bool, out io.Writer) waLog.Logger {
+	// whatsmeow debug lines include push names and message payloads.
+	// Verbose mode still records event types on the JSON protocol; the
+	// library logger stays at warn, and warn lines are redacted.
 	_ = verbose
 	logger := zerolog.New(zerolog.ConsoleWriter{
-		Out:        &redactingWriter{out: os.Stderr},
+		Out:        &redactingWriter{out: out},
 		TimeFormat: "15:04:05.000",
 	}).Level(zerolog.WarnLevel).With().Str("module", module).Timestamp().Logger()
 

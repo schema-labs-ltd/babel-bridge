@@ -1,5 +1,7 @@
-# Build stage for Go bridge
-FROM golang:1.26-bookworm AS go-builder
+# Build stage for Go bridge.
+# The official golang image sets GOTOOLCHAIN=local, and whatsmeow asks for
+# toolchain go1.27.2, so the base image has to be at least that new.
+FROM golang:1.27-bookworm AS go-builder
 
 # Install C compiler for CGO (required by go-sqlite3)
 RUN apt-get update && apt-get install -y --no-install-recommends \

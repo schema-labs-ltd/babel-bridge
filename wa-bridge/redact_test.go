@@ -41,6 +41,32 @@ func TestBridgeLoggerOmitsIncomingPhoneAndPayload(t *testing.T) {
 	}
 }
 
+func TestProductionLoggerDropsPushNamesAndMessageText(t *testing.T) {
+	const pushName = "Fixture Push"
+	const contactName = "Fixture Contact"
+	var buf bytes.Buffer
+	logger := newBridgeLogger("Client", true, &buf)
+	logger.Debugf("Got push name %s for %s in history sync", pushName, secretPhone+"@s.whatsapp.net")
+	logger.Warnf("Failed to parse user ID '%s' in push name history sync: %v", secretPhone, errBadID{})
+	logger.Warnf("Node handling took 6s for <message from=%q notify=%q><conversation>%s</conversation></message>", secretPhone+"@s.whatsapp.net", contactName, secretBody)
+	got := buf.String()
+	for _, secret := range []string{pushName, contactName, secretPhone, secretBody, "@s.whatsapp.net"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("stderr leaked %q: %s", secret, got)
+		}
+	}
+	if strings.Contains(got, "Got push name") {
+		t.Fatalf("debug push name line reached stderr: %s", got)
+	}
+	if !strings.Contains(got, "push name history sync") || !strings.Contains(got, "Node handling") {
+		t.Fatalf("stderr lost metadata: %s", got)
+	}
+}
+
+type errBadID struct{}
+
+func (errBadID) Error() string { return "bad id" }
+
 func TestChatPresenceLogIsMetadataOnly(t *testing.T) {
 	line := chatPresenceLog("typing", "")
 	if strings.Contains(line, "@") || strings.Contains(line, secretPhone) {
