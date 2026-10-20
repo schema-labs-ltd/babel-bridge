@@ -2,23 +2,23 @@
   "Simulator Target Bundle": "com.vultuk.whatsapptranslator",
   "aps": {
     "alert": {
-      "title": "Eileen Skinner",
-      "subtitle": "The Skinners",
-      "body": "Last train is delayed, but only by twenty minutes or so. Xx"
+      "title": "Sample Sender",
+      "subtitle": "Sample Group",
+      "body": "This is a sample notification message."
     },
     "sound": "default",
     "badge": 3,
-    "thread-id": "the-skinners@g.us",
+    "thread-id": "sample-group@g.us",
     "mutable-content": 1,
     "category": "MESSAGE_CATEGORY"
   },
-  "contactId": "the-skinners@g.us",
+  "contactId": "sample-group@g.us",
   "messageId": "notification-preview-1",
   "senderId": "447700900123",
-  "senderName": "Eileen Skinner",
-  "conversationName": "The Skinners",
+  "senderName": "Sample Sender",
+  "conversationName": "Sample Group",
   "chatType": "group",
-  "messageBody": "Last train is delayed, but only by twenty minutes or so. Xx",
+  "messageBody": "This is a sample notification message.",
   "recipientCount": 3,
   "messageBodyIncludesGroup": false
 }
