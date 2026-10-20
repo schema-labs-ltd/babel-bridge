@@ -10,7 +10,7 @@
 
 ## Apple build and release workflow
 
-- Pull requests should pass the Xcode Cloud workflow `PR – Build & Test`. That workflow is not a required GitHub check.
 - GitHub Actions runs the `apple` workflow on pull requests and pushes to `main`. The stable check is `apple / apple`. It builds `WhatsAppTranslator` and `BabelBridgeMac` with signing disabled and runs `WhatsAppTranslatorUnitTests` and `BabelBridgeMacTests` when `ios/`, `web/public/sounds/`, or `.github/workflows/apple.yml` changes, and passes without a build on every other change, so branch protection can require it. The commands are in `ios/README.md`. Local agent builds follow the next rule.
+- Xcode Cloud workflow B, `Main – TestFlight (internal)`, archives merges to `main` for internal TestFlight. The one-time setup for that workflow is in `ios/README.md`. Pull-request build and test stays on the GitHub Actions check.
 - Manual builds in the Xcode application stay appropriate for local debugging. Always use the Xcode application through Computer Use for local Apple builds, tests, archives, and signing. Do not use command-line xcodebuild or the build runner for these actions.
 - Run storage preflight before building, use task-owned DerivedData and serial local tests, and preserve release archives and symbols.

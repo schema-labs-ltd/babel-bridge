@@ -130,30 +130,29 @@ prints a warning plus a diff stat if the committed
 `WhatsAppTranslator.xcodeproj` differs. The warning does not fail the build.
 Generation failure does. The script does not print the environment.
 
-The owner creates two workflows in Xcode. This repository does not define them.
+Pull-request builds and unit tests are the GitHub Actions check `apple / apple`.
+Xcode Cloud keeps workflow B, **Main – TestFlight (internal)**. This repository
+does not define that workflow. Simon creates it in Xcode. These steps are for
+workflow B only. Do not create workflow A (`PR – Build & Test`).
 
-**PR – Build & Test** runs on pull requests into `main` that touch `ios/` or
-`web/public/sounds/`. It tests `WhatsAppTranslatorUnitTests` on one iPhone
-simulator and `BabelBridgeMac`. Those schemes run unit tests only, so
-`ConversationTranslationUITests` and the watch UI tests stay out of CI. It is
-not a required GitHub check.
+**Main – TestFlight (internal)** runs on merges to `main` that touch `ios/` or
+`web/public/sounds/`. It archives the iOS and macOS apps and sends them to the
+internal TestFlight group. Xcode Cloud assigns the build number.
+`CURRENT_PROJECT_VERSION` in `project.yml` stays as the local value and is not
+bumped for cloud builds. `MARKETING_VERSION` is still changed on purpose for a
+new version. Signing stays with Xcode Cloud managed signing.
 
-**Main – TestFlight (internal)** runs on merges to `main` with the same file
-filter. It archives the iOS and macOS apps and sends them to the internal
-TestFlight group. Xcode Cloud assigns the build number. `CURRENT_PROJECT_VERSION`
-in `project.yml` stays as the local value and is not bumped for cloud builds.
-`MARKETING_VERSION` is still changed on purpose for a new version.
-
-One-time setup, done in Xcode and App Store Connect:
+One-time setup for workflow B, done in Xcode and App Store Connect:
 
 1. Start Xcode Cloud from the Report navigator (Cloud, then Get Started) and
    grant the Xcode Cloud GitHub app access to this repository.
 2. Confirm an internal TestFlight tester group exists.
 3. Note the highest build already uploaded for iOS and for macOS, then set Next
-   Build Number to one above that highest build before the TestFlight workflow
-   runs for the first time.
-4. Create both workflows on a released Xcode 26 environment. Point the PR
-   workflow at `WhatsAppTranslatorUnitTests` and `BabelBridgeMac`.
+   Build Number to one above that highest build before workflow B runs for the
+   first time. That keeps the cloud build number from colliding with an
+   existing upload.
+4. Create **Main – TestFlight (internal)** on a released Xcode 26 environment.
+   Archive both apps and upload them to the internal group.
 
 The Apple Developer Program includes 25 Xcode Cloud hours a month. Put
 `[ci skip]` in the commit message for work-in-progress pushes that do not need
