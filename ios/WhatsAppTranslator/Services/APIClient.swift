@@ -433,10 +433,7 @@ actor APIClient {
                 guard let configuration else { return }
                 if retry > 0 { let _: BackendStatus = try await authorizedRequest("/api/status") }
                 guard generation == liveGeneration && !Task.isCancelled else { return }
-                var components = URLComponents(url: configuration.baseURL.appending(path: "ws"), resolvingAgainstBaseURL: false)
-                components?.scheme = configuration.baseURL.scheme == "https" ? "wss" : "ws"
-                if let token { components?.queryItems = [URLQueryItem(name: "token", value: token)] }
-                guard let url = components?.url else { throw APIError.invalidServer }
+                guard let url = configuration.webSocketURL(token: token) else { throw APIError.invalidServer }
                 let socket = session.webSocketTask(with: url)
                 webSocket = socket
                 lastLiveMessage = Date()
@@ -542,7 +539,7 @@ actor APIClient {
         timeoutInterval: TimeInterval
     ) async throws -> T {
         guard let configuration,
-              let url = URL(string: path, relativeTo: configuration.baseURL)?.absoluteURL else {
+              let url = configuration.endpointURL(for: path) else {
             throw APIError.notConfigured
         }
         var request = URLRequest(url: url)
@@ -574,7 +571,7 @@ actor APIClient {
         timeoutInterval: TimeInterval? = nil
     ) async throws -> T {
         guard let configuration else { throw APIError.notConfigured }
-        guard let url = URL(string: path, relativeTo: configuration.baseURL)?.absoluteURL else {
+        guard let url = configuration.endpointURL(for: path) else {
             throw APIError.invalidServer
         }
         var request = URLRequest(url: url)

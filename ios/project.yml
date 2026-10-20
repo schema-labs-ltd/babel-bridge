@@ -312,6 +312,7 @@ targets:
       - path: SharedTests/ChatMediaGalleryTests.swift
       - path: SharedTests/ImagePasteTests.swift
       - path: SharedTests/AppIconTests.swift
+      - path: SharedTests/ServerURLTests.swift
     dependencies:
       - target: WhatsAppTranslator
     settings:
@@ -344,6 +345,7 @@ targets:
       - path: SharedTests/ChatMediaGalleryTests.swift
       - path: SharedTests/ImagePasteTests.swift
       - path: SharedTests/AppIconTests.swift
+      - path: SharedTests/ServerURLTests.swift
     dependencies:
       - target: BabelBridgeMac
     settings:
