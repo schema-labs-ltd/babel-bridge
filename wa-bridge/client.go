@@ -111,17 +111,13 @@ type Client struct {
 // stderrLogger creates a logger that writes to stderr (not stdout)
 // This prevents log output from mixing with our JSON protocol on stdout
 func stderrLogger(module string, verbose bool) waLog.Logger {
-	var level zerolog.Level
-	if verbose {
-		level = zerolog.DebugLevel
-	} else {
-		level = zerolog.WarnLevel
-	}
-
+	// whatsmeow debug lines include push names. Verbose mode still records
+	// event types below; the library logger stays at warn and is redacted.
+	_ = verbose
 	logger := zerolog.New(zerolog.ConsoleWriter{
-		Out:        os.Stderr,
+		Out:        &redactingWriter{out: os.Stderr},
 		TimeFormat: "15:04:05.000",
-	}).Level(level).With().Str("module", module).Timestamp().Logger()
+	}).Level(zerolog.WarnLevel).With().Str("module", module).Timestamp().Logger()
 
 	return waLog.Zerolog(logger)
 }
@@ -260,13 +256,13 @@ func (c *Client) handleEvent(evt interface{}) {
 			SendEvent(NewReceiptEvent(v.MessageIDs, v.Type))
 		}
 		if c.verbose {
-			SendEvent(NewLogEvent("debug", fmt.Sprintf("Receipt: %s from %s", v.Type, v.Sender)))
+			SendEvent(NewLogEvent("debug", fmt.Sprintf("Receipt: %s", v.Type)))
 		}
 
 	case *events.Presence:
 		// Online/offline status - could be useful in future
 		if c.verbose {
-			SendEvent(NewLogEvent("debug", fmt.Sprintf("Presence: %s unavailable=%t", v.From, v.Unavailable)))
+			SendEvent(NewLogEvent("debug", fmt.Sprintf("Presence: unavailable=%t", v.Unavailable)))
 		}
 
 	case *events.ChatPresence:
@@ -283,8 +279,7 @@ func (c *Client) handleEvent(evt interface{}) {
 		case types.ChatPresencePaused:
 			state = "paused"
 		}
-		// Log for debugging (use info level so it always shows)
-		SendEvent(NewLogEvent("info", fmt.Sprintf("ChatPresence: chat=%s sender=%s state=%s media=%s", v.Chat.String(), v.Sender.String(), v.State, v.Media)))
+		SendEvent(NewLogEvent("info", chatPresenceLog(fmt.Sprint(v.State), fmt.Sprint(v.Media))))
 		// Send chat presence event
 		SendEvent(NewChatPresenceEvent(normalizeAddress(v.Chat, types.JID{}).String(), normalizeAddress(v.Sender, types.JID{}).String(), state))
 
@@ -295,19 +290,19 @@ func (c *Client) handleEvent(evt interface{}) {
 
 	case *events.UndecryptableMessage:
 		// Message couldn't be decrypted
-		SendEvent(NewLogEvent("error", fmt.Sprintf("Undecryptable message from %s: %v", v.Info.Sender, v.DecryptFailMode)))
+		SendEvent(NewLogEvent("error", fmt.Sprintf("Undecryptable message: mode=%v", v.DecryptFailMode)))
 
 	case *events.PushName:
 		// Contact name updates
 		if c.verbose {
-			SendEvent(NewLogEvent("debug", fmt.Sprintf("PushName update: %s = %s", v.JID, v.NewPushName)))
+			SendEvent(NewLogEvent("debug", "PushName update"))
 		}
 
 	case *events.MarkChatAsRead:
 		// Chat marked as read from another device (e.g., phone)
 		if v.Action != nil && v.Action.GetRead() {
 			SendEvent(NewMarkAsReadEvent(normalizeAddress(v.JID, types.JID{}).String()))
-			SendEvent(NewLogEvent("debug", fmt.Sprintf("Chat marked as read: %s", v.JID.String())))
+			SendEvent(NewLogEvent("debug", "Chat marked as read"))
 		}
 
 	case *events.OfflineSyncCompleted:

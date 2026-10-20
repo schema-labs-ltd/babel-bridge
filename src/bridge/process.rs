@@ -99,11 +99,11 @@ impl BridgeProcess {
                         break;
                     }
                 }
-                Err(e) => {
-                    // Log parse error but continue
+                Err(_) => {
+                    // The raw line can be a message payload, so it stays out of the log.
                     let log_event = BridgeEvent::Log {
                         level: "warn".to_string(),
-                        message: format!("Failed to parse bridge event: {} - line: {}", e, line),
+                        message: "Failed to parse bridge event".to_string(),
                     };
                     let _ = event_tx.send(log_event).await;
                 }

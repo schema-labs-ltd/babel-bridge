@@ -125,10 +125,7 @@ impl StyleAnalyzer {
             return Ok((existing.unwrap(), None));
         }
 
-        info!(
-            "Generating style profile for {} ({} messages)",
-            profile_id, current_count
-        );
+        info!(messages = current_count, "Generating style profile");
 
         let messages =
             store.get_outgoing_messages_for_style(contact_id, MAX_MESSAGES_FOR_ANALYSIS)?;
@@ -295,7 +292,8 @@ Be specific with examples from the messages. This description will help an AI wr
 
             if !response.status().is_success() {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_default();
+                // Drop the upstream body. It can echo the writing sample that was sent.
+                let _ = response.text().await;
                 if should_retry_status(status) && attempt + 1 < OPENAI_MAX_ATTEMPTS {
                     warn!(
                         "Style analysis request attempt {} returned {}, retrying",
@@ -305,7 +303,7 @@ Be specific with examples from the messages. This description will help an AI wr
                     sleep(openai_retry_delay(attempt)).await;
                     continue;
                 }
-                anyhow::bail!("Style analysis API error: {} - {}", status, body);
+                anyhow::bail!("Style analysis API error: HTTP {status}");
             }
 
             return response

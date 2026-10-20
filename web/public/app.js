@@ -2273,10 +2273,7 @@ class WhatsAppClient {
 
     for (const message of reactionMessages) {
       if (!this.applyReactionToMessages(reactionTargets, message)) {
-        console.log('Skipping reaction whose target is not loaded:', {
-          contactId,
-          targetMessageId: this.getReactionTargetMessageId(message),
-        });
+        console.log('Skipping reaction whose target is not loaded');
       }
     }
 
@@ -2561,7 +2558,7 @@ class WhatsAppClient {
     if (!messages) return;
     
     if (!this.applyReactionToMessages(messages, reactionMsg)) {
-      console.log('Target message not found for reaction:', targetMessageId);
+      console.log('Target message not found for reaction');
       return;
     }
     
@@ -2570,17 +2567,13 @@ class WhatsAppClient {
       this.updateMessageReactions(targetMessageId);
     }
     
-    console.log('Reaction updated:', {
-      targetMessageId,
-      emoji: reactionMsg.content?.emoji || '',
-      reactor: this.getReactionActor(reactionMsg),
-    });
+    console.log('Reaction updated');
   }
 
   // Handle typing indicator
   handleTyping(data) {
     const { chat_id, user_id, state } = data;
-    console.log('Typing event received:', { chat_id, user_id, state, currentContactId: this.currentContactId });
+    console.log('Typing event received');
     
     // Clear existing timeout for this chat
     if (this.typingTimeouts.has(chat_id)) {
@@ -2632,14 +2625,14 @@ class WhatsAppClient {
   // Update typing indicator in chat header
   updateTypingIndicator() {
     const indicatorEl = document.getElementById('typing-indicator');
-    console.log('updateTypingIndicator called, element:', indicatorEl, 'currentContactId:', this.currentContactId);
+    console.log('updateTypingIndicator called');
     if (!indicatorEl) {
       console.warn('typing-indicator element not found!');
       return;
     }
     
     const typingInfo = this.typingState.get(this.currentContactId);
-    console.log('typingInfo for current contact:', typingInfo);
+    console.log('typing indicator state', typingInfo ? typingInfo.state : 'idle');
     
     if (typingInfo) {
       const text = typingInfo.state === 'recording' ? 'recording audio...' : 'typing...';

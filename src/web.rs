@@ -916,12 +916,7 @@ impl AppState {
 
     /// Broadcast a typing indicator
     pub fn broadcast_typing(&self, chat_id: String, user_id: String, state: String) {
-        tracing::info!(
-            "Broadcasting typing event: chat={}, user={}, state={}",
-            chat_id,
-            user_id,
-            state
-        );
+        tracing::info!(state = %state, "Broadcasting typing event");
         let result = self.broadcast_tx.send(WebSocketEvent::Typing {
             chat_id,
             user_id,
@@ -2295,10 +2290,7 @@ async fn send_message(
         target_lang
     {
         let Some(translator) = &state.translator else {
-            error!(
-                "Translation to {} is needed for {}, but no translator is configured",
-                conv_lang, req.contact_id
-            );
+            error!("Translation to {conv_lang} is needed, but no translator is configured");
             return (
                     StatusCode::SERVICE_UNAVAILABLE,
                     Json(serde_json::json!({
@@ -2311,10 +2303,9 @@ async fn send_message(
                     .into_response();
         };
         info!(
-            "Target language for {} is {} (override: {})",
-            req.contact_id,
-            conv_lang,
-            settings.language_override.is_some()
+            target_language = %conv_lang,
+            has_override = settings.language_override.is_some(),
+            "Resolved outgoing target language"
         );
 
         match translator.translate_outgoing(&req.text, &conv_lang).await {
@@ -2575,8 +2566,8 @@ async fn send_message(
             Ok((message_id, timestamp)) => (true, Some(message_id), Some(timestamp), None),
             Err(error) => {
                 warn!(
-                    "Translated message sent to {}, but original follow-up failed: {}",
-                    req.contact_id, error
+                    "Translated message was sent, but the original follow-up failed: {}",
+                    crate::log_privacy::redact_log_text(&error.to_string())
                 );
                 (false, None, None, Some(error))
             }
