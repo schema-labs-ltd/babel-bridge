@@ -59,11 +59,13 @@ func main() {
 	// Start command reader goroutine
 	go readCommands(ctx, client, cancel)
 
-	// Connect to WhatsApp
+	// Connect to WhatsApp. Retryable failures stay in this process and back off.
+	// A permanent rejection returns and waits here so the parent is not restarted
+	// in a loop.
 	SendEvent(NewConnectionStateEvent("connecting"))
-	if err := client.Connect(ctx); err != nil {
-		SendEvent(NewErrorEvent("connect", fmt.Sprintf("failed to connect: %v", err)))
-		os.Exit(1)
+	client.MaintainConnection(ctx)
+	if ctx.Err() == nil {
+		<-ctx.Done()
 	}
 
 	// Wait for context cancellation (shutdown)
