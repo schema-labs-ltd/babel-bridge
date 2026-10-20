@@ -8,6 +8,7 @@ actor APIClient {
     private var receiveTask: Task<Void, Never>?
     private var liveGeneration = UUID()
     private var lastLiveMessage = Date()
+    private var pushRegistrationEpoch = UUID()
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -398,11 +399,90 @@ actor APIClient {
     }
 
     func registerPushDevice(_ registration: PushDeviceRegistration) async throws {
-        let _: SuccessResponse = try await authorizedRequest(
-            "/api/push/devices",
-            method: "PUT",
-            body: JSONEncoder.backend.encode(registration)
+        let epoch = pushRegistrationEpoch
+        let baseURL = configuration?.baseURL
+        let bearer = token
+        do {
+            let _: SuccessResponse = try await authorizedRequest(
+                "/api/push/devices",
+                method: "PUT",
+                body: JSONEncoder.backend.encode(registration)
+            )
+            await removePushRegistrationIfRevoked(
+                epoch: epoch,
+                installationID: registration.installationId,
+                baseURL: baseURL,
+                bearerToken: bearer
+            )
+        } catch {
+            await removePushRegistrationIfRevoked(
+                epoch: epoch,
+                installationID: registration.installationId,
+                baseURL: baseURL,
+                bearerToken: bearer
+            )
+            throw error
+        }
+    }
+
+    /// Best-effort sign-out for the server currently configured on this client.
+    /// Removes this installation's push registration, then posts `/api/logout`.
+    /// The in-memory password and bearer token are dropped first. Failures, including
+    /// an unreachable server, are ignored, and a 401 does not sign in again.
+    func revokeBackendAccess(installationID: String) async {
+        pushRegistrationEpoch = UUID()
+        let baseURL = configuration?.baseURL
+        let bearer = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bearerToken = (bearer?.isEmpty == false) ? bearer : nil
+        configuration = nil
+        token = nil
+        disconnectLiveEvents()
+        guard let baseURL else { return }
+        for call in BackendSignOutPlan.calls(installationID: installationID) {
+            await performBestEffort(
+                method: call.method,
+                path: call.path,
+                baseURL: baseURL,
+                bearerToken: bearerToken
+            )
+        }
+    }
+
+    private func removePushRegistrationIfRevoked(
+        epoch: UUID,
+        installationID: String,
+        baseURL: URL?,
+        bearerToken: String?
+    ) async {
+        guard epoch != pushRegistrationEpoch, let baseURL else { return }
+        guard let deletion = BackendSignOutPlan.calls(installationID: installationID).first(where: { $0.method == "DELETE" }) else { return }
+        await performBestEffort(
+            method: deletion.method,
+            path: deletion.path,
+            baseURL: baseURL,
+            bearerToken: bearerToken
         )
+    }
+
+    private func performBestEffort(
+        method: String,
+        path: String,
+        baseURL: URL,
+        bearerToken: String?
+    ) async {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let bearerToken {
+            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            _ = try await session.data(for: request)
+        } catch {
+            // Local sign-out has already finished. One failed call must not skip the other.
+        }
     }
 
     func connectLiveEvents(handler: @escaping @MainActor @Sendable (LiveEvent) -> Void) throws {
@@ -716,6 +796,24 @@ final class BackgroundPhotoUploadSession: NSObject, URLSessionDataDelegate, URLS
     }
 }
 #endif
+
+struct BackendSignOutPlan: Equatable, Sendable {
+    struct Call: Equatable, Sendable {
+        var method: String
+        var path: String
+    }
+
+    /// Push removal goes first. Logout invalidates the bearer token that the delete needs.
+    static func calls(installationID: String) -> [Call] {
+        let trimmed = installationID.trimmingCharacters(in: .whitespacesAndNewlines)
+        var calls: [Call] = []
+        if !trimmed.isEmpty {
+            calls.append(Call(method: "DELETE", path: "/api/push/devices/\(trimmed.urlPathEncoded)"))
+        }
+        calls.append(Call(method: "POST", path: "/api/logout"))
+        return calls
+    }
+}
 
 enum APIError: LocalizedError, Equatable {
     case notConfigured
