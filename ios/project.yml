@@ -305,6 +305,7 @@ targets:
     sources:
       - path: WhatsAppTranslatorTests
       - path: SharedTests/MessageToneTests.swift
+      - path: SharedTests/ConnectionBannerTests.swift
       - path: SharedTests/ConversationTranslationTests.swift
       - path: SharedTests/ReactionDeliveryTests.swift
       - path: SharedTests/MessageEditDeliveryTests.swift
@@ -337,6 +338,7 @@ targets:
     sources:
       - path: BabelBridgeMacTests
       - path: SharedTests/MessageToneTests.swift
+      - path: SharedTests/ConnectionBannerTests.swift
       - path: SharedTests/ConversationTranslationTests.swift
       - path: SharedTests/ReactionDeliveryTests.swift
       - path: SharedTests/MessageEditDeliveryTests.swift
