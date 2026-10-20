@@ -2,7 +2,8 @@
 //!
 //! Implements RFC 6749 (OAuth 2.0), RFC 7636 (PKCE), and RFC 8414 (Metadata).
 //! Used to secure the MCP endpoint for external LLM clients.
-//! All tokens and codes are persisted in SQLite for durability across restarts.
+//! Access tokens, refresh tokens, and authorization codes are persisted as
+//! SHA-256 hashes. The plaintext is returned to the client only when it is issued.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
@@ -91,7 +92,11 @@ impl AuthorizationCode {
     }
 }
 
-/// Access token stored in the database
+/// Access token presented by a client, or the value passed to storage.
+///
+/// Storage keeps only a hash of `token` and of `refresh_token`. A token loaded
+/// back from the database still carries the presented access token so callers
+/// can echo it, and leaves `refresh_token` empty so the hash is not copied out.
 #[derive(Debug, Clone)]
 pub struct AccessToken {
     pub token: String,
@@ -99,7 +104,7 @@ pub struct AccessToken {
     pub scope: String,
     pub created_at: i64,
     pub expires_at: i64,
-    /// Refresh token issued for the same grant, when this access token has one.
+    /// Plaintext refresh token from the same grant, when the caller still has it.
     pub refresh_token: Option<String>,
 }
 
@@ -165,6 +170,32 @@ pub fn generate_token() -> String {
     bytes[..16].copy_from_slice(first.as_bytes());
     bytes[16..].copy_from_slice(second.as_bytes());
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// Lowercase hex SHA-256 of an OAuth access token, refresh token, or authorization code.
+pub(crate) fn oauth_secret_hash(secret: &str) -> String {
+    let digest = Sha256::digest(secret.as_bytes());
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for byte in digest {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
+}
+
+/// Compare two digests without returning at the first differing byte.
+pub(crate) fn oauth_secret_hashes_equal(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut mismatch = 0u8;
+    for (left_byte, right_byte) in left.iter().zip(right.iter()) {
+        mismatch |= left_byte ^ right_byte;
+    }
+    std::hint::black_box(mismatch) == 0
 }
 
 /// OAuth error types (RFC 6749 Section 4.1.2.1)
@@ -309,5 +340,29 @@ mod tests {
 
         assert!(auth_code.verify_pkce(code_verifier));
         assert!(!auth_code.verify_pkce("wrong_verifier"));
+    }
+
+    #[test]
+    fn oauth_secret_hash_is_lowercase_sha256_and_differs_from_the_secret() {
+        let secret = "issued-secret";
+        let hash = oauth_secret_hash(secret);
+        let digest = Sha256::digest(secret.as_bytes());
+        let mut expected = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            expected.push_str(&format!("{byte:02x}"));
+        }
+        assert_eq!(hash, expected);
+        assert_eq!(hash.len(), 64);
+        assert_ne!(hash, secret);
+        assert!(oauth_secret_hashes_equal(&hash, &expected));
+        assert!(!oauth_secret_hashes_equal(
+            &hash,
+            &oauth_secret_hash("other-secret")
+        ));
+        let mut changed = hash.clone().into_bytes();
+        changed[10] ^= 1;
+        let changed = String::from_utf8(changed).expect("hash stays text");
+        assert!(!oauth_secret_hashes_equal(&hash, &changed));
+        assert!(!oauth_secret_hashes_equal(&hash, ""));
     }
 }

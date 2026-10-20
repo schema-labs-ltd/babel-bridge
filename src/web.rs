@@ -4531,10 +4531,7 @@ async fn oauth_register(
             .into_response();
     }
 
-    info!(
-        "OAuth client registered: {} ({:?}) with redirect_uris: {:?}",
-        client_id, req.client_name, req.redirect_uris
-    );
+    info!("OAuth client registered");
 
     // Return the registration response
     (
@@ -4873,10 +4870,7 @@ async fn oauth_approve(
         return Redirect::to(&redirect_url).into_response();
     }
 
-    info!(
-        "OAuth authorization granted for client: {}",
-        auth_code.client_id
-    );
+    info!("OAuth authorization granted");
 
     // Redirect back to client with authorization code
     let mut redirect_url = format!("{}?code={}", pending.redirect_uri, code);
@@ -5044,7 +5038,7 @@ async fn handle_authorization_code_grant(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
     }
 
-    info!("OAuth tokens issued for client: {}", auth_code.client_id);
+    info!("OAuth tokens issued");
 
     let response = TokenResponse {
         access_token: access_token_str,
@@ -5116,10 +5110,7 @@ async fn handle_refresh_token_grant(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
     }
 
-    info!(
-        "OAuth access token refreshed for client: {}",
-        refresh_token.client_id
-    );
+    info!("OAuth access token refreshed");
 
     let response = TokenResponse {
         access_token: access_token_str,
@@ -5179,7 +5170,7 @@ async fn revoke_oauth_client(
         }))
         .into_response(),
         Err(e) => {
-            error!("Failed to revoke OAuth client {}: {}", client_id, e);
+            error!("Failed to revoke OAuth client: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({
@@ -8597,6 +8588,124 @@ mod tests {
         assert_eq!(state.store.oauth_list_clients().expect("clients").len(), 1);
 
         let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn refresh_log_omits_client_id_token_and_hash() {
+        let (state, data_dir) = test_state(None);
+        let client_id = "client-log-check";
+        let refresh = "refresh-log-check";
+        let invalid_refresh = "not-a-real-refresh-token";
+        state
+            .store
+            .oauth_store_client(&OAuthClientRegistration {
+                client_id: client_id.to_string(),
+                client_name: Some("Synthetic client".to_string()),
+                redirect_uris: vec!["http://127.0.0.1:8787/callback".to_string()],
+                scope: "whatsapp.read".to_string(),
+                created_at: 1_700_000_000,
+            })
+            .expect("client");
+        state
+            .store
+            .oauth_store_refresh_token(&RefreshToken {
+                token: refresh.to_string(),
+                client_id: client_id.to_string(),
+                scope: "whatsapp.read".to_string(),
+                created_at: 1_700_000_000,
+                expires_at: i64::MAX,
+            })
+            .expect("refresh");
+
+        let buf = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(crate::log_privacy::logging_filter(false))
+            .with_ansi(false)
+            .without_time()
+            .with_target(false)
+            .with_writer({
+                let buf = buf.clone();
+                move || LogCapture(buf.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let response = handle_refresh_token_grant(
+            state.clone(),
+            TokenRequest {
+                grant_type: "refresh_token".to_string(),
+                code: None,
+                redirect_uri: None,
+                code_verifier: None,
+                refresh_token: Some(refresh.to_string()),
+                client_id: Some(client_id.to_string()),
+                resource: None,
+            },
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        let access = payload["access_token"]
+            .as_str()
+            .expect("issued access token")
+            .to_string();
+        assert_ne!(access, refresh);
+        assert!(state
+            .store
+            .oauth_validate_access_token(&access)
+            .expect("issued token")
+            .is_some());
+
+        let invalid = handle_refresh_token_grant(
+            state.clone(),
+            TokenRequest {
+                grant_type: "refresh_token".to_string(),
+                code: None,
+                redirect_uri: None,
+                code_verifier: None,
+                refresh_token: Some(invalid_refresh.to_string()),
+                client_id: Some(client_id.to_string()),
+                resource: None,
+            },
+        )
+        .await;
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+
+        let logs = String::from_utf8(buf.lock().expect("log buffer").clone()).expect("logs");
+        assert!(logs.contains("OAuth access token refreshed"));
+        let refresh_hash = crate::oauth::oauth_secret_hash(refresh);
+        let access_hash = crate::oauth::oauth_secret_hash(&access);
+        let invalid_hash = crate::oauth::oauth_secret_hash(invalid_refresh);
+        for secret in [
+            client_id,
+            refresh,
+            access.as_str(),
+            invalid_refresh,
+            refresh_hash.as_str(),
+            access_hash.as_str(),
+            invalid_hash.as_str(),
+        ] {
+            assert!(!logs.contains(secret), "log contained a secret");
+        }
+        drop(_guard);
+
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    struct LogCapture(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogCapture {
+        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("log buffer").extend_from_slice(data);
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 
     #[test]
