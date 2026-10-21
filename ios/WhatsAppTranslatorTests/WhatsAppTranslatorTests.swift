@@ -185,7 +185,7 @@ final class WhatsAppTranslatorTests: XCTestCase {
     func testNotificationSenderUsesExactPhoneNumberIdentity() {
         let identity = NotificationPersonIdentity.sender(
             senderID: "447700900123",
-            senderName: "Eileen Skinner"
+            senderName: "Sample Sender"
         )
 
         XCTAssertEqual(identity.handleValue, "+447700900123")
@@ -195,13 +195,13 @@ final class WhatsAppTranslatorTests: XCTestCase {
 
         let formattedIdentity = NotificationPersonIdentity.sender(
             senderID: "+44 (7700) 900-123",
-            senderName: "Eileen Skinner"
+            senderName: "Sample Sender"
         )
         XCTAssertEqual(formattedIdentity.handleValue, "+447700900123")
 
         let appIdentity = NotificationPersonIdentity.sender(
             senderID: "whatsapp-user-id",
-            senderName: "Eileen Skinner"
+            senderName: "Sample Sender"
         )
         XCTAssertEqual(appIdentity.handleType, .unknown)
         XCTAssertTrue(appIdentity.isContactSuggestion)
@@ -464,14 +464,14 @@ final class WhatsAppTranslatorTests: XCTestCase {
             "contactId": "family@g.us",
             "messageId": "message-1",
             "senderName": "Virág",
-            "conversationName": "The Skinners",
+            "conversationName": "Sample Group",
             "chatType": "group",
         ])
 
         XCTAssertEqual(routing?.contactID, "family@g.us")
         XCTAssertEqual(routing?.messageID, "message-1")
         XCTAssertEqual(routing?.senderName, "Virág")
-        XCTAssertEqual(routing?.conversationName, "The Skinners")
+        XCTAssertEqual(routing?.conversationName, "Sample Group")
         XCTAssertTrue(routing?.isGroup == true)
     }
 
@@ -667,9 +667,9 @@ final class WhatsAppTranslatorTests: XCTestCase {
         let contact = try decodeMessage(
             id: "contact",
             contentType: "Contact",
-            content: #"{"type":"contact","display_name":"Eileen Skinner","vcard":"BEGIN:VCARD\\nTEL:+447700900123\\nEND:VCARD"}"#
+            content: #"{"type":"contact","display_name":"Sample Sender","vcard":"BEGIN:VCARD\\nTEL:+447700900123\\nEND:VCARD"}"#
         )
-        XCTAssertEqual(contact.displayText, "Eileen Skinner")
+        XCTAssertEqual(contact.displayText, "Sample Sender")
 
         let poll = try decodeMessage(
             id: "poll",
