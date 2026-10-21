@@ -1894,7 +1894,7 @@ private extension Contact {
     static let demoContacts = [
         Contact(id: "status@broadcast", name: nil, phone: nil, type: "broadcast", lastMessageTime: 1_783_941_000_000, unreadCount: 7, pinnedAt: nil, lastMessagePreview: "A status update"),
         Contact(id: "virag@s.whatsapp.net", name: "Virág Skinner", phone: "+36 30 555 0142", type: "private", lastMessageTime: 1_783_940_400_000, unreadCount: 2, pinnedAt: 1, lastMessagePreview: "Perfect, I’ll be there just after six."),
-        Contact(id: "family@g.us", name: "The Skinners", phone: nil, type: "group", lastMessageTime: 1_783_936_860_000, unreadCount: 0, pinnedAt: nil, lastMessagePreview: "Eileen: Photo"),
+        Contact(id: "family@g.us", name: "Sample Group", phone: nil, type: "group", lastMessageTime: 1_783_936_860_000, unreadCount: 0, pinnedAt: nil, lastMessagePreview: "Sample Sender: Photo"),
         Contact(id: "anyu@s.whatsapp.net", name: "Anyu", phone: "+36 20 555 0181", type: "private", lastMessageTime: 1_783_850_000_000, unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Nagyon köszönöm ❤️"),
         Contact(id: "work@g.us", name: "AFX / RCX Hedge Funds", phone: nil, type: "group", lastMessageTime: 1_783_760_000_000, unreadCount: 0, pinnedAt: nil, lastMessagePreview: "Will check it this afternoon."),
     ]
