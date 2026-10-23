@@ -225,7 +225,8 @@ struct PhotoGalleryViewer: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // On a partially open iPhone Duo the photo fills one pane and the details the other.
+        FoldAwareMediaLayout {
             if let image = session.messageImages[message.id] {
                 PhotoViewer(image: image, close: { dismiss() }, onSwipe: move)
                     .modifier(ViewedMessageTask(messages: [message], enabled: true))
@@ -248,6 +249,7 @@ struct PhotoGalleryViewer: View {
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+        } controls: {
             details
         }
         .background(.black).foregroundStyle(.white).preferredColorScheme(.dark)

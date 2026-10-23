@@ -64,13 +64,22 @@ struct ConversationView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            conversationContent(bottomSafeArea: geometry.safeAreaInsets.bottom)
+        FoldableLayoutReader { layout in
+            conversationContent(layout: layout)
         }
     }
 
-    private func conversationContent(bottomSafeArea: CGFloat) -> some View {
-        ZStack {
+    private func conversationContent(layout: FoldableLayoutContext) -> some View {
+        // On a partially open iPhone Duo the timeline reads on one pane and the composer rests on the other.
+        let arrangement = FoldAwareChatLayout.arrangement(for: layout.division, in: layout.size)
+        let bottomSafeArea = layout.safeAreaInsets.bottom
+        #if os(iOS)
+        // iPhone Duo presents bars vertically on the outer display and in landscape on the inner display.
+        // A custom principal item never joins a vertical bar, so the header then lives in the content,
+        // exactly as it does at compact widths.
+        let showsInlineHeader = horizontalSizeClass == .compact || layout.usesVerticalBars
+        #endif
+        return ZStack {
             ChatWallpaper()
                 .blur(radius: focusedReplyMessage == nil ? 0 : 8)
             VStack(spacing: 0) {
@@ -134,6 +143,7 @@ struct ConversationView: View {
                 }
                 ZStack {
                     messageTimeline
+                        .environment(\.chatBubbleMaxWidth, arrangement.bubbleMaxWidth)
                         .blur(radius: focusedReplyMessage == nil ? 0 : 8)
                         .opacity(focusedReplyMessage == nil ? 1 : 0.35)
                         .allowsHitTesting(focusedReplyMessage == nil)
@@ -145,22 +155,25 @@ struct ConversationView: View {
                         }
                     }
                 }
-                if let progress = activePhotoSend {
-                    PhotoSendProgressView(progress: progress)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                VStack(spacing: 0) {
+                    if let progress = activePhotoSend {
+                        PhotoSendProgressView(progress: progress)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    }
+                    ComposerView(
+                        contactID: contact.id,
+                        text: $draft,
+                        reply: replyTarget,
+                        showReplyPreview: focusedReplyMessage == nil,
+                        isSending: session.sendingContactIDs.contains(contact.id),
+                        cancelReply: cancelReply,
+                        sendImages: sendImages,
+                        send: send
+                    )
+                    .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
                 }
-                ComposerView(
-                    contactID: contact.id,
-                    text: $draft,
-                    reply: replyTarget,
-                    showReplyPreview: focusedReplyMessage == nil,
-                    isSending: session.sendingContactIDs.contains(contact.id),
-                    cancelReply: cancelReply,
-                    sendImages: sendImages,
-                    send: send
-                )
-                .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
+                .foldAwareComposerPane(arrangement)
             }
         }
         .navigationTitle(platformNavigationTitle)
@@ -178,7 +191,7 @@ struct ConversationView: View {
         #if os(iOS)
         .platformChatNavigationBackground()
         .safeAreaInset(edge: .top, spacing: 0) {
-            if horizontalSizeClass == .compact {
+            if showsInlineHeader {
                 conversationTitleButton
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
@@ -189,29 +202,30 @@ struct ConversationView: View {
         #endif
         .toolbar {
             #if os(iOS)
-            if horizontalSizeClass != .compact {
+            if !showsInlineHeader {
                 ToolbarItem(placement: .principal) { conversationTitleButton }
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                Menu("Conversation", systemImage: "ellipsis") {
-                    Button("Search messages", systemImage: "magnifyingglass") {
-                        Task { await activateSearch() }
-                    }
-                    .keyboardShortcut("f", modifiers: .command)
-                    Button(
-                        starredOnly ? "Show all messages" : "Show starred only",
-                        systemImage: starredOnly ? "star.fill" : "star"
-                    ) {
-                        Task { await toggleStarredFilter() }
-                    }
-                    Divider()
-                    Button("Conversation cost", systemImage: "dollarsign.circle") { showCost = true }
-                    Button("Conversation settings", systemImage: "slider.horizontal.3") { showSettings = true }
-                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
                     .accessibilityIdentifier("open-chat-gallery")
+            }
+            .foldableVisibilityPriority(.high)
+            // Secondary actions share the system overflow menu, so a compressed bar on iPhone Duo
+            // shows one ellipsis instead of the app's own menu beside the system's.
+            FoldableOverflowActions(title: "Conversation", systemImage: "ellipsis", placement: .topBarLeading) {
+                Button("Search messages", systemImage: "magnifyingglass") {
+                    Task { await activateSearch() }
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                Button(
+                    starredOnly ? "Show all messages" : "Show starred only",
+                    systemImage: starredOnly ? "star.fill" : "star"
+                ) {
+                    Task { await toggleStarredFilter() }
+                }
+                Divider()
+                Button("Conversation cost", systemImage: "dollarsign.circle") { showCost = true }
+                Button("Conversation settings", systemImage: "slider.horizontal.3") { showSettings = true }
             }
             #endif
         }
@@ -234,9 +248,11 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showSettings) {
             ConversationSettingsView(contact: contact)
+                .foldableTrailingSheetPlacement()
         }
         .sheet(isPresented: $showCost) {
             ConversationCostView(contact: contact)
+                .foldableTrailingSheetPlacement()
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $showGallery) { ChatMediaGallery(contact: contact).environment(session) }

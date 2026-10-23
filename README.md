@@ -15,6 +15,7 @@ Incoming messages send WhatsApp read receipts only after they remain visible for
 - Connect a WhatsApp account through QR login
 - View chats and messages in a local web UI
 - Browse a chat’s photos and videos in the native Gallery, with square previews and a full-screen swipe viewer
+- Native iPhone Duo support: vertical bars with prioritised items on the outer display, a two-column inbox and trailing sheets on the inner display, and chats, galleries and media viewers that keep content off the hinge in book and laptop poses (details in `ios/README.md`)
 - Send text, images, replies, and reactions
 - Translate incoming and outgoing messages with OpenAI
 - Listen to translated voice notes and record, preview, and send translated WhatsApp audio

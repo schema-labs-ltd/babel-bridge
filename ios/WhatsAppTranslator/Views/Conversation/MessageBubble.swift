@@ -108,6 +108,7 @@ struct MessageBubble: View {
     @Environment(AppSession.self) private var session
     @Environment(\.translatorPalette) private var palette
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.chatBubbleMaxWidth) private var foldBubbleMaxWidth
     let message: ChatMessage
     let isStarred: Bool
     let isBusy: Bool
@@ -251,7 +252,7 @@ struct MessageBubble: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
-                .frame(maxWidth: message.mediaKind == .image ? 260 : (message.mediaKind == .audio ? 238 : nil), alignment: .leading)
+                .frame(maxWidth: bubbleContentMaxWidth, alignment: .leading)
                 .padding(.horizontal, isStandaloneEmoji ? 4 : (message.mediaKind == .image ? 4 : 9))
                 .padding(.vertical, isStandaloneEmoji ? 2 : 5)
                 .background {
@@ -518,6 +519,15 @@ struct MessageBubble: View {
 
     private var bubbleEdgeInset: CGFloat {
         usesCompactMessageChrome || message.mediaKind != nil ? 18 : 36
+    }
+
+    /// Media keeps its usual width. When iPhone Duo is folded like a book, every bubble also stays
+    /// within one pane so no message runs across the hinge; 18 points cover the bubble's own padding.
+    private var bubbleContentMaxWidth: CGFloat? {
+        let natural: CGFloat? = message.mediaKind == .image ? 260 : (message.mediaKind == .audio ? 238 : nil)
+        guard let foldBubbleMaxWidth else { return natural }
+        let foldLimit = max(120, foldBubbleMaxWidth - 18)
+        return min(natural ?? foldLimit, foldLimit)
     }
 
     private var standaloneEmojiFontSize: CGFloat {

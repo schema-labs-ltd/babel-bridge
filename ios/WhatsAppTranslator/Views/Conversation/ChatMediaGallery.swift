@@ -81,7 +81,7 @@ struct ChatMediaGallery: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
+            FoldableLayoutReader { layout in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 20) {
                         if model.hasLoaded && model.messages.isEmpty {
@@ -92,7 +92,7 @@ struct ChatMediaGallery: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(day, format: .dateTime.day().month(.wide).year())
                                     .font(.headline).padding(.horizontal, 16)
-                                LazyVGrid(columns: columns(for: geometry.size.width), spacing: 2) {
+                                LazyVGrid(columns: columns(for: layout), spacing: FoldAwareChatLayout.GridPlan.tileSpacing) {
                                     ForEach(model.messages.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }) { message in
                                         GalleryThumbnail(message: message) { selectedMedia = message }
                                             .onAppear {
@@ -123,14 +123,19 @@ struct ChatMediaGallery: View {
             }
             .navigationTitle("Gallery")
             .platformInlineNavigationTitle()
+            .foldableNavigationSubtitle(session.displayName(for: contact))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }.accessibilityIdentifier("close-chat-gallery")
                 }
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 2) {
-                        Text("Gallery").font(.headline)
-                        Text(session.displayName(for: contact)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                // A custom principal view cannot join iPhone Duo's vertical bar, so systems with
+                // navigation subtitles name the chat there instead.
+                if !supportsNavigationSubtitle {
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 2) {
+                            Text("Gallery").font(.headline)
+                            Text(session.displayName(for: contact)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                 }
             }
@@ -155,9 +160,19 @@ struct ChatMediaGallery: View {
         #endif
     }
 
-    private func columns(for width: CGFloat) -> [GridItem] {
-        let count = width < 500 ? 3 : max(4, Int(width / 145))
-        return Array(repeating: GridItem(.flexible(), spacing: 2), count: count)
+    private var supportsNavigationSubtitle: Bool {
+        #if os(iOS)
+        if #available(iOS 26.0, *) { return true }
+        return false
+        #else
+        return false
+        #endif
+    }
+
+    /// Tile columns for the available width. When iPhone Duo is folded like a book the count stays
+    /// even and the middle spacing widens into a gutter over the hinge, so no tile is split by it.
+    private func columns(for layout: FoldableLayoutContext) -> [GridItem] {
+        FoldAwareChatLayout.galleryGrid(width: layout.size.width, division: layout.division).gridItems
     }
 
     private func loadMore() async {
@@ -228,36 +243,42 @@ struct GalleryMediaViewer: View {
     private var index: Int { model.messages.firstIndex { $0.id == (selectedID ?? initialID) } ?? 0 }
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if !model.messages.isEmpty {
                 let message = model.messages[index]
-                media(message).frame(maxWidth: .infinity, maxHeight: .infinity).id(message.id)
-                    .modifier(ViewedMessageTask(messages: [message], enabled: session.messageImages[message.id] != nil || session.messageMediaURLs[message.id] != nil))
-                VStack(spacing: 10) {
-                    HStack {
-                        Button("Previous media", systemImage: "chevron.left") { move(-1) }
-                            .labelStyle(.iconOnly).disabled(index == 0).keyboardShortcut(.leftArrow, modifiers: [])
-                        Spacer()
-                        VStack(spacing: 3) {
-                            Text(message.date, format: .dateTime.day().month().year().hour().minute()).font(.caption)
-                            Text("\(index + 1) of \(model.messages.count)\(model.hasMore ? "+" : "")")
-                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                                .accessibilityIdentifier("gallery-position")
+                // On a partially open iPhone Duo the media fills one pane and the controls the other.
+                FoldAwareMediaLayout {
+                    media(message).frame(maxWidth: .infinity, maxHeight: .infinity).id(message.id)
+                        .modifier(ViewedMessageTask(messages: [message], enabled: session.messageImages[message.id] != nil || session.messageMediaURLs[message.id] != nil))
+                } controls: {
+                    VStack(spacing: 10) {
+                        HStack {
+                            Button("Previous media", systemImage: "chevron.left") { move(-1) }
+                                .labelStyle(.iconOnly).disabled(index == 0).keyboardShortcut(.leftArrow, modifiers: [])
+                            Spacer()
+                            VStack(spacing: 3) {
+                                Text(message.date, format: .dateTime.day().month().year().hour().minute()).font(.caption)
+                                Text("\(index + 1) of \(model.messages.count)\(model.hasMore ? "+" : "")")
+                                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("gallery-position")
+                            }
+                            Spacer()
+                            Button("Next media", systemImage: "chevron.right") { move(1) }
+                                .labelStyle(.iconOnly).disabled(index == model.messages.count - 1 && !model.hasMore)
+                                .keyboardShortcut(.rightArrow, modifiers: [])
                         }
-                        Spacer()
-                        Button("Next media", systemImage: "chevron.right") { move(1) }
-                            .labelStyle(.iconOnly).disabled(index == model.messages.count - 1 && !model.hasMore)
-                            .keyboardShortcut(.rightArrow, modifiers: [])
+                        if let caption = message.contentText { Text(caption).font(.caption).lineLimit(2) }
+                    }.buttonStyle(.bordered).padding(.horizontal, 20).padding(.vertical, 12)
+                    .task(id: message.id) {
+                        await session.loadMedia(for: message)
+                        if index >= model.messages.count - 5 && model.hasMore { await loadMore() }
                     }
-                    if let caption = message.contentText { Text(caption).font(.caption).lineLimit(2) }
-                }.buttonStyle(.bordered).padding(.horizontal, 20).padding(.vertical, 12)
-                .task(id: message.id) {
-                    await session.loadMedia(for: message)
-                    if index >= model.messages.count - 5 && model.hasMore { await loadMore() }
                 }
             } else {
-                ContentUnavailableView("Media is no longer available", systemImage: "photo")
-                Button("Close", action: close).padding()
+                VStack(spacing: 0) {
+                    ContentUnavailableView("Media is no longer available", systemImage: "photo")
+                    Button("Close", action: close).padding()
+                }
             }
         }
         .background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
