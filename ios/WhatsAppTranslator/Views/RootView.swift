@@ -157,6 +157,8 @@ struct MainNavigationToolbar: ToolbarContent {
     @Binding var showSettings: Bool
 
     var body: some ToolbarContent {
+        // Messages, Chats and Settings are the app's primary destinations, so they stay visible
+        // longest when iPhone Duo compresses a vertical bar and sends other items to the overflow menu.
         ToolbarItemGroup(placement: .primaryAction) {
             Button("Messages", systemImage: session.mainTab == .messages ? "text.bubble.fill" : "text.bubble") {
                 session.mainTab = .messages
@@ -175,6 +177,7 @@ struct MainNavigationToolbar: ToolbarContent {
             Button("Settings", systemImage: "gearshape") { showSettings = true }
             #endif
         }
+        .foldableVisibilityPriority(.high)
     }
 }
 
@@ -238,7 +241,12 @@ struct TopicFilterBar: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .background(.regularMaterial)
-        .sheet(isPresented: $showManagement) { TopicManagementView(contactID: contactID).modifier(ReadReceiptCover()) }
+        .sheet(isPresented: $showManagement) {
+            TopicManagementView(contactID: contactID)
+                .modifier(ReadReceiptCover())
+                // Inside a conversation the sheet belongs beside that conversation, not over the hinge.
+                .foldableTrailingSheetPlacement(contactID != nil)
+        }
     }
 }
 
@@ -415,15 +423,18 @@ private struct UnifiedMessagesView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            messagesContent(bottomSafeArea: geometry.safeAreaInsets.bottom)
+        FoldableLayoutReader { layout in
+            messagesContent(layout: layout)
         }
         .modifier(PastedImagePresentation(controller: imagePaste))
         .task(id: composerTarget?.contactId) { await loadComposerSettings() }
     }
 
-    private func messagesContent(bottomSafeArea: CGFloat) -> some View {
+    private func messagesContent(layout: FoldableLayoutContext) -> some View {
         let items = ConversationTimelineBuilder.items(from: displayedMessages)
+        // On a partially open iPhone Duo the feed reads on one pane and the composer rests on the other.
+        let arrangement = FoldAwareChatLayout.arrangement(for: layout.division, in: layout.size)
+        let bottomSafeArea = layout.safeAreaInsets.bottom
         return NavigationStack {
             ZStack {
                 ChatWallpaper()
@@ -497,6 +508,7 @@ private struct UnifiedMessagesView: View {
                         if atBottom { withAnimation { proxy.scrollTo("feed-bottom", anchor: .bottom) } }
                     }
                 }
+                .environment(\.chatBubbleMaxWidth, arrangement.bubbleMaxWidth)
                 .blur(radius: replyDraft.isFocused ? 8 : 0)
                 .opacity(replyDraft.isFocused ? 0.35 : 1)
                 .allowsHitTesting(!replyDraft.isFocused)
@@ -516,7 +528,9 @@ private struct UnifiedMessagesView: View {
                 TopicFilterBar(contactID: nil, selection: $selectedTopicID)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                composer.padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
+                composer
+                    .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
+                    .foldAwareComposerPane(arrangement)
             }
             .sheet(isPresented: $showSettings) { AppSettingsView() }
             .sheet(item: $settingsContact) { ConversationSettingsView(contact: $0) }

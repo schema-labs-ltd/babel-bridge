@@ -313,6 +313,7 @@ targets:
       - path: SharedTests/ImagePasteTests.swift
       - path: SharedTests/AppIconTests.swift
       - path: SharedTests/ServerURLTests.swift
+      - path: SharedTests/FoldableLayoutTests.swift
     dependencies:
       - target: WhatsAppTranslator
     settings:
@@ -346,6 +347,7 @@ targets:
       - path: SharedTests/ImagePasteTests.swift
       - path: SharedTests/AppIconTests.swift
       - path: SharedTests/ServerURLTests.swift
+      - path: SharedTests/FoldableLayoutTests.swift
     dependencies:
       - target: BabelBridgeMac
     settings:

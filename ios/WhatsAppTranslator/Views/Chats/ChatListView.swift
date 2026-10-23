@@ -14,7 +14,20 @@ struct ChatListView: View {
         @Bindable var session = session
 
         NavigationSplitView {
-            sidebarContent(selection: $session.selectedContactID, searchText: $session.searchText)
+            FoldableBarReader { verticalBarEdge in
+                sidebarContent(selection: $session.selectedContactID, searchText: $session.searchText)
+                #if os(iOS)
+                .toolbar {
+                    if horizontalSizeClass == .compact {
+                        MainNavigationToolbar(showSettings: $showSettings)
+                    }
+                    ToolbarItem(placement: .topBarLeading) {
+                        updatesToolbarButton(inVerticalBar: verticalBarEdge != nil)
+                    }
+                    .foldableVisibilityPriority(.high)
+                }
+                #endif
+            }
             #if os(macOS)
             .navigationSplitViewColumnWidth(
                 min: MacChatLayoutMetrics.minimumSidebarWidth,
@@ -25,14 +38,6 @@ struct ChatListView: View {
             .navigationTitle("Chats")
             .platformInlineNavigationTitle()
             .platformChatNavigationBackground()
-            #if os(iOS)
-            .toolbar {
-                if horizontalSizeClass == .compact {
-                    MainNavigationToolbar(showSettings: $showSettings)
-                }
-                ToolbarItem(placement: .topBarLeading) { updatesToolbarButton }
-            }
-            #endif
             .overlay {
                 if session.contacts.isEmpty {
                     ContentUnavailableView(
@@ -63,7 +68,7 @@ struct ChatListView: View {
         #if os(macOS)
         .toolbar {
             MainNavigationToolbar(showSettings: $showSettings)
-            ToolbarItem(placement: .navigation) { updatesToolbarButton }
+            ToolbarItem(placement: .navigation) { updatesToolbarButton(inVerticalBar: false) }
         }
         #endif
         .sheet(isPresented: $showSettings) {
@@ -71,21 +76,36 @@ struct ChatListView: View {
         }
     }
 
+    /// The Updates shortcut. A vertical bar on iPhone Duo only shows items made of a title and a
+    /// symbol, so there the unread count becomes a system badge instead of the drawn one.
     @ViewBuilder
-    private var updatesToolbarButton: some View {
+    private func updatesToolbarButton(inVerticalBar: Bool) -> some View {
         if let updates = session.updatesContact {
-            Button {
-                session.selectedContactID = updates.id
-            } label: {
-                UpdatesToolbarIcon(unreadCount: updates.unreadCount)
+            if inVerticalBar {
+                Button("Updates", systemImage: updates.unreadCount > 0 ? "bell.badge.fill" : "bell") {
+                    session.selectedContactID = updates.id
+                }
+                .badge(updates.unreadCount)
+                .accessibilityValue(
+                    updates.unreadCount == 0
+                        ? "No unread updates"
+                        : "\(updates.unreadCount) unread"
+                )
+                .help("Updates")
+            } else {
+                Button {
+                    session.selectedContactID = updates.id
+                } label: {
+                    UpdatesToolbarIcon(unreadCount: updates.unreadCount)
+                }
+                .accessibilityLabel("Updates")
+                .accessibilityValue(
+                    updates.unreadCount == 0
+                        ? "No unread updates"
+                        : "\(updates.unreadCount) unread"
+                )
+                .help("Updates")
             }
-            .accessibilityLabel("Updates")
-            .accessibilityValue(
-                updates.unreadCount == 0
-                    ? "No unread updates"
-                    : "\(updates.unreadCount) unread"
-            )
-            .help("Updates")
         }
     }
 
