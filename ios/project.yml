@@ -281,6 +281,7 @@ targets:
       configs:
         Debug:
           APS_ENVIRONMENT: development
+          ENABLE_HARDENED_RUNTIME: false
         Release:
           APS_ENVIRONMENT: production
     info:
