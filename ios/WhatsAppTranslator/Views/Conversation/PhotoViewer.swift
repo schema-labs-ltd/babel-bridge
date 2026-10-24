@@ -18,6 +18,8 @@ struct PhotoViewer: View {
     let image: PlatformImage
     let close: () -> Void
     var onSwipe: (Int) -> Void = { _ in }
+    /// A paging container owns horizontal swipes, so dragging only pans a zoomed photo.
+    var isPaged = false
 
     @State private var scale = PhotoViewerZoom.minimumScale
     @State private var settledScale = PhotoViewerZoom.minimumScale
@@ -39,7 +41,8 @@ struct PhotoViewer: View {
                     .scaleEffect(scale)
                     .offset(offset)
                     .contentShape(Rectangle())
-                    .gesture(zoomAndPanGesture)
+                    .gesture(magnifyGesture)
+                    .gesture(dragGesture, including: isPaged && scale == PhotoViewerZoom.minimumScale ? .subviews : .all)
                     .onTapGesture(count: 2, perform: toggleZoom)
                     .accessibilityLabel("Full-screen photo")
                     .accessibilityHint("Pinch to zoom and drag to move around the photo")
@@ -51,15 +54,17 @@ struct PhotoViewer: View {
         .photoViewerExitCommand(close)
     }
 
-    private var zoomAndPanGesture: some Gesture {
-        SimultaneousGesture(
-            MagnifyGesture()
-                .onChanged { value in
-                    scale = PhotoViewerZoom.clampedScale(settledScale * value.magnification)
-                }
-                .onEnded { _ in
-                    settleZoom()
-                },
+    private var magnifyGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                scale = PhotoViewerZoom.clampedScale(settledScale * value.magnification)
+            }
+            .onEnded { _ in
+                settleZoom()
+            }
+    }
+
+    private var dragGesture: some Gesture {
             DragGesture(minimumDistance: 4)
                 .onChanged { value in
                     guard scale > PhotoViewerZoom.minimumScale else { return }
@@ -76,7 +81,6 @@ struct PhotoViewer: View {
                     }
                     settledOffset = offset
                 }
-        )
     }
 
     private var viewerControls: some View {
@@ -217,9 +221,9 @@ struct PhotoGalleryViewer: View {
     private var index: Int {
         PhotoGalleryLayout.page(after: 0, current: selectedIndex ?? messages.firstIndex(where: { $0.id == initialPhotoID }) ?? 0, count: messages.count)
     }
-    private var message: ChatMessage {
-        let original = messages[index]
-        return session.messages[original.contactId]?.first(where: { $0.id == original.id })
+    private var message: ChatMessage { current(messages[index]) }
+    private func current(_ original: ChatMessage) -> ChatMessage {
+        session.messages[original.contactId]?.first(where: { $0.id == original.id })
             ?? session.unifiedMessages.first(where: { $0.id == original.id && $0.contactId == original.contactId })
             ?? original
     }
@@ -227,8 +231,28 @@ struct PhotoGalleryViewer: View {
     var body: some View {
         // On a partially open iPhone Duo the photo fills one pane and the details the other.
         FoldAwareMediaLayout {
+            #if os(iOS)
+            TabView(selection: Binding(get: { index }, set: { selectedIndex = $0; showOriginal = false })) {
+                ForEach(Array(messages.enumerated()), id: \.element.id) { offset, original in
+                    page(for: current(original), paged: true).tag(offset)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            #else
+            page(for: message, paged: false)
+            #endif
+        } controls: {
+            details
+        }
+        .background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
+        .photoViewerExitCommand { dismiss() }
+    }
+
+    @ViewBuilder
+    private func page(for message: ChatMessage, paged: Bool) -> some View {
+        Group {
             if let image = session.messageImages[message.id] {
-                PhotoViewer(image: image, close: { dismiss() }, onSwipe: move)
+                PhotoViewer(image: image, close: { dismiss() }, onSwipe: move, isPaged: paged)
                     .modifier(ViewedMessageTask(messages: [message], enabled: true))
                     .id(message.id)
             } else {
@@ -249,12 +273,8 @@ struct PhotoGalleryViewer: View {
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-        } controls: {
-            details
         }
-        .background(.black).foregroundStyle(.white).preferredColorScheme(.dark)
         .task(id: message.id) { [message] in await session.loadMedia(for: message) }
-        .photoViewerExitCommand { dismiss() }
     }
 
     private var details: some View {
