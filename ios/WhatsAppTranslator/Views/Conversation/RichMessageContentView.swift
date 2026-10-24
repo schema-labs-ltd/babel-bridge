@@ -238,9 +238,22 @@ private struct InlineVideoPlayer: View {
     }
 
     var body: some View {
-        NativeMessageVideoPlayer(playback: playback)
+        InlineVideoPreview(playback: playback)
             .frame(width: 280, height: 190)
+            .overlay {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(radius: 4)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture().onEnded { playback.presentFullScreen() }
+            )
+            .accessibilityLabel("Play video full screen")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { playback.presentFullScreen() }
     }
 }
 
@@ -288,6 +301,23 @@ final class MessageVideoPlayback: NSObject {
 
     func attach() { isAttached = true }
 
+    /// Tapping a video bubble opens the shared controller full screen and starts playback.
+    func presentFullScreen(animated: Bool = true, completion: ((Bool) -> Void)? = nil) {
+        guard controller.presentingViewController == nil,
+              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
+              var presenter = scene.windows.first(where: \.isKeyWindow)?.rootViewController else {
+            completion?(controller.presentingViewController != nil)
+            return
+        }
+        while let presented = presenter.presentedViewController { presenter = presented }
+        setFullScreen(true)
+        controller.modalPresentationStyle = .fullScreen
+        presenter.present(controller, animated: animated) { [weak self] in
+            if animated { self?.player.play() }
+            completion?(true)
+        }
+    }
+
     func detach() {
         isAttached = false
         finishPresentationIfNeeded()
@@ -320,15 +350,26 @@ final class MessageVideoPlayback: NSObject {
     }
 }
 
-private struct NativeMessageVideoPlayer: UIViewControllerRepresentable {
+private final class PlayerLayerView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+}
+
+/// The bubble shows the shared player's frames; the controls live in the full-screen controller.
+private struct InlineVideoPreview: UIViewRepresentable {
     let playback: MessageVideoPlayback
     func makeCoordinator() -> MessageVideoPlayback { playback }
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
+    func makeUIView(context: Context) -> PlayerLayerView {
         playback.attach()
-        return playback.controller
+        let view = PlayerLayerView()
+        view.backgroundColor = .black
+        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.player = playback.player
+        return view
     }
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {}
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: MessageVideoPlayback) {
+    func updateUIView(_ view: PlayerLayerView, context: Context) {}
+    static func dismantleUIView(_ view: PlayerLayerView, coordinator: MessageVideoPlayback) {
+        view.playerLayer.player = nil
         coordinator.detach()
     }
 }
@@ -356,23 +397,12 @@ extension MessageVideoPlayback: @preconcurrency AVPlayerViewControllerDelegate {
     }
     func playerViewControllerShouldAutomaticallyDismissAtPictureInPictureStart(_ playerViewController: AVPlayerViewController) -> Bool { false }
     func playerViewController(_ playerViewController: AVPlayerViewController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
-        if isAttached || playerViewController.presentingViewController != nil {
+        if playerViewController.presentingViewController != nil {
             completionHandler(true)
             return
         }
         // The user may have left the conversation while the PiP window was playing.
-        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
-              var presenter = scene.windows.first(where: \.isKeyWindow)?.rootViewController else {
-            completionHandler(false)
-            return
-        }
-        while let presented = presenter.presentedViewController { presenter = presented }
-        playerViewController.willMove(toParent: nil)
-        playerViewController.view.removeFromSuperview()
-        playerViewController.removeFromParent()
-        setFullScreen(true)
-        playerViewController.modalPresentationStyle = .fullScreen
-        presenter.present(playerViewController, animated: false) { completionHandler(true) }
+        presentFullScreen(animated: false, completion: completionHandler)
     }
 }
 #endif
