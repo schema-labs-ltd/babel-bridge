@@ -21,7 +21,7 @@
     "@storybook/html-vite": "^10.3.5",
     "esbuild": "0.28.2",
     "prettier": "3.9.4",
-    "storybook": "^10.3.5",
+    "storybook": "^10.6.3",
     "typescript": "5.9.3"
   }
 }
