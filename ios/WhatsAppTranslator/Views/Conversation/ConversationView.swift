@@ -43,6 +43,13 @@ struct ConversationView: View {
     }
 
     @ViewBuilder
+    private var conversationBarActions: some View {
+        Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
+            .accessibilityIdentifier("open-chat-gallery")
+        Menu("Conversation", systemImage: "ellipsis") { conversationActions }
+    }
+
+    @ViewBuilder
     private var conversationActions: some View {
         Button("Search messages", systemImage: "magnifyingglass") {
             Task { await activateSearch() }
@@ -225,14 +232,20 @@ struct ConversationView: View {
             if !showsInlineHeader {
                 ToolbarItem(placement: .principal) { conversationTitleButton }
             }
-            // Gallery and the conversation menu sit at the right of the header, so the bottom bar keeps
-            // only Messages, Chats and Settings. iPhone Duo moves them into its vertical bar on its own.
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
-                    .accessibilityIdentifier("open-chat-gallery")
-                Menu("Conversation", systemImage: "ellipsis") { conversationActions }
+            // Gallery and the conversation menu are their own group, apart from Messages, Chats and Settings.
+            // In a vertical bar on iPhone Duo a leading item gets its own glass button above the
+            // destinations, as the Messages feed's topic filter does; a trailing one joins their capsule.
+            // In a horizontal bar they stay at the right of the header, split off by a spacer.
+            if layout.usesVerticalBars {
+                ToolbarItemGroup(placement: .topBarLeading) { conversationBarActions }
+                    .foldableVisibilityPriority(.high)
+            } else {
+                if #available(iOS 26.0, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) { conversationBarActions }
+                    .foldableVisibilityPriority(.high)
             }
-            .foldableVisibilityPriority(.high)
             #endif
         }
         .task {
