@@ -150,7 +150,7 @@ struct ChatListView: View {
         VStack(spacing: 0) {
             filterBar
             contactList(selection: selection)
-                .refreshable { await session.refresh() }
+                .refreshable { await session.refresh(reportTransientFailures: true) }
         }
         .searchable(text: searchText, prompt: "Search chats")
         #endif

@@ -543,21 +543,40 @@ final class AppSession {
         }
     }
 
-    func refresh() async {
+    /// Delays between quiet retries when a refresh hits a dropped or unavailable connection.
+    var transientRefreshRetryDelays: [Duration] = [.seconds(1), .seconds(3)]
+
+    /// Refreshes the chat list. Dropped connections (for example a request cut off when the
+    /// phone locks, or made before the network is back after unlocking) are retried quietly.
+    /// Automatic refreshes never alert for those, because the cached chats stay on screen and
+    /// the live connection keeps retrying; a pull to refresh reports them once retries run out.
+    func refresh(reportTransientFailures: Bool = false) async {
         guard !demoMode else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        let revision = connectionRevision
-        do {
-            async let status = api.status()
-            async let contacts = api.contacts()
-            let latestStatus = try await status
-            if revision == connectionRevision { applyBackendStatus(latestStatus) }
-            self.contacts = try await contacts
-            await persistCache()
-        } catch {
-            guard !Self.isExpectedCancellation(error) else { return }
-            presentError("Couldn’t refresh chats", error)
+        var retryDelays = transientRefreshRetryDelays[...]
+        while true {
+            let revision = connectionRevision
+            do {
+                async let status = api.status()
+                async let contacts = api.contacts()
+                let latestStatus = try await status
+                if revision == connectionRevision { applyBackendStatus(latestStatus) }
+                self.contacts = try await contacts
+                await persistCache()
+                return
+            } catch {
+                guard !Self.isExpectedCancellation(error) else { return }
+                guard Self.isTransientNetworkError(error) else {
+                    presentError("Couldn’t refresh chats", error)
+                    return
+                }
+                guard let delay = retryDelays.popFirst() else {
+                    if reportTransientFailures { presentError("Couldn’t refresh chats", error) }
+                    return
+                }
+                do { try await Task.sleep(for: delay) } catch { return }
+            }
         }
     }
 
@@ -1568,6 +1587,25 @@ final class AppSession {
             return false
         }
         return isExpectedCancellation(underlying)
+    }
+
+    /// Network failures that usually clear up by themselves, such as a connection dropped
+    /// while the device was locked or a request made before the network came back.
+    nonisolated static func isTransientNetworkError(_ error: Error) -> Bool {
+        let error = error as NSError
+        if error.domain == NSURLErrorDomain {
+            let transient: Set<URLError.Code> = [
+                .networkConnectionLost, .notConnectedToInternet, .timedOut,
+                .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+                .dataNotAllowed, .internationalRoamingOff, .callIsActive,
+                .backgroundSessionWasDisconnected,
+            ]
+            if transient.contains(URLError.Code(rawValue: error.code)) { return true }
+        }
+        guard let underlying = error.userInfo[NSUnderlyingErrorKey] as? Error else {
+            return false
+        }
+        return isTransientNetworkError(underlying)
     }
 
     func normalizeMessages(_ values: [ChatMessage]) -> [ChatMessage] {
