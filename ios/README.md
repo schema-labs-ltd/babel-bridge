@@ -78,9 +78,10 @@ Outer display (device closed, compact width):
 - Chat headers fade into the wallpaper instead of drawing a bar: iOS 26 blurs
   scrolled content softly under a clear navigation bar, the Messages feed keeps
   its topic filter in the bar rather than under the title, and the conversation
-  header in the content sits on a frosted fade that is full strength to the
-  header's bottom edge and dissolves below it, so messages never collide with
-  the name. The composer floats in the bottom safe area on both screens, so
+  header in the content sits on a frosted fade that is strongest at the top of
+  the display, eases through the header so a scrolled bubble shows only faintly
+  behind the name, and dissolves over the row beneath it, as WhatsApp's header
+  does. The composer floats in the bottom safe area on both screens, so
   messages scroll behind its glass controls. An active topic shows as a
   clearable pill above the timeline, like the starred filter.
 - In the unified Messages feed each chat's heading (avatar, name, date) is a
