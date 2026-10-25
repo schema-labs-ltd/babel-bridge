@@ -181,6 +181,71 @@ struct MainNavigationToolbar: ToolbarContent {
     }
 }
 
+/// The topic filter choices: the full timeline, every topic in scope and topic management.
+struct TopicFilterMenuItems: View {
+    @Environment(AppSession.self) private var session
+    let contactID: String?
+    @Binding var selection: String?
+    @Binding var showManagement: Bool
+    /// Whether organising progress and catalog errors are listed too, where no bar shows them.
+    var showsStatus = true
+
+    private var topics: [ChatTopic] { session.topics(for: contactID) }
+    private var pending: Int { session.topicCatalog.pendingCount(contactID: contactID) }
+
+    var body: some View {
+        Button { selection = nil } label: {
+            Label("All messages", systemImage: selection == nil ? "checkmark" : "text.bubble")
+        }
+        if !topics.isEmpty {
+            Divider()
+            ForEach(topics) { topic in
+                Button { selection = topic.id } label: {
+                    Label(topic.title, systemImage: selection == topic.id ? "checkmark" : "number")
+                }
+            }
+        }
+        if showsStatus, pending > 0 || session.topicCatalogError != nil {
+            Divider()
+            if pending > 0 {
+                Text("Organising \(pending) messages…")
+            }
+            if let error = session.topicCatalogError {
+                Text(error)
+                Button("Retry loading topics", systemImage: "arrow.clockwise") { Task { await session.loadTopics() } }
+            }
+        }
+        Divider()
+        Button("Manage topics", systemImage: "slider.horizontal.3") { showManagement = true }
+            .accessibilityIdentifier("manage-topics")
+    }
+}
+
+/// The topic filter as a bar item, so the header above the timeline stays clear like a WhatsApp chat.
+/// In the vertical bar on iPhone Duo it sits beside the other bar items; in an overflow menu it is a submenu.
+struct TopicFilterMenu: View {
+    @Environment(AppSession.self) private var session
+    let contactID: String?
+    @Binding var selection: String?
+    @Binding var showManagement: Bool
+
+    private var selected: ChatTopic? { session.topics(for: contactID).first { $0.id == selection } }
+
+    var body: some View {
+        Menu {
+            TopicFilterMenuItems(contactID: contactID, selection: $selection, showManagement: $showManagement)
+        } label: {
+            Label(
+                "Filter by topic",
+                systemImage: selection == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill"
+            )
+        }
+        .accessibilityValue(selected?.title ?? "All messages")
+        .accessibilityIdentifier("topic-filter")
+    }
+}
+
+#if os(macOS)
 struct TopicFilterBar: View {
     @Environment(AppSession.self) private var session
     let contactID: String?
@@ -195,32 +260,9 @@ struct TopicFilterBar: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Menu {
-                    Button { selection = nil } label: {
-                        Label("All messages", systemImage: selection == nil ? "checkmark" : "text.bubble")
-                    }
-                    if !topics.isEmpty {
-                        Divider()
-                        ForEach(topics) { topic in
-                            Button { selection = topic.id } label: {
-                                Label(topic.title,
-                                      systemImage: selection == topic.id ? "checkmark" : "number")
-                            }
-                        }
-                    }
-                    Divider()
-                    Button("Manage topics", systemImage: "slider.horizontal.3") { showManagement = true }
+                    TopicFilterMenuItems(contactID: contactID, selection: $selection, showManagement: $showManagement, showsStatus: false)
                 } label: {
-                    #if os(macOS)
                     Label(selected?.title ?? "All messages", systemImage: "line.3.horizontal.decrease.circle")
-                    #else
-                    HStack(spacing: 6) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(selected?.title ?? "All messages").font(.subheadline.weight(.semibold)).lineLimit(1)
-                        }
-                        Image(systemName: "chevron.down").font(.caption2)
-                    }
-                    #endif
                 }
                 .accessibilityIdentifier("topic-filter")
                 Spacer(minLength: 4)
@@ -228,9 +270,6 @@ struct TopicFilterBar: View {
                     ProgressView().controlSize(.mini)
                     Text("Organising \(pending)").font(.caption2).foregroundStyle(.secondary)
                 }
-                Button("Topics", systemImage: "sparkles") { showManagement = true }
-                    .font(.caption.weight(.semibold))
-                    .accessibilityIdentifier("manage-topics")
             }
             if let error = session.topicCatalogError {
                 HStack {
@@ -244,11 +283,10 @@ struct TopicFilterBar: View {
         .sheet(isPresented: $showManagement) {
             TopicManagementView(contactID: contactID)
                 .modifier(ReadReceiptCover())
-                // Inside a conversation the sheet belongs beside that conversation, not over the hinge.
-                .foldableTrailingSheetPlacement(contactID != nil)
         }
     }
 }
+#endif
 
 struct TopicPageControls: View {
     @Environment(AppSession.self) private var session
@@ -388,6 +426,8 @@ private struct UnifiedMessagesView: View {
     @State private var showSettings = false
     @State private var settingsContact: Contact?
     @State private var selectedTopicID: String?
+    @State private var showTopicManagement = false
+    private var selectedTopic: ChatTopic? { session.topics().first { $0.id == selectedTopicID } }
     private var displayedMessages: [ChatMessage] {
         if let selectedTopicID { return session.topicPages[selectedTopicID]?.messages ?? [] }
         return session.unifiedMessages
@@ -523,9 +563,26 @@ private struct UnifiedMessagesView: View {
             .navigationTitle("Messages")
             .platformInlineNavigationTitle()
             .platformChatNavigationBackground()
-            .toolbar { MainNavigationToolbar(showSettings: $showSettings) }
+            .toolbar {
+                MainNavigationToolbar(showSettings: $showSettings)
+                #if os(iOS)
+                // The filter is a bar item, so the title sits on the wallpaper with no bar of its own
+                // beneath it, and iPhone Duo keeps the filter in its vertical bar beside Messages and Chats.
+                ToolbarItem(placement: .topBarLeading) {
+                    TopicFilterMenu(contactID: nil, selection: $selectedTopicID, showManagement: $showTopicManagement)
+                }
+                .foldableVisibilityPriority(.high)
+                #endif
+            }
             .safeAreaInset(edge: .top, spacing: 0) {
+                #if os(macOS)
                 TopicFilterBar(contactID: nil, selection: $selectedTopicID)
+                #else
+                if let selectedTopic {
+                    FilterPill(title: selectedTopic.title, systemImage: "number") { selectedTopicID = nil }
+                        .padding(.vertical, 8)
+                }
+                #endif
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
@@ -534,6 +591,10 @@ private struct UnifiedMessagesView: View {
             }
             .sheet(isPresented: $showSettings) { AppSettingsView() }
             .sheet(item: $settingsContact) { ConversationSettingsView(contact: $0) }
+            .sheet(isPresented: $showTopicManagement) {
+                TopicManagementView(contactID: nil)
+                    .modifier(ReadReceiptCover())
+            }
         }
         .task {
             if !session.feedHasLoaded { await session.loadFeed() }

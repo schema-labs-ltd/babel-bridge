@@ -207,11 +207,17 @@ extension View {
         #endif
     }
 
+    /// Chat bars fade into the wallpaper. iOS 26 blurs scrolled content softly under a clear bar, so
+    /// forcing a material there would draw a solid band over the wallpaper instead of that fade.
     @ViewBuilder
     func platformChatNavigationBackground() -> some View {
         #if os(iOS)
-        toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+        if #available(iOS 26.0, *) {
+            self
+        } else {
+            toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+        }
         #else
         self
         #endif

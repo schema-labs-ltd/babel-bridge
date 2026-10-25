@@ -461,13 +461,13 @@ final class ConversationTranslationUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Could someone bring lunch?"].exists)
         let filtered = XCTAttachment(screenshot: app.screenshot()); filtered.name = "Weekend plans combines Family and Friends and preserves the original quote"; filtered.lifetime = .keepAlways; add(filtered)
         app.buttons["Open chat: Family"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["topic-filter"].firstMatch.waitForExistence(timeout: 5))
-        app.buttons["topic-filter"].firstMatch.tap()
+        openConversationTopicFilter(in: app)
         app.buttons["Football"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["The replay is brilliant too."].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["I’ll bring the picnic blanket and sandwiches."].exists)
         let conversation = XCTAttachment(screenshot: app.screenshot()); conversation.name = "Conversation focused on the Football topic"; conversation.lifetime = .keepAlways; add(conversation)
-        app.buttons["manage-topics"].firstMatch.tap()
+        openConversationTopicFilter(in: app)
+        tapManageTopics(in: app)
         let topicToggle = app.switches["topics-enabled-family@g.us"].firstMatch
         XCTAssertTrue(topicToggle.waitForExistence(timeout: 5))
         XCTAssertEqual(topicToggle.value as? String, "1")
@@ -476,7 +476,8 @@ final class ConversationTranslationUITests: XCTestCase {
         app.buttons["Done"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["I’ll bring the picnic blanket and sandwiches."].firstMatch.waitForExistence(timeout: 5))
         let restored = XCTAttachment(screenshot: app.screenshot()); restored.name = "Disabling topics restores all messages"; restored.lifetime = .keepAlways; add(restored)
-        app.buttons["manage-topics"].firstMatch.tap()
+        openConversationTopicFilter(in: app)
+        tapManageTopics(in: app)
         let initialImport = app.buttons["import-recent-topics"].firstMatch
         if !initialImport.isHittable { app.swipeUp() }
         XCTAssertTrue(initialImport.waitForExistence(timeout: 5))
@@ -487,8 +488,29 @@ final class ConversationTranslationUITests: XCTestCase {
         app.buttons["Start import"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Queued 5 messages across 2 chats")).firstMatch.waitForExistence(timeout: 5))
         app.buttons["Done"].firstMatch.tap()
-        app.buttons["topic-filter"].firstMatch.tap()
+        openConversationTopicFilter(in: app)
         XCTAssertTrue(app.buttons["Football"].firstMatch.waitForExistence(timeout: 5))
+    }
+
+    /// Opens the topic filter inside a conversation. There it is a submenu of the overflow menu beside
+    /// the starred filter: the app's own "Conversation" menu, or the system overflow menu on iOS 27.
+    private func openConversationTopicFilter(in app: XCUIApplication) {
+        let ownMenu = app.buttons["Conversation"].firstMatch
+        let overflow = ownMenu.exists ? ownMenu : app.buttons["More"].firstMatch
+        XCTAssertTrue(overflow.waitForExistence(timeout: 5))
+        overflow.tap()
+        let byIdentifier = app.buttons["topic-filter"].firstMatch
+        let filter = byIdentifier.exists ? byIdentifier : app.buttons["Filter by topic"].firstMatch
+        XCTAssertTrue(filter.waitForExistence(timeout: 5))
+        filter.tap()
+    }
+
+    /// Chooses Manage topics from an open topic filter menu.
+    private func tapManageTopics(in app: XCUIApplication) {
+        let byIdentifier = app.buttons["manage-topics"].firstMatch
+        let manage = byIdentifier.exists ? byIdentifier : app.buttons["Manage topics"].firstMatch
+        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        manage.tap()
     }
 
     func testLiveEditChangesGetToGrrInUnifiedAndNormalViewsWithoutRelaunch() throws {

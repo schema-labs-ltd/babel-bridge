@@ -70,10 +70,16 @@ Outer display (device closed, compact width):
 
 - Toolbars and the navigation controls move to the side of the display. Every
   toolbar item has a title and a symbol, so the system can present it vertically.
-  Messages, Chats, Settings, Updates and Gallery carry a high visibility priority
-  and stay in the bar when it compresses; secondary conversation actions
-  (search, starred filter, cost, settings) join the system overflow menu on
-  iOS 27, so the bar shows one ellipsis instead of the app's own menu beside it.
+  Messages, Chats, Settings, Updates, Gallery and the topic filter of the
+  Messages feed carry a high visibility priority and stay in the bar when it
+  compresses; secondary conversation actions (search, starred filter, topic
+  filter, cost, settings) join the system overflow menu on iOS 27, so the bar
+  shows one ellipsis instead of the app's own menu beside it.
+- Chat headers fade into the wallpaper instead of drawing a bar: iOS 26 blurs
+  scrolled content softly under a clear navigation bar, the Messages feed keeps
+  its topic filter in the bar rather than under the title, and the conversation
+  header in the content sits on a fade of the chat background. An active topic
+  shows as a clearable pill above the timeline, like the starred filter.
 - The Updates bell keeps its drawn unread count in horizontal bars and switches
   to a system badge in a vertical bar, where only title-and-symbol items appear.
 - The conversation header (avatar, name, translation status) lives in the
@@ -128,7 +134,8 @@ Implementation notes:
 Validation checklist for a Duo simulator (Xcode 27.1 Device Hub poses) or device:
 
 - Closed, portrait and landscape: vertical bar shows Messages, Chats, Settings,
-  Updates (badge) and Gallery; the overflow menu lists the conversation actions;
+  Updates (badge), Gallery and the Messages feed's topic filter; the overflow
+  menu lists the conversation actions, including Filter by topic;
   the conversation header is in the content.
 - Open flat, portrait and landscape: two-column Chats; trailing conversation
   settings and cost sheets; Gallery grid with four or six columns.
