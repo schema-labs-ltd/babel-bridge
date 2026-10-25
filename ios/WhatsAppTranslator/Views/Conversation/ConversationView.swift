@@ -17,7 +17,9 @@ struct ConversationView: View {
     @State private var messageSearch = ""
     @State private var starredOnly = false
     @State private var selectedTopicID: String?
+    @State private var showTopicManagement = false
     @State private var usage: UsageSummary?
+    private var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
     private var conversationTitleButton: some View {
@@ -29,7 +31,7 @@ struct ConversationView: View {
                         .font(.headline)
                         .lineLimit(1)
                     Text(conversationHeaderSubtitle)
-                        .font(.caption2)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -104,8 +106,8 @@ struct ConversationView: View {
                     showCost: { showCost = true },
                     showConversationSettings: { showSettings = true }
                 )
-                #endif
                 TopicFilterBar(contactID: contact.id, selection: $selectedTopicID)
+                #endif
                 if showSearch {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -130,6 +132,14 @@ struct ConversationView: View {
                     }
                     .padding(.top, 8)
                 }
+                #if os(iOS)
+                if let selectedTopic {
+                    FilterPill(title: selectedTopic.title, systemImage: "number") {
+                        selectedTopicID = nil
+                    }
+                    .padding(.top, 8)
+                }
+                #endif
                 if session.loadingCompleteHistoryContactIDs.contains(contact.id) {
                     HStack(spacing: 7) {
                         ProgressView().controlSize(.small)
@@ -196,7 +206,7 @@ struct ConversationView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(.bar)
+                    .background { InlineHeaderFade() }
             }
         }
         #endif
@@ -223,6 +233,8 @@ struct ConversationView: View {
                 ) {
                     Task { await toggleStarredFilter() }
                 }
+                // The topic filter sits with the starred filter, which keeps the bar and the header clear.
+                TopicFilterMenu(contactID: contact.id, selection: $selectedTopicID, showManagement: $showTopicManagement)
                 Divider()
                 Button("Conversation cost", systemImage: "dollarsign.circle") { showCost = true }
                 Button("Conversation settings", systemImage: "slider.horizontal.3") { showSettings = true }
@@ -255,6 +267,12 @@ struct ConversationView: View {
                 .foldableTrailingSheetPlacement()
         }
         #if os(iOS)
+        .sheet(isPresented: $showTopicManagement) {
+            TopicManagementView(contactID: contact.id)
+                .modifier(ReadReceiptCover())
+                // Inside a conversation the sheet belongs beside that conversation, not over the hinge.
+                .foldableTrailingSheetPlacement()
+        }
         .fullScreenCover(isPresented: $showGallery) { ChatMediaGallery(contact: contact).environment(session) }
         #else
         .sheet(isPresented: $showGallery) { ChatMediaGallery(contact: contact).environment(session) }
@@ -538,6 +556,28 @@ struct WallpaperPattern: View {
     }
 }
 
+#if os(iOS)
+/// The wallpaper fades to its plain colour behind the inline header, as it does under a WhatsApp
+/// chat header, so the header reads clearly without a bar across the top.
+private struct InlineHeaderFade: View {
+    @Environment(\.translatorPalette) private var palette
+
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: palette.chatBackground, location: 0),
+                .init(color: palette.chatBackground.opacity(0.85), location: 0.5),
+                .init(color: palette.chatBackground.opacity(0), location: 1)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+    }
+}
+#endif
+
 private struct DatePill: View {
     let date: Date
     var body: some View {
@@ -550,7 +590,7 @@ private struct DatePill: View {
     }
 }
 
-private struct FilterPill: View {
+struct FilterPill: View {
     let title: String
     let systemImage: String
     let clear: () -> Void
