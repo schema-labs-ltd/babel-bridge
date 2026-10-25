@@ -570,11 +570,15 @@ struct WallpaperPattern: View {
 }
 
 #if os(iOS)
-/// A frosted fade behind the inline header, like the one under a WhatsApp chat header: full strength
-/// from the top of the display to the header's bottom edge, so scrolled messages never collide with the
-/// name, then dissolving over the next few rows so there is no bar edge.
+/// A frosted fade behind the inline header, like the one under a WhatsApp chat header. The frost is
+/// strongest at the top of the display and eases through the header, so a scrolled bubble shows only
+/// faintly behind the name, then dissolves over the row beneath the header's bottom edge: the message
+/// just under the header is about half visible, the next one is clear, and there is no bar edge.
 private struct InlineHeaderBackground: ViewModifier {
-    private static let dissolveHeight: CGFloat = 44
+    /// The frost's strength at the header's bottom edge, as a fraction of full strength.
+    private static let edgeStrength = 0.68
+    /// How far below the header's bottom edge the frost reaches before it is gone.
+    private static let dissolveHeight: CGFloat = 60
 
     func body(content: Content) -> some View {
         content.background {
@@ -582,9 +586,26 @@ private struct InlineHeaderBackground: ViewModifier {
                 .fill(.ultraThinMaterial)
                 .mask {
                     VStack(spacing: 0) {
-                        Rectangle()
-                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                            .frame(height: Self.dissolveHeight)
+                        // Full strength at the top of the display, easing to the edge strength at the
+                        // header's bottom edge, so the header never reads as a solid band.
+                        LinearGradient(
+                            colors: [.black, .black.opacity(Self.edgeStrength)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        // Beneath the header the frost falls away quickly at first and then tails off,
+                        // which is softer than a straight dissolve of the same height.
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black.opacity(Self.edgeStrength), location: 0),
+                                .init(color: .black.opacity(0.36), location: 0.3),
+                                .init(color: .black.opacity(0.14), location: 0.6),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: Self.dissolveHeight)
                     }
                 }
                 .padding(.bottom, -Self.dissolveHeight)
