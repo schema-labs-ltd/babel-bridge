@@ -35,3 +35,6 @@ output/playwright/
 
 *storybook.log
 storybook-static
+
+# Xcode Cloud TestFlight notes, generated per build
+ios/TestFlight/

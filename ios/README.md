@@ -231,6 +231,16 @@ prints a warning plus a diff stat if the committed
 `WhatsAppTranslator.xcodeproj` differs. The warning does not fail the build.
 Generation failure does. The script does not print the environment.
 
+`ios/ci_scripts/ci_post_xcodebuild.sh` fills in the TestFlight **What to Test**
+notes. After each archive it writes `ios/TestFlight/WhatToTest.en-US.txt`,
+which Xcode Cloud attaches to the build it sends to TestFlight. The notes lead
+with the subject and first body paragraph of the newest commit that touches
+`ios/` or `web/public/sounds/`, then list the subjects of the four app commits
+before it, then the short commit hash. Pull request numbers are dropped from
+subjects, so write pull request titles and the first paragraph of the
+description for testers. The file is generated per build and ignored by git.
+The script never fails the build.
+
 Pull-request builds and unit tests are the GitHub Actions check `apple / apple`.
 Xcode Cloud keeps workflow B, **Main – TestFlight (internal)**. This repository
 does not define that workflow. Simon creates it in Xcode. These steps are for
