@@ -73,9 +73,11 @@ Outer display (device closed, compact width):
   Messages, Chats, Settings, Updates, Gallery and the topic filter of the
   Messages feed carry a high visibility priority and stay in the bar when it
   compresses. In a conversation, Gallery and the ellipsis menu of secondary
-  actions (search, starred filter, topic filter, cost, settings) are ordinary
-  items at the right of the header, so the system moves them into the vertical
-  bar with the rest and the bottom bar keeps only Messages, Chats and Settings.
+  actions (search, starred filter, topic filter, cost, settings) form their
+  own group at the right of the header, split from Messages, Chats and Settings
+  by a spacer. In a vertical bar they are leading items, so, like the Messages
+  feed's topic filter, they get their own glass button above the capsule of
+  destinations instead of joining it.
 - Chat headers fade into the wallpaper instead of drawing a bar: iOS 26 blurs
   scrolled content softly under a clear navigation bar, the Messages feed keeps
   its topic filter in the bar rather than under the title, and the conversation
