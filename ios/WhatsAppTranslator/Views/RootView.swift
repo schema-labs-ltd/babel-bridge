@@ -558,7 +558,11 @@ private struct UnifiedMessagesView: View {
                     }
                 }
             }
+            #if os(macOS)
+            // The Mac keeps the title as its window name. On iPhone and iPad the filled Messages
+            // button already shows where you are, so the feed runs up to the bar with no heading.
             .navigationTitle("Messages")
+            #endif
             .platformInlineNavigationTitle()
             .platformChatNavigationBackground()
             .toolbar {
