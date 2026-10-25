@@ -165,27 +165,18 @@ struct ConversationView: View {
                         }
                     }
                 }
-                VStack(spacing: 0) {
-                    if let progress = activePhotoSend {
-                        PhotoSendProgressView(progress: progress)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                    }
-                    ComposerView(
-                        contactID: contact.id,
-                        text: $draft,
-                        reply: replyTarget,
-                        showReplyPreview: focusedReplyMessage == nil,
-                        isSending: session.sendingContactIDs.contains(contact.id),
-                        cancelReply: cancelReply,
-                        sendImages: sendImages,
-                        send: send
-                    )
-                    .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
-                }
-                .foldAwareComposerPane(arrangement)
+                #if os(macOS)
+                composerPane(arrangement: arrangement, bottomSafeArea: bottomSafeArea)
+                #endif
             }
         }
+        #if os(iOS)
+        // The composer floats in the bottom safe area, so messages scroll behind its glass controls
+        // instead of stopping at its top edge, as they already do in the unified Messages feed.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            composerPane(arrangement: arrangement, bottomSafeArea: bottomSafeArea)
+        }
+        #endif
         .navigationTitle(platformNavigationTitle)
         .task(id: contact.id) { _ = try? await session.conversationSettings(for: contact.id) }
         .task {
@@ -200,13 +191,13 @@ struct ConversationView: View {
         .platformInlineNavigationTitle()
         #if os(iOS)
         .platformChatNavigationBackground()
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .platformTopSafeAreaBar {
             if showsInlineHeader {
                 conversationTitleButton
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background { InlineHeaderFade() }
+                    .modifier(InlineHeaderBackground())
             }
         }
         #endif
@@ -277,6 +268,28 @@ struct ConversationView: View {
         #else
         .sheet(isPresented: $showGallery) { ChatMediaGallery(contact: contact).environment(session) }
         #endif
+    }
+
+    private func composerPane(arrangement: FoldAwareChatLayout.Arrangement, bottomSafeArea: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            if let progress = activePhotoSend {
+                PhotoSendProgressView(progress: progress)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            ComposerView(
+                contactID: contact.id,
+                text: $draft,
+                reply: replyTarget,
+                showReplyPreview: focusedReplyMessage == nil,
+                isSending: session.sendingContactIDs.contains(contact.id),
+                cancelReply: cancelReply,
+                sendImages: sendImages,
+                send: send
+            )
+            .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
+        }
+        .foldAwareComposerPane(arrangement)
     }
 
     private var messageTimeline: some View {
@@ -557,23 +570,27 @@ struct WallpaperPattern: View {
 }
 
 #if os(iOS)
-/// The wallpaper fades to its plain colour behind the inline header, as it does under a WhatsApp
-/// chat header, so the header reads clearly without a bar across the top.
-private struct InlineHeaderFade: View {
-    @Environment(\.translatorPalette) private var palette
+/// A frosted fade behind the inline header, like the one under a WhatsApp chat header: full strength
+/// from the top of the display to the header's bottom edge, so scrolled messages never collide with the
+/// name, then dissolving over the next few rows so there is no bar edge.
+private struct InlineHeaderBackground: ViewModifier {
+    private static let dissolveHeight: CGFloat = 44
 
-    var body: some View {
-        LinearGradient(
-            stops: [
-                .init(color: palette.chatBackground, location: 0),
-                .init(color: palette.chatBackground.opacity(0.85), location: 0.5),
-                .init(color: palette.chatBackground.opacity(0), location: 1)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
+    func body(content: Content) -> some View {
+        content.background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask {
+                    VStack(spacing: 0) {
+                        Rectangle()
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: Self.dissolveHeight)
+                    }
+                }
+                .padding(.bottom, -Self.dissolveHeight)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        }
     }
 }
 #endif

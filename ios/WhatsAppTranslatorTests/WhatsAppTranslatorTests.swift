@@ -1404,3 +1404,53 @@ final class ReadReceiptTests: XCTestCase {
         XCTAssertNil(wrong)
     }
 }
+
+final class UnifiedFeedSectionTests: XCTestCase {
+    private let utc: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+    // 2026-10-25 12:00 UTC.
+    private let noon: Int64 = 1_792_929_600_000
+
+    func testConsecutiveMessagesFromOneChatOnOneDayShareOneHeading() throws {
+        let messages = [try message("a", contact: "virag@s.whatsapp.net", at: noon),
+                        try message("b", contact: "virag@s.whatsapp.net", at: noon + 60_000),
+                        try message("c", contact: "virag@s.whatsapp.net", at: noon + 120_000, fromMe: true)]
+        let sections = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: messages), calendar: utc)
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertEqual(sections[0].id, "a")
+        XCTAssertEqual(sections[0].primaryMessage.contactId, "virag@s.whatsapp.net")
+        XCTAssertEqual(sections[0].items.map(\.id), ["a", "b", "c"])
+    }
+
+    func testAnotherChatOrAnotherDayStartsANewHeading() throws {
+        let messages = [try message("a", contact: "virag@s.whatsapp.net", at: noon),
+                        try message("b", contact: "family@g.us", at: noon + 60_000),
+                        try message("c", contact: "virag@s.whatsapp.net", at: noon + 120_000),
+                        try message("d", contact: "virag@s.whatsapp.net", at: noon + 86_400_000)]
+        let sections = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: messages), calendar: utc)
+        XCTAssertEqual(sections.map(\.id), ["a", "b", "c", "d"])
+        XCTAssertEqual(sections.map(\.primaryMessage.contactId), ["virag@s.whatsapp.net", "family@g.us", "virag@s.whatsapp.net", "virag@s.whatsapp.net"])
+        XCTAssertEqual(sections.map(\.items.count), [1, 1, 1, 1])
+    }
+
+    func testLiveMessagesExtendTheLastRunWithoutChangingItsHeading() throws {
+        let earlier = [try message("a", contact: "family@g.us", at: noon), try message("b", contact: "family@g.us", at: noon + 1_000)]
+        let extended = earlier + [try message("c", contact: "family@g.us", at: noon + 2_000)]
+        let before = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: earlier), calendar: utc)
+        let after = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: extended), calendar: utc)
+        XCTAssertEqual(before.map(\.id), after.map(\.id))
+        XCTAssertEqual(after[0].items.count, 3)
+        XCTAssertTrue(UnifiedFeedSectionBuilder.sections(from: [], calendar: utc).isEmpty)
+    }
+
+    private func message(_ id: String, contact: String, at timestamp: Int64, fromMe: Bool = false) throws -> ChatMessage {
+        try JSONDecoder().decode(ChatMessage.self, from: JSONSerialization.data(withJSONObject: [
+            "id": id, "contactId": contact, "timestamp": timestamp, "isFromMe": fromMe, "isForwarded": false,
+            "contactName": "Chat", "chatType": contact.contains("@g.us") ? "group" : "private",
+            "contentType": "text", "content": ["type": "text", "body": "Message \(id)"], "isTranslated": false,
+        ]))
+    }
+}

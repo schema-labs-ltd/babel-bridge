@@ -471,7 +471,7 @@ private struct UnifiedMessagesView: View {
     }
 
     private func messagesContent(layout: FoldableLayoutContext) -> some View {
-        let items = ConversationTimelineBuilder.items(from: displayedMessages)
+        let sections = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: displayedMessages))
         // On a partially open iPhone Duo the feed reads on one pane and the composer rests on the other.
         let arrangement = FoldAwareChatLayout.arrangement(for: layout.division, in: layout.size)
         let bottomSafeArea = layout.safeAreaInsets.bottom
@@ -481,7 +481,9 @@ private struct UnifiedMessagesView: View {
                     .blur(radius: replyDraft.isFocused ? 8 : 0)
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: 6) {
+                        // Each chat's heading is a pinned section header, so the person being read stays
+                        // in view at the top of the feed while their messages scroll beneath it.
+                        LazyVStack(spacing: 6, pinnedViews: [.sectionHeaders]) {
                             if let selectedTopicID { TopicPageControls(topicID: selectedTopicID) }
                             if selectedTopicID == nil, session.feedHasMore {
                                 Button("Load earlier messages") {
@@ -502,25 +504,21 @@ private struct UnifiedMessagesView: View {
                             if displayedMessages.isEmpty && !session.feedLoading && session.feedError == nil {
                                 ContentUnavailableView(selectedTopicID == nil ? "All your messages, together" : "No messages in this topic", systemImage: "text.bubble", description: Text(selectedTopicID == nil ? "Messages from your chats will appear here. Swipe a message to choose where your reply goes." : "New messages will appear here after they’re organised. All messages remains available."))
                             }
-                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                let message = item.primaryMessage
-                                let startsConversation = index == 0
-                                    || items[index - 1].primaryMessage.contactId != message.contactId
-                                    || !Calendar.current.isDate(items[index - 1].date, inSameDayAs: message.date)
-                                VStack(alignment: .leading, spacing: 5) {
-                                    if startsConversation {
-                                        source(message)
-                                            .padding(.top, index == 0 ? 0 : 10)
+                            ForEach(sections) { section in
+                                Section {
+                                    ForEach(section.items) { item in
+                                        bubble(item.primaryMessage, albumMessages: item.messages.count > 1 ? item.messages : [])
+                                            .modifier(MessageReadVisibility(messages: Array(item.messages.prefix(PhotoGalleryLayout.previewLimit)), enabled: session.mainTab == .messages && !showSettings && settingsContact == nil && !replyDraft.isFocused))
+                                            .id(item.id)
+                                            .task(id: item.messages.map(\.id)) {
+                                                for photo in item.messages.prefix(PhotoGalleryLayout.previewLimit) {
+                                                    await session.loadMedia(for: photo)
+                                                    for url in photo.extractedURLs { await session.loadLinkPreview(for: url) }
+                                                }
+                                            }
                                     }
-                                    bubble(message, albumMessages: item.messages.count > 1 ? item.messages : [])
-                                        .modifier(MessageReadVisibility(messages: Array(item.messages.prefix(PhotoGalleryLayout.previewLimit)), enabled: session.mainTab == .messages && !showSettings && settingsContact == nil && !replyDraft.isFocused))
-                                }
-                                .id(item.id)
-                                .task(id: item.messages.map(\.id)) {
-                                    for photo in item.messages.prefix(PhotoGalleryLayout.previewLimit) {
-                                        await session.loadMedia(for: photo)
-                                        for url in photo.extractedURLs { await session.loadLinkPreview(for: url) }
-                                    }
+                                } header: {
+                                    source(section.primaryMessage)
                                 }
                             }
                             Color.clear.frame(height: 1).id("feed-bottom")
@@ -574,7 +572,7 @@ private struct UnifiedMessagesView: View {
                 .foldableVisibilityPriority(.high)
                 #endif
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .platformTopSafeAreaBar {
                 #if os(macOS)
                 TopicFilterBar(contactID: nil, selection: $selectedTopicID)
                 #else
@@ -625,29 +623,41 @@ private struct UnifiedMessagesView: View {
             type: message.chatType.lowercased(), lastMessageTime: message.timestamp,
             unreadCount: 0, pinnedAt: nil, lastMessagePreview: nil
         )
-        return Button {
-            session.selectedContactID = message.contactId
-            session.mainTab = .chats
-        } label: {
-            HStack(spacing: 7) {
-                ContactAvatar(contact: contact, url: session.avatarURLs[message.contactId], size: 30)
-                    .accessibilityHidden(true)
-                Text(name(message)).fontWeight(.semibold).lineLimit(1)
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
-                Spacer(minLength: 8)
-                Text(message.date, format: .dateTime.day().month(.abbreviated)).foregroundStyle(.secondary)
+        // Glass capsules keep the heading legible while it is pinned over the messages scrolling under it.
+        return HStack(spacing: 8) {
+            Button {
+                session.selectedContactID = message.contactId
+                session.mainTab = .chats
+            } label: {
+                HStack(spacing: 7) {
+                    ContactAvatar(contact: contact, url: session.avatarURLs[message.contactId], size: 26)
+                        .accessibilityHidden(true)
+                    Text(name(message)).fontWeight(.semibold).lineLimit(1)
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                }
+                .font(.caption)
+                .foregroundStyle(palette.deepAccent)
+                .padding(.leading, 4)
+                .padding(.trailing, 11)
+                .padding(.vertical, 4)
+                .contentShape(Capsule())
             }
-            .font(.caption)
-            .foregroundStyle(palette.deepAccent)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .translatorGlass(in: Capsule())
+            .contextMenu {
+                Button("Conversation settings", systemImage: "slider.horizontal.3") { settingsContact = contact }
+            }
+            .accessibilityLabel("Open chat: \(name(message))")
+            Spacer(minLength: 8)
+            Text(message.date, format: .dateTime.day().month(.abbreviated))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .translatorGlass(in: Capsule())
         }
-        .contextMenu {
-            Button("Conversation settings", systemImage: "slider.horizontal.3") { settingsContact = contact }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open chat: \(name(message))")
+        .padding(.top, 6)
+        .padding(.bottom, 2)
         .task { await session.loadAvatar(for: message.contactId) }
     }
 

@@ -78,8 +78,16 @@ Outer display (device closed, compact width):
 - Chat headers fade into the wallpaper instead of drawing a bar: iOS 26 blurs
   scrolled content softly under a clear navigation bar, the Messages feed keeps
   its topic filter in the bar rather than under the title, and the conversation
-  header in the content sits on a fade of the chat background. An active topic
-  shows as a clearable pill above the timeline, like the starred filter.
+  header in the content sits on a frosted fade that is full strength to the
+  header's bottom edge and dissolves below it, so messages never collide with
+  the name. The composer floats in the bottom safe area on both screens, so
+  messages scroll behind its glass controls. An active topic shows as a
+  clearable pill above the timeline, like the starred filter.
+- In the unified Messages feed each chat's heading (avatar, name, date) is a
+  pinned section header, so the person being read stays at the top of the feed
+  while their messages scroll. The grouping rule is
+  `UnifiedFeedSectionBuilder` in `APIModels.swift`, covered by
+  `UnifiedFeedSectionTests`.
 - The Updates bell keeps its drawn unread count in horizontal bars and switches
   to a system badge in a vertical bar, where only title-and-symbol items appear.
 - The conversation header (avatar, name, translation status) lives in the
