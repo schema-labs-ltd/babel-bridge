@@ -38,7 +38,7 @@ struct BabelBridgeMacApp: App {
                 Button("Refresh") {
                     Task {
                         if session.mainTab == .messages { await session.loadFeed() }
-                        else { await session.refresh() }
+                        else { await session.refresh(reportTransientFailures: true) }
                     }
                 }
                 .keyboardShortcut("r", modifiers: .command)
