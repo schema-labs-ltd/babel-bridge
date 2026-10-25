@@ -72,9 +72,11 @@ Outer display (device closed, compact width):
   toolbar item has a title and a symbol, so the system can present it vertically.
   Messages, Chats, Settings, Updates, Gallery and the topic filter of the
   Messages feed carry a high visibility priority and stay in the bar when it
-  compresses; secondary conversation actions (search, starred filter, topic
-  filter, cost, settings) join the system overflow menu on iOS 27, so the bar
-  shows one ellipsis instead of the app's own menu beside it.
+  compresses. Secondary conversation actions (search, starred filter, topic
+  filter, cost, settings) sit in the ellipsis menu in the conversation header;
+  where the header is the navigation bar (regular width) they join the system
+  overflow menu on iOS 27, so the bar shows one ellipsis instead of the app's
+  own menu beside it.
 - Chat headers fade into the wallpaper instead of drawing a bar: iOS 26 blurs
   scrolled content softly under a clear navigation bar, the Messages feed keeps
   its topic filter in the bar rather than under the title, and the conversation
@@ -94,6 +96,12 @@ Outer display (device closed, compact width):
 - The conversation header (avatar, name, translation status) lives in the
   content whenever bars are vertical, because a custom principal item never
   joins a vertical bar. Chats keeps its single-pane split view.
+- Wherever the conversation header is in the content (every compact iPhone
+  and the iPhone Duo outer display), it also carries the conversation menu
+  (ellipsis) and, on an ordinary iPhone, the Gallery button, so the bar holds
+  only Messages, Chats and Settings. In a vertical bar on iPhone Duo Gallery
+  stays a separate entry beside those three, and only the ellipsis moves into
+  the header.
 
 Inner display (device open, regular width):
 
@@ -143,9 +151,9 @@ Implementation notes:
 Validation checklist for a Duo simulator (Xcode 27.1 Device Hub poses) or device:
 
 - Closed, portrait and landscape: vertical bar shows Messages, Chats, Settings,
-  Updates (badge), Gallery and the Messages feed's topic filter; the overflow
-  menu lists the conversation actions, including Filter by topic;
-  the conversation header is in the content.
+  Updates (badge), Gallery and the Messages feed's topic filter; the
+  conversation header is in the content and its ellipsis menu lists the
+  conversation actions, including Filter by topic.
 - Open flat, portrait and landscape: two-column Chats; trailing conversation
   settings and cost sheets; Gallery grid with four or six columns.
 - Book pose: bubbles and the composer stay off the hinge in Chats and
