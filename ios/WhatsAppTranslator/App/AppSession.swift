@@ -291,6 +291,8 @@ final class AppSession {
     var activeMessageActionIDs: Set<String> = []
     var messageImages: [String: PlatformImage] = [:]
     var messageMediaURLs: [String: URL] = [:]
+    /// Sizes of photos and stickers seen before, for messages the server sent without dimensions.
+    private(set) var rememberedImageSizes: [String: CGSize] = [:]
     var mediaLoadingIDs: Set<String> = []
     var mediaErrorIDs: Set<String> = []
     var loadingCompleteHistoryContactIDs: Set<String> = []
@@ -1007,7 +1009,7 @@ final class AppSession {
               !mediaRequests.contains(message.id) else { return }
         mediaErrorIDs.remove(message.id)
         if let cachedURL = try? await mediaCache.cachedURL(for: message.id) {
-            if restoreCachedMedia(from: cachedURL, for: message) {
+            if await restoreCachedMedia(from: cachedURL, for: message) {
                 return
             }
             try? await mediaCache.remove(messageID: message.id)
@@ -1030,6 +1032,8 @@ final class AppSession {
             }
             await storeMedia(data, mimeType: response.mimeType, for: message)
         } catch {
+            // A prefetch or bubble that scrolled away cancels its load; it retries when shown.
+            guard !Task.isCancelled else { return }
             mediaErrorIDs.insert(message.id)
         }
     }
@@ -1175,6 +1179,7 @@ final class AppSession {
         avatarRequests = []
         messageImages = [:]
         messageMediaURLs = [:]
+        rememberedImageSizes = [:]
         galleryDemoMessages = []
         mediaLoadingIDs = []
         mediaErrorIDs = []
@@ -1240,6 +1245,9 @@ final class AppSession {
     }
 
     func restoreCachedState() async -> Bool {
+        if !demoMode, rememberedImageSizes.isEmpty {
+            rememberedImageSizes = await mediaCache.rememberedImageSizes()
+        }
         guard !demoMode,
               let configuration,
               let snapshot = await cache.load(for: configuration) else {
@@ -1438,13 +1446,24 @@ final class AppSession {
         }
     }
 
-    private func restoreCachedMedia(from url: URL, for message: ChatMessage) -> Bool {
+    /// Pixel size to reserve for a photo or sticker before it loads: the server's dimensions when
+    /// it sent them, otherwise the size remembered from the last time the image was shown.
+    func reservedImageSize(for message: ChatMessage) -> CGSize? {
+        if let width = message.content?.width, let height = message.content?.height, width > 0, height > 0 {
+            return CGSize(width: width, height: height)
+        }
+        return rememberedImageSizes[message.id]
+    }
+
+    private func restoreCachedMedia(from url: URL, for message: ChatMessage) async -> Bool {
         switch message.mediaKind {
         case .image, .sticker:
-            guard let data = try? Data(contentsOf: url), let image = PlatformImage(data: data) else {
+            // Read the file away from the main thread so scrolling back stays smooth.
+            let data = await Task.detached(priority: .userInitiated) { try? Data(contentsOf: url) }.value
+            guard let data, let image = await Self.displayReadyImage(from: data) else {
                 return false
             }
-            messageImages[message.id] = image
+            showImage(image, for: message)
             return true
         case .audio:
             guard url.pathExtension == "mp3" else { return false }
@@ -1458,6 +1477,26 @@ final class AppSession {
         }
     }
 
+    private func showImage(_ image: PlatformImage, for message: ChatMessage) {
+        messageImages[message.id] = image
+        guard message.content?.width == nil || message.content?.height == nil, !demoMode else { return }
+        let size = image.size
+        guard size.width > 0, size.height > 0, rememberedImageSizes[message.id] != size else { return }
+        rememberedImageSizes[message.id] = size
+        Task { await mediaCache.rememberImageSize(size, messageID: message.id) }
+    }
+
+    /// Decodes an image and, on iOS, prepares it for display in the background, so the first
+    /// frame that shows it doesn't stall the main thread while the bubble scrolls into view.
+    private static func displayReadyImage(from data: Data) async -> PlatformImage? {
+        guard let image = PlatformImage(data: data) else { return nil }
+        #if canImport(UIKit) && !os(watchOS)
+        return await image.byPreparingForDisplay() ?? image
+        #else
+        return image
+        #endif
+    }
+
     private func storeMedia(_ data: Data, mimeType: String?, for message: ChatMessage) async {
         let preferredExtension = (message.mediaKind == .audio && mimeType == "audio/mpeg" ? "mp3" : nil) ?? message.content?.fileName
             .flatMap { URL(fileURLWithPath: $0).pathExtension.nilIfBlank }
@@ -1466,11 +1505,11 @@ final class AppSession {
 
         switch message.mediaKind {
         case .image, .sticker:
-            guard let image = PlatformImage(data: data) else {
+            guard let image = await Self.displayReadyImage(from: data) else {
                 mediaErrorIDs.insert(message.id)
                 return
             }
-            messageImages[message.id] = image
+            showImage(image, for: message)
             do {
                 _ = try await mediaCache.store(
                     data,

@@ -222,6 +222,11 @@ pub enum MessageContent {
         album_id: Option<String>,
         /// Zero-based position within the WhatsApp album
         album_index: Option<i32>,
+        /// Pixel dimensions, so clients can reserve space before the image loads
+        #[serde(default)]
+        width: Option<u32>,
+        #[serde(default)]
+        height: Option<u32>,
     },
 
     /// Video message
@@ -260,6 +265,11 @@ pub enum MessageContent {
         is_animated: bool,
         /// Base64 encoded sticker data
         media_data: Option<String>,
+        /// Pixel dimensions, so clients can reserve space before the sticker loads
+        #[serde(default)]
+        width: Option<u32>,
+        #[serde(default)]
+        height: Option<u32>,
     },
 
     /// Location message

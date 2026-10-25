@@ -26,6 +26,22 @@ enum MessageTextLinkifier {
     }
 }
 
+/// The frame a chat photo or sticker occupies. It is worked out from the image's pixel size
+/// before the image itself has loaded, so the bubble never changes height when it arrives and
+/// the timeline doesn't jump while scrolling back through history.
+enum ChatImageFrame {
+    static let minimumAspectRatio: CGFloat = 0.72
+
+    static func size(pixelSize: CGSize?, maxWidth: CGFloat, maxHeight: CGFloat) -> CGSize {
+        guard let pixelSize, pixelSize.width > 0, pixelSize.height > 0 else {
+            // Unknown proportions: a square sits between portrait and landscape photos.
+            return CGSize(width: maxWidth, height: min(maxHeight, maxWidth))
+        }
+        let ratio = max(pixelSize.width / pixelSize.height, minimumAspectRatio)
+        return CGSize(width: maxWidth, height: min(maxHeight, maxWidth / ratio))
+    }
+}
+
 struct RichMessageContentView: View {
     let message: ChatMessage
     let displayText: String
@@ -34,6 +50,8 @@ struct RichMessageContentView: View {
     let isLoading: Bool
     let failed: Bool
     let retry: () -> Void
+    /// Pixel size known before the image loads, from the server or an earlier viewing.
+    var reservedImageSize: CGSize? = nil
     @State private var showPhotoViewer = false
 
     var body: some View {
@@ -73,13 +91,16 @@ struct RichMessageContentView: View {
 
     @ViewBuilder
     private func imageContent(maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
+        let frame = ChatImageFrame.size(
+            pixelSize: reservedImageSize ?? image?.size,
+            maxWidth: maxWidth,
+            maxHeight: maxHeight
+        )
         if let image {
-            let ratio = max(image.size.width / max(image.size.height, 1), 0.72)
-            let width = maxWidth
             Image(platformImage: image)
                 .resizable()
                 .scaledToFill()
-                .frame(width: width, height: min(maxHeight, width / ratio))
+                .frame(width: frame.width, height: frame.height)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .contentShape(Rectangle())
                 .highPriorityGesture(
@@ -91,11 +112,35 @@ struct RichMessageContentView: View {
                 .accessibilityAction { showPhotoViewer = true }
                 .photoViewer(isPresented: $showPhotoViewer, image: image)
         } else {
-            mediaPlaceholder(
+            imagePlaceholder(
+                size: frame,
                 systemImage: message.mediaKind == .sticker ? "face.smiling" : "photo.fill",
                 title: message.mediaKind == .sticker ? "Sticker" : "Image"
             )
         }
+    }
+
+    /// Holds the image's final frame while it loads, the way WhatsApp shows a blank tile.
+    private func imagePlaceholder(size: CGSize, systemImage: String, title: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.primary.opacity(0.06))
+            VStack(spacing: 6) {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    Image(systemName: failed ? "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90" : systemImage)
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                if failed { Text("Tap to try again").font(.caption).foregroundStyle(.secondary) }
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .contentShape(Rectangle())
+        .onTapGesture { if failed { retry() } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(failed ? "Media failed to load. Try again." : title)
     }
 
     @ViewBuilder

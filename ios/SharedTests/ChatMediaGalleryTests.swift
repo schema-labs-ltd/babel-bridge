@@ -63,4 +63,35 @@ final class ChatMediaGalleryTests: XCTestCase {
         XCTAssertNil(model.error)
         XCTAssertEqual(model.messages.count, 2)
     }
+
+    func testImageFrameIsReservedFromKnownDimensionsBeforeTheImageLoads() throws {
+        let json = #"{"id":"sized","contactId":"gallery@g.us","timestamp":100,"isFromMe":false,"isForwarded":false,"chatType":"group","contentType":"Image","isTranslated":false,"content":{"type":"image","has_media":true,"width":1179,"height":2556}}"#
+        let message = try JSONDecoder().decode(ChatMessage.self, from: Data(json.utf8))
+        XCTAssertEqual(message.content?.width, 1179)
+        XCTAssertEqual(message.content?.height, 2556)
+        XCTAssertEqual(AppSession(demoMode: true).reservedImageSize(for: message), CGSize(width: 1179, height: 2556))
+
+        XCTAssertEqual(ChatImageFrame.size(pixelSize: CGSize(width: 1179, height: 2556), maxWidth: 260, maxHeight: 360), CGSize(width: 260, height: 360))
+        XCTAssertEqual(ChatImageFrame.size(pixelSize: CGSize(width: 1600, height: 1200), maxWidth: 260, maxHeight: 360), CGSize(width: 260, height: 195))
+        XCTAssertEqual(ChatImageFrame.size(pixelSize: nil, maxWidth: 260, maxHeight: 360), CGSize(width: 260, height: 260))
+        XCTAssertEqual(ChatImageFrame.size(pixelSize: CGSize(width: 512, height: 512), maxWidth: 180, maxHeight: 180), CGSize(width: 180, height: 180))
+    }
+
+    func testRememberedImageSizesSurviveRelaunchAndAreClearedWithTheCache() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "image-sizes-\(UUID().uuidString)/MediaCache", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let store = MediaCacheStore(directoryURL: directory, maximumRememberedSizes: 2)
+        await store.rememberImageSize(CGSize(width: 800, height: 600), messageID: "oldest")
+        await store.rememberImageSize(CGSize(width: 600, height: 800), messageID: "middle")
+        await store.rememberImageSize(CGSize(width: 1000, height: 1000), messageID: "newest")
+        await store.flushRememberedSizes()
+
+        let relaunched = await MediaCacheStore(directoryURL: directory).rememberedImageSizes()
+        XCTAssertEqual(relaunched, ["middle": CGSize(width: 600, height: 800), "newest": CGSize(width: 1000, height: 1000)])
+
+        await store.clear()
+        let cleared = await MediaCacheStore(directoryURL: directory).rememberedImageSizes()
+        XCTAssertTrue(cleared.isEmpty)
+    }
 }

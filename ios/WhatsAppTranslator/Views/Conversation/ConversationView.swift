@@ -355,7 +355,8 @@ struct ConversationView: View {
             .padding(.top, 80)
         }
 
-        ForEach(Array(timelineItems.enumerated()), id: \.element.id) { index, item in
+        let items = timelineItems
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             if shouldShowDate(before: index) {
                 DatePill(date: item.date)
                     .padding(.vertical, 10)
@@ -365,12 +366,18 @@ struct ConversationView: View {
                 messageBubble(message: message)
                     .id(message.id)
                     .modifier(MessageReadVisibility(messages: [message], enabled: canRecordViews))
-                    .task { await loadTimelineMedia(for: [message]) }
+                    .task {
+                        await loadTimelineMedia(for: [message])
+                        await prefetchImages(before: index, in: items)
+                    }
             case let .photoAlbum(album):
                 messageBubble(message: album.primaryMessage, albumMessages: album.messages)
                     .id(item.id)
                     .modifier(MessageReadVisibility(messages: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)), enabled: canRecordViews))
-                    .task(id: album.messages.map(\.id)) { await loadTimelineMedia(for: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit))) }
+                    .task(id: album.messages.map(\.id)) {
+                        await loadTimelineMedia(for: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)))
+                        await prefetchImages(before: index, in: items)
+                    }
             }
         }
         // Album grouping can replace the last image's ID; keep a stable scroll target.
@@ -414,6 +421,24 @@ struct ConversationView: View {
                 albumAIReply: generateAIReply
             )
     }
+
+    /// Loads the photos and stickers just above a bubble as it appears, so they are usually ready
+    /// before they scroll into view when reading back through history.
+    private func prefetchImages(before index: Int, in items: [ConversationTimelineItem]) async {
+        let upcoming = items[max(0, index - Self.imagePrefetchDistance)..<min(index, items.count)].reversed()
+        for item in upcoming {
+            guard !Task.isCancelled else { return }
+            let messages: [ChatMessage] = switch item {
+            case let .message(message): [message]
+            case let .photoAlbum(album): Array(album.messages.prefix(PhotoGalleryLayout.previewLimit))
+            }
+            for message in messages where message.mediaKind == .image || message.mediaKind == .sticker {
+                await session.loadMedia(for: message)
+            }
+        }
+    }
+
+    private static let imagePrefetchDistance = 6
 
     private func loadTimelineMedia(for messages: [ChatMessage]) async {
         for message in messages {

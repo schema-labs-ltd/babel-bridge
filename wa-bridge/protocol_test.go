@@ -103,6 +103,21 @@ func TestBuildMessageContentPreservesAlbumAssociation(t *testing.T) {
 	}
 }
 
+func TestBuildMessageContentIncludesImageDimensions(t *testing.T) {
+	image := (&Client{}).buildMessageContent(&waE2E.Message{
+		ImageMessage: &waE2E.ImageMessage{Width: proto.Uint32(1179), Height: proto.Uint32(2556)},
+	})
+	if image.Width != 1179 || image.Height != 2556 {
+		t.Fatalf("expected 1179x2556 image, got %dx%d", image.Width, image.Height)
+	}
+	sticker := (&Client{}).buildMessageContent(&waE2E.Message{
+		StickerMessage: &waE2E.StickerMessage{Width: proto.Uint32(512), Height: proto.Uint32(512)},
+	})
+	if sticker.Width != 512 || sticker.Height != 512 {
+		t.Fatalf("expected 512x512 sticker, got %dx%d", sticker.Width, sticker.Height)
+	}
+}
+
 func TestReadReceiptTargetsPreserveGroupSenderAndViewedTime(t *testing.T) {
 	chat, sender, viewed, err := readReceiptTarget("123@g.us", "456:7@lid", 1700001234)
 	if err != nil {

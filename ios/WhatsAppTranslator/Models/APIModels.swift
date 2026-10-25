@@ -398,12 +398,15 @@ struct MessageContent: Codable, Hashable, Sendable {
     let targetMessageId: String?
     let albumId: String?
     let albumIndex: Int?
+    /// Pixel dimensions from WhatsApp, so the chat can reserve a photo's frame before it loads.
+    let width: Int?
+    let height: Int?
     let showTranslatedPrimary: Bool?
     let replyContext: ReplyContext?
 
     enum CodingKeys: String, CodingKey {
         case editedAtMS = "edited_at_ms"
-        case type, body, caption, emoji, showTranslatedPrimary, latitude, longitude, name, address, question, options, vcard
+        case type, body, caption, emoji, showTranslatedPrimary, latitude, longitude, name, address, question, options, vcard, width, height
         case mimeType = "mime_type"
         case mediaData = "media_data"
         case hasMedia = "has_media"
@@ -445,6 +448,8 @@ struct MessageContent: Codable, Hashable, Sendable {
         targetMessageId: String? = nil,
         albumId: String? = nil,
         albumIndex: Int? = nil,
+        width: Int? = nil,
+        height: Int? = nil,
         editedAtMS: Int64? = nil,
         showTranslatedPrimary: Bool?,
         replyContext: ReplyContext?
@@ -474,6 +479,8 @@ struct MessageContent: Codable, Hashable, Sendable {
         self.targetMessageId = targetMessageId
         self.albumId = albumId
         self.albumIndex = albumIndex
+        self.width = width
+        self.height = height
         self.showTranslatedPrimary = showTranslatedPrimary
         self.replyContext = replyContext
     }
