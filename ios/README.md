@@ -72,9 +72,10 @@ Outer display (device closed, compact width):
   toolbar item has a title and a symbol, so the system can present it vertically.
   Messages, Chats, Settings, Updates, Gallery and the topic filter of the
   Messages feed carry a high visibility priority and stay in the bar when it
-  compresses; secondary conversation actions (search, starred filter, topic
-  filter, cost, settings) join the system overflow menu on iOS 27, so the bar
-  shows one ellipsis instead of the app's own menu beside it.
+  compresses. In a conversation, Gallery and the ellipsis menu of secondary
+  actions (search, starred filter, topic filter, cost, settings) are ordinary
+  items at the right of the header, so the system moves them into the vertical
+  bar with the rest and the bottom bar keeps only Messages, Chats and Settings.
 - Chat headers fade into the wallpaper instead of drawing a bar: iOS 26 blurs
   scrolled content softly under a clear navigation bar, the Messages feed keeps
   its topic filter in the bar rather than under the title, and the conversation
@@ -129,7 +130,7 @@ Implementation notes:
   `SharedTests/FoldableLayoutTests.swift` runs in both unit-test targets.
 - `WhatsAppTranslator/Design/FoldableDisplaySupport.swift` wraps the iOS 27 and
   27.1 APIs: reserved regions through `GeometryProxy`, `toolbarVerticalEdge`,
-  `visibilityPriority`, `ToolbarOverflowMenu` and `presentationPlacement`. Each
+  `visibilityPriority` and `presentationPlacement`. Each
   use is behind `#if compiler(>=6.4)` (Swift 6.4 ships with Xcode 27) plus a
   runtime availability check, so Xcode 26.6 compiles the same sources without
   any iPhone Duo behaviour and the deployment target stays iOS 18.
@@ -143,8 +144,8 @@ Implementation notes:
 Validation checklist for a Duo simulator (Xcode 27.1 Device Hub poses) or device:
 
 - Closed, portrait and landscape: vertical bar shows Messages, Chats, Settings,
-  Updates (badge), Gallery and the Messages feed's topic filter; the overflow
-  menu lists the conversation actions, including Filter by topic;
+  Updates (badge), Gallery, the conversation ellipsis menu and the Messages
+  feed's topic filter; the ellipsis menu lists the conversation actions, including Filter by topic;
   the conversation header is in the content.
 - Open flat, portrait and landscape: two-column Chats; trailing conversation
   settings and cost sheets; Gallery grid with four or six columns.

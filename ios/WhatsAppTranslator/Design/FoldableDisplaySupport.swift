@@ -219,36 +219,3 @@ extension ToolbarContent {
         #endif
     }
 }
-
-/// Secondary actions that join the system overflow menu on iOS 27 and sit in a labelled menu before it.
-///
-/// Using the system menu keeps one ellipsis in the bar, which matters once iPhone Duo compresses
-/// items into that same menu.
-struct FoldableOverflowActions<Actions: View>: ToolbarContent {
-    let title: String
-    let systemImage: String
-    var placement: ToolbarItemPlacement = .automatic
-    @ViewBuilder var actions: () -> Actions
-
-    var body: some ToolbarContent {
-        #if os(iOS) && compiler(>=6.4)
-        if #available(iOS 27.0, *) {
-            ToolbarOverflowMenu {
-                actions()
-            }
-        } else {
-            ToolbarItem(placement: placement) {
-                Menu(title, systemImage: systemImage) {
-                    actions()
-                }
-            }
-        }
-        #else
-        ToolbarItem(placement: placement) {
-            Menu(title, systemImage: systemImage) {
-                actions()
-            }
-        }
-        #endif
-    }
-}

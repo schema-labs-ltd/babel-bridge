@@ -41,6 +41,25 @@ struct ConversationView: View {
         .buttonStyle(.plain)
         .accessibilityHint("Opens nickname, timezone and translation settings")
     }
+
+    @ViewBuilder
+    private var conversationActions: some View {
+        Button("Search messages", systemImage: "magnifyingglass") {
+            Task { await activateSearch() }
+        }
+        .keyboardShortcut("f", modifiers: .command)
+        Button(
+            starredOnly ? "Show all messages" : "Show starred only",
+            systemImage: starredOnly ? "star.fill" : "star"
+        ) {
+            Task { await toggleStarredFilter() }
+        }
+        // The topic filter sits with the starred filter, which keeps the bar and the header clear.
+        TopicFilterMenu(contactID: contact.id, selection: $selectedTopicID, showManagement: $showTopicManagement)
+        Divider()
+        Button("Conversation cost", systemImage: "dollarsign.circle") { showCost = true }
+        Button("Conversation settings", systemImage: "slider.horizontal.3") { showSettings = true }
+    }
     #endif
 
     private var messages: [ChatMessage] {
@@ -206,30 +225,14 @@ struct ConversationView: View {
             if !showsInlineHeader {
                 ToolbarItem(placement: .principal) { conversationTitleButton }
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            // Gallery and the conversation menu sit at the right of the header, so the bottom bar keeps
+            // only Messages, Chats and Settings. iPhone Duo moves them into its vertical bar on its own.
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
                     .accessibilityIdentifier("open-chat-gallery")
+                Menu("Conversation", systemImage: "ellipsis") { conversationActions }
             }
             .foldableVisibilityPriority(.high)
-            // Secondary actions share the system overflow menu, so a compressed bar on iPhone Duo
-            // shows one ellipsis instead of the app's own menu beside the system's.
-            FoldableOverflowActions(title: "Conversation", systemImage: "ellipsis", placement: .topBarLeading) {
-                Button("Search messages", systemImage: "magnifyingglass") {
-                    Task { await activateSearch() }
-                }
-                .keyboardShortcut("f", modifiers: .command)
-                Button(
-                    starredOnly ? "Show all messages" : "Show starred only",
-                    systemImage: starredOnly ? "star.fill" : "star"
-                ) {
-                    Task { await toggleStarredFilter() }
-                }
-                // The topic filter sits with the starred filter, which keeps the bar and the header clear.
-                TopicFilterMenu(contactID: contact.id, selection: $selectedTopicID, showManagement: $showTopicManagement)
-                Divider()
-                Button("Conversation cost", systemImage: "dollarsign.circle") { showCost = true }
-                Button("Conversation settings", systemImage: "slider.horizontal.3") { showSettings = true }
-            }
             #endif
         }
         .task {
