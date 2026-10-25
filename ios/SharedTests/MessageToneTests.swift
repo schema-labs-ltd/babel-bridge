@@ -36,7 +36,10 @@ final class MessageToneTests: XCTestCase {
             XCTAssertEqual(audio.numberOfChannels, 1)
             XCTAssertTrue(audio.prepareToPlay())
             XCTAssertTrue(audio.play(), tone.title)
-            try await Task.sleep(for: .milliseconds(45))
+            // A cold simulator audio session can take a moment to start the first tone.
+            for _ in 0..<40 where !(audio.isPlaying && audio.currentTime > 0) {
+                try await Task.sleep(for: .milliseconds(25))
+            }
             XCTAssertTrue(audio.isPlaying, tone.title)
             XCTAssertGreaterThan(audio.currentTime, 0)
             audio.stop()
