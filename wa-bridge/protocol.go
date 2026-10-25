@@ -113,6 +113,8 @@ type MessageContent struct {
 	FileName          string    `json:"file_name,omitempty"`
 	FileSize          uint64    `json:"file_size,omitempty"`
 	FileHash          string    `json:"file_hash,omitempty"`
+	Width             uint32    `json:"width,omitempty"`      // Pixel width, so clients can reserve space before media loads
+	Height            uint32    `json:"height,omitempty"`     // Pixel height, so clients can reserve space before media loads
 	MediaData         string    `json:"media_data,omitempty"` // Base64 encoded media data
 	DurationSeconds   *uint32   `json:"duration_seconds,omitempty"`
 	IsVoiceNote       bool      `json:"is_voice_note,omitempty"`

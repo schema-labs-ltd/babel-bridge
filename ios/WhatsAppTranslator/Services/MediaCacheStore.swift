@@ -1,3 +1,4 @@
+import CoreGraphics
 import CryptoKit
 import Foundation
 
@@ -6,12 +7,46 @@ actor MediaCacheStore {
 
     private let directoryURL: URL
     private let maximumBytes: Int
+    private let maximumRememberedSizes: Int
+    private var rememberedSizes: [String: RememberedImageSize]?
+    private var pendingSizeSave: Task<Void, Never>?
 
-    init(directoryURL: URL? = nil, maximumBytes: Int = 512 * 1_024 * 1_024) {
+    init(directoryURL: URL? = nil, maximumBytes: Int = 512 * 1_024 * 1_024, maximumRememberedSizes: Int = 10_000) {
         self.directoryURL = directoryURL
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appending(path: "WhatsAppTranslator/MediaCache", directoryHint: .isDirectory)
         self.maximumBytes = maximumBytes
+        self.maximumRememberedSizes = maximumRememberedSizes
+    }
+
+    /// Pixel sizes of photos and stickers that have been shown before. Older messages carry no
+    /// dimensions from the server, so the chat reserves their frame from this instead of growing
+    /// the bubble once the image arrives. It outlives evicted media files, which are much larger.
+    func rememberedImageSizes() -> [String: CGSize] {
+        loadRememberedSizesIfNeeded().mapValues { CGSize(width: $0.width, height: $0.height) }
+    }
+
+    func rememberImageSize(_ size: CGSize, messageID: String) {
+        guard size.width > 0, size.height > 0 else { return }
+        var sizes = loadRememberedSizesIfNeeded()
+        let entry = RememberedImageSize(width: size.width, height: size.height, storedAt: Date())
+        if let existing = sizes[messageID], existing.width == entry.width, existing.height == entry.height { return }
+        sizes[messageID] = entry
+        if sizes.count > maximumRememberedSizes {
+            let overflow = sizes.count - maximumRememberedSizes
+            for key in sizes.sorted(by: { $0.value.storedAt < $1.value.storedAt }).prefix(overflow).map(\.key) {
+                sizes.removeValue(forKey: key)
+            }
+        }
+        rememberedSizes = sizes
+        scheduleSizeSave()
+    }
+
+    /// Writes any pending size changes now instead of after the save delay.
+    func flushRememberedSizes() {
+        pendingSizeSave?.cancel()
+        pendingSizeSave = nil
+        saveRememberedSizes()
     }
 
     func cachedURL(for messageID: String) throws -> URL? {
@@ -71,6 +106,47 @@ actor MediaCacheStore {
 
     func clear() {
         try? FileManager.default.removeItem(at: directoryURL)
+        pendingSizeSave?.cancel()
+        pendingSizeSave = nil
+        rememberedSizes = [:]
+        try? FileManager.default.removeItem(at: sizesURL)
+    }
+
+    /// Kept beside the media folder so cache trimming never counts or evicts it.
+    private var sizesURL: URL {
+        directoryURL.deletingLastPathComponent()
+            .appending(path: "\(directoryURL.lastPathComponent)-ImageSizes.json", directoryHint: .notDirectory)
+    }
+
+    private func loadRememberedSizesIfNeeded() -> [String: RememberedImageSize] {
+        if let rememberedSizes { return rememberedSizes }
+        let loaded = (try? Data(contentsOf: sizesURL))
+            .flatMap { try? JSONDecoder().decode([String: RememberedImageSize].self, from: $0) } ?? [:]
+        rememberedSizes = loaded
+        return loaded
+    }
+
+    private func scheduleSizeSave() {
+        guard pendingSizeSave == nil else { return }
+        pendingSizeSave = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            self.finishScheduledSizeSave()
+        }
+    }
+
+    private func finishScheduledSizeSave() {
+        pendingSizeSave = nil
+        saveRememberedSizes()
+    }
+
+    private func saveRememberedSizes() {
+        guard let rememberedSizes, let data = try? JSONEncoder().encode(rememberedSizes) else { return }
+        try? FileManager.default.createDirectory(
+            at: sizesURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: sizesURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     private func cacheKey(for messageID: String) -> String {
@@ -98,4 +174,10 @@ actor MediaCacheStore {
             totalBytes -= entry.size
         }
     }
+}
+
+private struct RememberedImageSize: Codable, Sendable {
+    let width: Double
+    let height: Double
+    let storedAt: Date
 }

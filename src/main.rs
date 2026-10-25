@@ -1316,6 +1316,22 @@ impl serde::Serialize for bridge::Chat {
     }
 }
 
+/// Write pixel dimensions only when both are known and non-zero, so clients never
+/// reserve a degenerate frame for a photo or sticker that has not loaded yet.
+fn serialize_dimensions<M: serde::ser::SerializeMap>(
+    map: &mut M,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> std::result::Result<(), M::Error> {
+    if let (Some(width), Some(height)) = (width, height) {
+        if width > 0 && height > 0 {
+            map.serialize_entry("width", &width)?;
+            map.serialize_entry("height", &height)?;
+        }
+    }
+    Ok(())
+}
+
 // Implement Serialize for MessageContent
 impl serde::Serialize for bridge::MessageContent {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -1339,6 +1355,8 @@ impl serde::Serialize for bridge::MessageContent {
                 media_data,
                 album_id,
                 album_index,
+                width,
+                height,
             } => {
                 map.serialize_entry("type", "image")?;
                 map.serialize_entry("mime_type", mime_type)?;
@@ -1358,6 +1376,7 @@ impl serde::Serialize for bridge::MessageContent {
                 if let Some(index) = album_index {
                     map.serialize_entry("album_index", index)?;
                 }
+                serialize_dimensions(&mut map, *width, *height)?;
             }
             bridge::MessageContent::Video {
                 caption,
@@ -1421,6 +1440,8 @@ impl serde::Serialize for bridge::MessageContent {
                 mime_type,
                 is_animated,
                 media_data,
+                width,
+                height,
             } => {
                 map.serialize_entry("type", "sticker")?;
                 map.serialize_entry("mime_type", mime_type)?;
@@ -1428,6 +1449,7 @@ impl serde::Serialize for bridge::MessageContent {
                 if let Some(data) = media_data {
                     map.serialize_entry("media_data", data)?;
                 }
+                serialize_dimensions(&mut map, *width, *height)?;
             }
             bridge::MessageContent::Location {
                 latitude,
@@ -1639,6 +1661,32 @@ mod identity_tests {
         ));
         assert!(!state.take_session_reset_request());
         let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn image_and_sticker_dimensions_reach_clients() {
+        for (wire, kind) in [
+            (
+                serde_json::json!({"type":"image","mime_type":"image/jpeg","file_size":10,"width":1179,"height":2556}),
+                "image",
+            ),
+            (
+                serde_json::json!({"type":"sticker","mime_type":"image/webp","is_animated":false,"width":512,"height":512}),
+                "sticker",
+            ),
+        ] {
+            let content: MessageContent = serde_json::from_value(wire.clone()).unwrap();
+            let payload = serde_json::to_value(&content).unwrap();
+            assert_eq!(payload["type"], kind);
+            assert_eq!(payload["width"], wire["width"]);
+            assert_eq!(payload["height"], wire["height"]);
+        }
+        let zero_sized: MessageContent = serde_json::from_value(
+            serde_json::json!({"type":"image","mime_type":"image/jpeg","file_size":10,"width":0,"height":0}),
+        )
+        .unwrap();
+        let payload = serde_json::to_value(&zero_sized).unwrap();
+        assert!(payload.get("width").is_none() && payload.get("height").is_none());
     }
 
     #[tokio::test]

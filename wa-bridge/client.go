@@ -995,6 +995,8 @@ func (c *Client) buildMessageContent(msg *waE2E.Message) MessageContent {
 			Type:     "image",
 			MimeType: getString(msg.ImageMessage.Mimetype),
 			FileSize: getUint64(msg.ImageMessage.FileLength),
+			Width:    msg.ImageMessage.GetWidth(),
+			Height:   msg.ImageMessage.GetHeight(),
 		}
 		if msg.ImageMessage.Caption != nil {
 			content.Caption, content.Mentions = c.resolveMentions(*msg.ImageMessage.Caption, msg.ImageMessage.ContextInfo)
@@ -1061,6 +1063,8 @@ func (c *Client) buildMessageContent(msg *waE2E.Message) MessageContent {
 		content := MessageContent{
 			Type:     "sticker",
 			MimeType: getString(msg.StickerMessage.Mimetype),
+			Width:    msg.StickerMessage.GetWidth(),
+			Height:   msg.StickerMessage.GetHeight(),
 		}
 		if msg.StickerMessage.IsAnimated != nil {
 			content.IsAnimated = *msg.StickerMessage.IsAnimated

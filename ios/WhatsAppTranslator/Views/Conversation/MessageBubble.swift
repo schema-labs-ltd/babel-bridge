@@ -220,7 +220,8 @@ struct MessageBubble: View {
                             mediaURL: mediaURL,
                             isLoading: mediaIsLoading,
                             failed: mediaFailed,
-                            retry: retryMedia
+                            retry: retryMedia,
+                            reservedImageSize: session.reservedImageSize(for: message)
                         )
                     }
 
