@@ -574,7 +574,7 @@ private struct UnifiedMessagesView: View {
                 .foldableVisibilityPriority(.high)
                 #endif
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .platformTopSafeAreaBar {
                 #if os(macOS)
                 TopicFilterBar(contactID: nil, selection: $selectedTopicID)
                 #else

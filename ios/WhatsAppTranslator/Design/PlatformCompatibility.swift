@@ -223,6 +223,22 @@ extension View {
         #endif
     }
 
+    /// Places custom content as a bar in the top safe area. On iOS 26 the bar receives the system's
+    /// soft scroll-edge effect, so messages scrolling beneath it blur and fade as they do under a
+    /// WhatsApp chat header; elsewhere it is an ordinary safe-area inset.
+    @ViewBuilder
+    func platformTopSafeAreaBar<Bar: View>(@ViewBuilder content: () -> Bar) -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            safeAreaBar(edge: .top, spacing: 0, content: content)
+        } else {
+            safeAreaInset(edge: .top, spacing: 0, content: content)
+        }
+        #else
+        safeAreaInset(edge: .top, spacing: 0, content: content)
+        #endif
+    }
+
     @ViewBuilder
     func platformInteractiveDismissDisabled(_ disabled: Bool) -> some View {
         #if os(iOS)

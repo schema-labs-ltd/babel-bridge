@@ -200,13 +200,13 @@ struct ConversationView: View {
         .platformInlineNavigationTitle()
         #if os(iOS)
         .platformChatNavigationBackground()
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .platformTopSafeAreaBar {
             if showsInlineHeader {
                 conversationTitleButton
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background { InlineHeaderFade() }
+                    .modifier(InlineHeaderBackground())
             }
         }
         #endif
@@ -557,23 +557,16 @@ struct WallpaperPattern: View {
 }
 
 #if os(iOS)
-/// The wallpaper fades to its plain colour behind the inline header, as it does under a WhatsApp
-/// chat header, so the header reads clearly without a bar across the top.
-private struct InlineHeaderFade: View {
-    @Environment(\.translatorPalette) private var palette
-
-    var body: some View {
-        LinearGradient(
-            stops: [
-                .init(color: palette.chatBackground, location: 0),
-                .init(color: palette.chatBackground.opacity(0.85), location: 0.5),
-                .init(color: palette.chatBackground.opacity(0), location: 1)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
+/// The inline header floats on the wallpaper. On iOS 26 the bar's scroll-edge effect blurs and fades
+/// the messages beneath it, as under a WhatsApp chat header; earlier systems draw a bar material.
+private struct InlineHeaderBackground: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.background(.bar)
+        }
     }
 }
 #endif
