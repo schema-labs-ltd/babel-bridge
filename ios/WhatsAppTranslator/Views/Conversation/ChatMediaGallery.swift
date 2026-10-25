@@ -215,14 +215,26 @@ private struct GalleryThumbnail: View {
         .accessibilityLabel("\(message.mediaKind == .video ? "Video" : "Photo"), \(message.date.formatted(date: .abbreviated, time: .shortened))")
         .accessibilityIdentifier("gallery-item-\(message.id)")
         .task(id: message.editRevision) {
-            do {
-                let result = try await session.galleryThumbnail(for: message)
-                try Task.checkCancellation()
-                image = result
-                failed = false
-            } catch { if !Task.isCancelled { failed = true } }
+            failed = false
+            // A dropped connection or timeout is worth another go; the server has usually
+            // finished the preview by then. A preview it can't make fails straight away.
+            for attempt in 0..<3 {
+                do {
+                    let result = try await session.galleryThumbnail(for: message)
+                    try Task.checkCancellation()
+                    image = result
+                    return
+                } catch let error as URLError where error.code != .cancelled && attempt < 2 {
+                    try? await Task.sleep(for: .seconds(attempt == 0 ? 1 : 3))
+                    if Task.isCancelled { return }
+                } catch {
+                    if !Task.isCancelled { failed = true }
+                    return
+                }
+            }
         }
-        .onDisappear { image = nil }
+        // Scrolling a failed tile away and back asks for it again instead of keeping the icon.
+        .onDisappear { image = nil; failed = false }
     }
 
     private var duration: String {

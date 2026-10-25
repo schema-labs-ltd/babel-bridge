@@ -365,6 +365,9 @@ final class AppSession {
     private let demoConversationMode: Bool
     private var avatarRequests: Set<String> = []
     private var mediaRequests: Set<String> = []
+    private static let maximumGalleryThumbnailRequests = 4
+    private var activeGalleryThumbnailRequests = 0
+    private var galleryThumbnailWaiters: [CheckedContinuation<Void, Never>] = []
     private var galleryDemoMessages: [ChatMessage] = []
     private var linkPreviewRequests: Set<URL> = []
     private var isConnecting = false
@@ -1081,6 +1084,12 @@ final class AppSession {
         let key = "gallery-preview-\(server?.absoluteString ?? "")-\(message.id)-\(message.editRevision)"
         if let url = try? await mediaCache.cachedURL(for: key),
            let data = try? Data(contentsOf: url), let image = PlatformImage(data: data) { return image }
+        // Opening the gallery asks for a whole screen of previews at once. The server renders
+        // two at a time, so an unthrottled burst left the first tiles queued past the request
+        // timeout and they stayed blank. Asking a few at a time keeps every request short.
+        await acquireGalleryThumbnailSlot()
+        defer { releaseGalleryThumbnailSlot() }
+        try Task.checkCancellation()
         let response = try await api.mediaThumbnail(messageID: message.id)
         guard phase == .ready, configuration?.baseURL == server, !Task.isCancelled else { throw CancellationError() }
         guard let data = Data(base64Encoded: response.mediaData), let image = PlatformImage(data: data) else {
@@ -1088,6 +1097,24 @@ final class AppSession {
         }
         _ = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
         return image
+    }
+
+    private func acquireGalleryThumbnailSlot() async {
+        guard activeGalleryThumbnailRequests >= Self.maximumGalleryThumbnailRequests else {
+            activeGalleryThumbnailRequests += 1
+            return
+        }
+        // The releasing request hands its slot straight to the next waiter, oldest first, so the
+        // tiles on screen when the gallery opened are fetched before ones further down.
+        await withCheckedContinuation { galleryThumbnailWaiters.append($0) }
+    }
+
+    private func releaseGalleryThumbnailSlot() {
+        if galleryThumbnailWaiters.isEmpty {
+            activeGalleryThumbnailRequests -= 1
+        } else {
+            galleryThumbnailWaiters.removeFirst().resume()
+        }
     }
 
     func retryMedia(for message: ChatMessage) async {
