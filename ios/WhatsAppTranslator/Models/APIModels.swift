@@ -308,6 +308,39 @@ enum ConversationTimelineBuilder {
     }
 }
 
+/// A run of unified-feed items from one chat on one day, shown under that chat's heading.
+struct UnifiedFeedSection: Identifiable {
+    let items: [ConversationTimelineItem]
+
+    /// The first item anchors the section, so a run keeps its identity as live messages extend it.
+    var id: String { items[0].id }
+    var primaryMessage: ChatMessage { items[0].primaryMessage }
+    var date: Date { items[0].date }
+}
+
+enum UnifiedFeedSectionBuilder {
+    /// Groups consecutive items from the same chat and day. Each run has one heading, which the feed
+    /// pins while the run scrolls, so the chat being read stays visible without scrolling back up.
+    static func sections(from items: [ConversationTimelineItem], calendar: Calendar = .current) -> [UnifiedFeedSection] {
+        var sections: [UnifiedFeedSection] = []
+        var run: [ConversationTimelineItem] = []
+        for item in items {
+            if let previous = run.last, !continues(previous, item, calendar: calendar) {
+                sections.append(UnifiedFeedSection(items: run))
+                run.removeAll(keepingCapacity: true)
+            }
+            run.append(item)
+        }
+        if !run.isEmpty { sections.append(UnifiedFeedSection(items: run)) }
+        return sections
+    }
+
+    private static func continues(_ previous: ConversationTimelineItem, _ next: ConversationTimelineItem, calendar: Calendar) -> Bool {
+        previous.primaryMessage.contactId == next.primaryMessage.contactId
+            && calendar.isDate(previous.date, inSameDayAs: next.date)
+    }
+}
+
 private extension Character {
     var isEmojiCharacter: Bool {
         let scalars = unicodeScalars

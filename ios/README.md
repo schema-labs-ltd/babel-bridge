@@ -81,6 +81,11 @@ Outer display (device closed, compact width):
   header in the content is a safe-area bar, so the same soft blur runs under it
   and messages never collide with the name. An active topic shows as a
   clearable pill above the timeline, like the starred filter.
+- In the unified Messages feed each chat's heading (avatar, name, date) is a
+  pinned section header, so the person being read stays at the top of the feed
+  while their messages scroll. The grouping rule is
+  `UnifiedFeedSectionBuilder` in `APIModels.swift`, covered by
+  `UnifiedFeedSectionTests`.
 - The Updates bell keeps its drawn unread count in horizontal bars and switches
   to a system badge in a vertical bar, where only title-and-symbol items appear.
 - The conversation header (avatar, name, translation status) lives in the
