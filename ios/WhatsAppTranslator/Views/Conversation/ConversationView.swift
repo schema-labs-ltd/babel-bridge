@@ -42,11 +42,6 @@ struct ConversationView: View {
         .accessibilityHint("Opens nickname, timezone and translation settings")
     }
 
-    private var galleryButton: some View {
-        Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
-            .accessibilityIdentifier("open-chat-gallery")
-    }
-
     @ViewBuilder
     private var conversationActions: some View {
         Button("Search messages", systemImage: "magnifyingglass") {
@@ -217,22 +212,11 @@ struct ConversationView: View {
         .platformChatNavigationBackground()
         .platformTopSafeAreaBar {
             if showsInlineHeader {
-                // Gallery and the conversation menu live in the header, so the bar keeps only the
-                // app's destinations: Messages, Chats and Settings. A vertical bar on iPhone Duo keeps
-                // Gallery as its own entry instead.
-                HStack(spacing: 10) {
-                    conversationTitleButton
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if !layout.usesVerticalBars {
-                        galleryButton
-                            .modifier(InlineHeaderControl())
-                    }
-                    Menu("Conversation", systemImage: "ellipsis") { conversationActions }
-                        .modifier(InlineHeaderControl())
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .modifier(InlineHeaderBackground())
+                conversationTitleButton
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .modifier(InlineHeaderBackground())
             }
         }
         #endif
@@ -240,18 +224,15 @@ struct ConversationView: View {
             #if os(iOS)
             if !showsInlineHeader {
                 ToolbarItem(placement: .principal) { conversationTitleButton }
-                ToolbarItem(placement: .topBarTrailing) { galleryButton }
-                    .foldableVisibilityPriority(.high)
-                // Secondary actions share the system overflow menu on iOS 27, so the bar shows one
-                // ellipsis instead of the app's own menu beside the system's.
-                FoldableOverflowActions(title: "Conversation", systemImage: "ellipsis", placement: .topBarLeading) {
-                    conversationActions
-                }
-            } else if layout.usesVerticalBars {
-                // On iPhone Duo Gallery is a separate entry in the vertical bar beside the destinations.
-                ToolbarItem(placement: .topBarTrailing) { galleryButton }
-                    .foldableVisibilityPriority(.high)
             }
+            // Gallery and the conversation menu sit at the right of the header, so the bottom bar keeps
+            // only Messages, Chats and Settings. iPhone Duo moves them into its vertical bar on its own.
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
+                    .accessibilityIdentifier("open-chat-gallery")
+                Menu("Conversation", systemImage: "ellipsis") { conversationActions }
+            }
+            .foldableVisibilityPriority(.high)
             #endif
         }
         .task {
@@ -596,19 +577,6 @@ struct WallpaperPattern: View {
 /// strongest at the top of the display and eases through the header, so a scrolled bubble shows only
 /// faintly behind the name, then dissolves over the row beneath the header's bottom edge: the message
 /// just under the header is about half visible, the next one is clear, and there is no bar edge.
-/// A round glass button in the inline conversation header, sized like the system's bar buttons.
-private struct InlineHeaderControl: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .labelStyle(.iconOnly)
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.primary)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-            .translatorGlassControl(in: Circle())
-    }
-}
-
 private struct InlineHeaderBackground: ViewModifier {
     /// The frost's strength at the header's bottom edge, as a fraction of full strength.
     private static let edgeStrength = 0.68
