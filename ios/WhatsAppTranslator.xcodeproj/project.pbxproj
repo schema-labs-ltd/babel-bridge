@@ -150,7 +150,9 @@
 		CB1582022F646D90E269DC01 /* WatchMessagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC5AD282F9A868A9E47AB2 /* WatchMessagingTests.swift */; };
 		CB36614FE6E20BDA91B178AA /* ChatMediaGalleryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A61CEEFC865B8C7D2FF569 /* ChatMediaGalleryTests.swift */; };
 		CDE2ADF59D0E6AA31439ECD4 /* video-playback-fixture.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = D470F9AF0D8104E435F2093B /* video-playback-fixture.mp4 */; };
+		CEFEFBFF3B58A9F0B1A77FC3 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B5E8968F2D7ECBAE1657DC /* AppLog.swift */; };
 		D2A364ACD27946FF388755CF /* SendRecoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD483EE27D01F8680F8CAD68 /* SendRecoveryStore.swift */; };
+		D3192E39A0FBB747C1CAD0B2 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B5E8968F2D7ECBAE1657DC /* AppLog.swift */; };
 		D395F5E434F67052524C55A6 /* AppIconPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D397D767D3BAC080AC3976 /* AppIconPickerView.swift */; };
 		D5A470D75918E5401AB30CD9 /* TranslatorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BF31391B23EBC8C173DBB4 /* TranslatorTheme.swift */; };
 		D689CD605BE7CF33FF83E461 /* bb-glass.wav in Resources */ = {isa = PBXBuildFile; fileRef = 0BBC6DBDD1A48DDCE96A9940 /* bb-glass.wav */; };
@@ -343,6 +345,7 @@
 		8EDDF0705924D6B6857E8A4F /* WhatsAppTranslatorSendActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = WhatsAppTranslatorSendActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		901D4F327F868AD55515BD83 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist; name = en; path = en.lproj/AppIntentVocabulary.plist; sourceTree = "<group>"; };
 		90DD58B06531C55B4C5D5299 /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
+		93B5E8968F2D7ECBAE1657DC /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		94D397D767D3BAC080AC3976 /* AppIconPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconPickerView.swift; sourceTree = "<group>"; };
 		9876CD3D330EDB50574EBCF2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9ABCA3D87C4A7D188D37B476 /* IntentHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentHandler.swift; sourceTree = "<group>"; };
@@ -601,6 +604,7 @@
 			isa = PBXGroup;
 			children = (
 				9C87A75BF6020544068175DB /* APIClient.swift */,
+				93B5E8968F2D7ECBAE1657DC /* AppLog.swift */,
 				CEBEFEEB15458A49DD869D9C /* AppPreferencesStore.swift */,
 				B6FFEB6CEF1DC23D84E2D6E8 /* BackgroundMessageSynchronizer.swift */,
 				3962C05E7905F4A73E9D2CE6 /* ChatCacheStore.swift */,
@@ -1175,6 +1179,7 @@
 				0895BC27BCE593660C12C549 /* APIClient.swift in Sources */,
 				735F161402677A60DE279113 /* APIModels.swift in Sources */,
 				D395F5E434F67052524C55A6 /* AppIconPickerView.swift in Sources */,
+				D3192E39A0FBB747C1CAD0B2 /* AppLog.swift in Sources */,
 				20EEEB892ABBB2D449414230 /* AppPreferencesStore.swift in Sources */,
 				C54AF7DDBDFBF90FCF0671F6 /* AppSession.swift in Sources */,
 				3680126AAB9A4B864417221B /* AppSettingsView.swift in Sources */,
@@ -1239,6 +1244,7 @@
 				088A4B67DC7DF9EC64E2B40B /* APIClient.swift in Sources */,
 				1ECCB799BC4FB731B4395A0B /* APIModels.swift in Sources */,
 				13DDCF1DEBC948090FFE3458 /* AppIconPickerView.swift in Sources */,
+				CEFEFBFF3B58A9F0B1A77FC3 /* AppLog.swift in Sources */,
 				0CAC0EC5B9CBE295135A7DCD /* AppPreferencesStore.swift in Sources */,
 				BF62D1C1CB1B93866BFE77CB /* AppSession.swift in Sources */,
 				9504965AB9E80CBC7E48DBF7 /* AppSettingsView.swift in Sources */,

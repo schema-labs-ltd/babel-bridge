@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 struct ChatCacheSnapshot: Codable, Equatable, Sendable {
     let serverBaseURL: String
@@ -79,9 +80,7 @@ actor ChatCacheStore {
                 options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
             )
         } catch {
-            #if DEBUG
-            print("Chat cache save failed: \(error.localizedDescription)")
-            #endif
+            AppLog.sync.error("Chat cache save failed: \(AppLog.kind(of: error), privacy: .public)")
         }
     }
 

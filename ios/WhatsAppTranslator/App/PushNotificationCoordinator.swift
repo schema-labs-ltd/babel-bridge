@@ -1,4 +1,5 @@
 import Intents
+import OSLog
 import SwiftUI
 import UserNotifications
 
@@ -161,9 +162,7 @@ final class PushNotificationCoordinator {
     }
 
     func failedToRegister(error: Error) {
-        #if DEBUG
-        print("APNs registration failed: \(error.localizedDescription)")
-        #endif
+        AppLog.push.error("APNs registration failed: \(AppLog.kind(of: error), privacy: .public) \(error.localizedDescription)")
     }
 
     func openNotification(contactID: String) {
@@ -220,9 +219,7 @@ final class PushNotificationCoordinator {
             _ = await BackgroundMessageSynchronizer.shared.sync(contactID: contactID)
             return true
         } catch {
-            #if DEBUG
-            print("Notification reply failed: \(error.localizedDescription)")
-            #endif
+            AppLog.push.error("Notification reply failed: \(AppLog.kind(of: error), privacy: .public)")
             return false
         }
     }
@@ -281,7 +278,7 @@ final class NotificationAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
             Task {
                 let center = UNUserNotificationCenter.current()
                 guard (try? await center.requestAuthorization(options: MessagingNotificationAuthorization.options)) == true else {
-                    print("Notification preview requires notification permission in Settings.")
+                    AppLog.push.notice("Notification preview requires notification permission in Settings.")
                     return
                 }
                 let content = UNMutableNotificationContent()
@@ -303,9 +300,9 @@ final class NotificationAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
                         identifier: "translated-group-notification-preview", content: displayed,
                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
                     ))
-                    print("Translated group notification preview scheduled.")
+                    AppLog.push.notice("Translated group notification preview scheduled.")
                 } catch {
-                    print("Notification preview failed: \(error.localizedDescription)")
+                    AppLog.push.error("Notification preview failed: \(AppLog.kind(of: error), privacy: .public)")
                 }
             }
         }

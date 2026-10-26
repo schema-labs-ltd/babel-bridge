@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum BackgroundMessageSyncOutcome: Sendable {
     case newData
@@ -54,9 +55,7 @@ actor BackgroundMessageSynchronizer {
             await cache.save(next)
             return changed ? .newData : .noData
         } catch {
-            #if DEBUG
-            print("Background message sync failed: \(error.localizedDescription)")
-            #endif
+            AppLog.sync.error("Background message sync failed: \(AppLog.kind(of: error), privacy: .public) \(error.localizedDescription)")
             return .failed
         }
     }

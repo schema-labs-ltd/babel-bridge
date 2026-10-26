@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import UniformTypeIdentifiers
 
 @MainActor
@@ -1353,9 +1354,7 @@ final class AppSession {
                 )
             )
         } catch {
-            #if DEBUG
-            print("Push notification registration failed: \(error.localizedDescription)")
-            #endif
+            AppLog.push.error("Push token registration with the server failed: \(AppLog.kind(of: error), privacy: .public) \(error.localizedDescription)")
         }
     }
 
@@ -1414,8 +1413,10 @@ final class AppSession {
         case "voice_ready":
             if let id = event.messageId { voiceReadyIDs.insert(id) }
         case "live_reconnecting":
+            if !liveUpdatesReconnecting { AppLog.live.notice("Live updates lost; reconnecting") }
             liveUpdatesReconnecting = true
         case "live_restored", "resync", "send_result":
+            if event.type == "live_restored" { AppLog.live.notice("Live updates restored") }
             liveUpdatesReconnecting = false
             if recoveryTask != nil { recoveryNeedsAnotherPass = true; return }
             recoveryTask = Task {
@@ -1585,9 +1586,7 @@ final class AppSession {
                     fileExtension: preferredExtension
                 )
             } catch {
-                #if DEBUG
-                print("Media cache write failed: \(error.localizedDescription)")
-                #endif
+                AppLog.media.error("Media cache write failed: \(AppLog.kind(of: error), privacy: .public)")
             }
         case .video, .audio, .document:
             do {
@@ -1616,10 +1615,16 @@ final class AppSession {
     }
 
     private func presentError(_ title: String, _ error: Error) {
-        presentError(title, error.localizedDescription)
+        AppLog.ui.error("\(title, privacy: .public): \(AppLog.kind(of: error), privacy: .public) \(error.localizedDescription)")
+        showError(title, error.localizedDescription)
     }
 
     private func presentError(_ title: String, _ message: String) {
+        AppLog.ui.error("\(title, privacy: .public): \(message)")
+        showError(title, message)
+    }
+
+    private func showError(_ title: String, _ message: String) {
         errorTitle = title
         errorMessage = message
     }
@@ -1994,7 +1999,7 @@ final class AppSession {
                 if let data = try? JSONSerialization.data(withJSONObject: payload),
                    let event = try? JSONDecoder().decode(LiveEvent.self, from: data) {
                     handle(event)
-                    print("Live reaction preview step \(index + 1)")
+                    AppLog.live.debug("Live reaction preview step \(index + 1, privacy: .public)")
                 }
             }
         }
