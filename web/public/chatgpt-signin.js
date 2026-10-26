@@ -122,14 +122,16 @@ export function setupChatGptSignIn(app) {
     }),
   );
 
-  $('chatgpt-model-select')?.addEventListener('change', (event) =>
+  $('chatgpt-model-select')?.addEventListener('change', (event) => {
+    // Read the choice before run() re-renders the list from the saved model.
+    const model = event.target.value;
     run(async () => {
       status = await request('/api/chatgpt/model', {
         method: 'PUT',
-        body: JSON.stringify({ model: event.target.value }),
+        body: JSON.stringify({ model }),
       });
-    }),
-  );
+    });
+  });
 
   $('chatgpt-sign-out')?.addEventListener('click', () =>
     run(async () => {
