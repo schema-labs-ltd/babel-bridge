@@ -1,0 +1,28 @@
+{
+  "reaction": {
+    "chatType": "private",
+    "contactId": "447700900123@s.whatsapp.net",
+    "contactName": "Ana",
+    "contactPhone": "447700900123",
+    "content": {
+      "emoji": "👍",
+      "receipt_sender_jid": "447700900123@s.whatsapp.net",
+      "sender_timestamp_ms": 1767225720500,
+      "target_message_id": "me-reply",
+      "type": "reaction"
+    },
+    "contentType": "Reaction",
+    "deliveryStatus": null,
+    "id": "ana-reaction",
+    "isForwarded": false,
+    "isFromMe": false,
+    "isTranslated": false,
+    "originalText": null,
+    "senderName": "Ana",
+    "senderPhone": "447700900123",
+    "sourceLanguage": null,
+    "timestamp": 1767225720500,
+    "translatedText": null
+  },
+  "success": true
+}
