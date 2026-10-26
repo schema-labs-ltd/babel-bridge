@@ -15,7 +15,7 @@ SHELL := /bin/bash
 BASE ?= origin/main
 
 .PHONY: help check check-fast ci test fmt lint \
-	go-test fmt-check rust-test clippy web-deps web-test \
+	go-fmt-check go-vet go-test fmt-check rust-test clippy web-deps web-test web-lint \
 	extension-lint extension-check extension-browser extension-test \
 	check-go check-rust check-web container-check require-ffmpeg
 
@@ -25,27 +25,34 @@ help:
 	@echo "make ci           check, then the production container build (needs Docker)"
 	@echo "make check-go | check-rust | check-web   one CI job"
 	@echo "make test         Go, Rust and web unit tests"
-	@echo "make lint         rustfmt, clippy, extension prettier and types"
-	@echo "make fmt          apply rustfmt and prettier to the extension sources"
+	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier and extension types"
+	@echo "make fmt          apply gofmt, rustfmt and prettier"
 
 # Same steps, same order as the go, rust and web jobs in .github/workflows/ci.yml.
 check: check-go check-rust check-web
 
-check-go: go-test
+check-go: go-fmt-check go-vet go-test
 
 check-rust: fmt-check rust-test clippy
 
-check-web: web-deps web-test extension-check extension-test
+check-web: web-deps web-test web-lint extension-check extension-test
 
 ci: check container-check
 
 test: go-test rust-test web-test
 
-lint: fmt-check clippy extension-lint
+lint: go-fmt-check go-vet fmt-check clippy web-lint extension-lint
 
-fmt:
+fmt: web-deps
+	cd wa-bridge && gofmt -w .
 	cargo fmt
-	cd web && npx prettier --write "extensions/src/**/*" "extensions/*.mjs" "extensions/*.ts" "extensions/*.json" "extensions/tests/**/*"
+	cd web && npm run format
+
+go-fmt-check:
+	@cd wa-bridge && unformatted="$$(gofmt -l .)" && if [ -n "$$unformatted" ]; then echo "error: run gofmt -w on these files:"; echo "$$unformatted"; exit 1; fi
+
+go-vet:
+	cd wa-bridge && go vet ./...
 
 go-test:
 	cd wa-bridge && go test ./...
@@ -62,7 +69,7 @@ rust-test: require-ffmpeg
 	SKIP_GO_BUILD=1 cargo test
 
 clippy:
-	SKIP_GO_BUILD=1 cargo clippy
+	SKIP_GO_BUILD=1 cargo clippy --all-targets -- -D warnings
 
 # CI runs `npm ci` on a clean checkout. Locally it reruns only when
 # package.json or the lock file is newer than the last install, so repeated
@@ -75,6 +82,10 @@ web/node_modules/.make-npm-ci: web/package.json web/package-lock.json
 
 web-test: web-deps
 	cd web && npm test
+
+# The web job's lint step also runs lint:extension, via extension-check.
+web-lint: web-deps
+	cd web && npm run lint:web
 
 extension-lint: web-deps
 	cd web && npm run lint:extension && npm run typecheck:extension
@@ -122,9 +133,9 @@ check-fast:
 	if [ "$$apple" = 1 ]; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi; \
 	if [ "$$full" = 1 ]; then echo "Shared build or CI files changed: running the full check."; exec $(MAKE) --no-print-directory check; fi; \
 	targets=""; \
-	[ "$$go" = 1 ] && targets="$$targets go-test"; \
+	[ "$$go" = 1 ] && targets="$$targets go-fmt-check go-vet go-test"; \
 	[ "$$rust" = 1 ] && targets="$$targets fmt-check rust-test clippy"; \
-	[ "$$web" = 1 ] && targets="$$targets web-test"; \
+	[ "$$web" = 1 ] && targets="$$targets web-test web-lint"; \
 	[ "$$ext" = 1 ] && targets="$$targets extension-check extension-test"; \
 	if [ -z "$$targets" ]; then echo "Nothing to check for these changes."; exit 0; fi; \
 	echo "Running:$$targets"; \
