@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import UserNotifications
 
 enum MessagingNotificationContract {
@@ -93,9 +94,7 @@ final class PushNotificationCoordinator {
     }
 
     func failedToRegister(error: Error) {
-        #if DEBUG
-        print("macOS APNs registration failed: \(error.localizedDescription)")
-        #endif
+        AppLog.push.error("macOS APNs registration failed: \(AppLog.kind(of: error), privacy: .public) \(error.localizedDescription)")
     }
 
     func openNotification(contactID: String) {
@@ -130,9 +129,7 @@ final class PushNotificationCoordinator {
             _ = await BackgroundMessageSynchronizer.shared.sync(contactID: contactID)
             return true
         } catch {
-            #if DEBUG
-            print("macOS notification reply failed: \(error.localizedDescription)")
-            #endif
+            AppLog.push.error("macOS notification reply failed: \(AppLog.kind(of: error), privacy: .public)")
             return false
         }
     }
