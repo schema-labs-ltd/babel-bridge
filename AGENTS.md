@@ -19,5 +19,5 @@
 ## Server and app API contract
 
 - `fixtures/api/` pins the HTTP and WebSocket JSON that the Apple apps decode. `responses/` is written by the Rust test `api_contract` (`src/api_contract.rs`), which drives the real router; `requests/` holds the bodies the apps send, which the server must accept.
-- After an intended API change, run `UPDATE_API_FIXTURES=1 cargo test api_contract`, review the fixture diff, update `ios/WhatsAppTranslator/Models/APIModels.swift`, then run `scripts/check-api-contract.sh`. That script builds `APIModels.swift` with `ios/APIContract/APIContractCheck.swift` and decodes every fixture; it runs on Linux with a Swift 6 toolchain, and the `CI / api-contract` job runs it on every pull request.
+- After an intended API change, run `UPDATE_FIXTURES=1 cargo test api_contract`, review the fixture diff, update `ios/WhatsAppTranslator/Models/APIModels.swift`, then run `scripts/check-api-contract.sh`. That script builds `APIModels.swift` with `ios/APIContract/APIContractCheck.swift` and decodes every fixture; it runs on Linux with a Swift 6 toolchain, and the `CI / api-contract` job runs it on every pull request.
 - Keep `APIModels.swift` and `MessageTone.swift` free of Apple-only frameworks so the check keeps building on Linux. A new fixture needs a matching check in `APIContractCheck.swift`, or the script fails.

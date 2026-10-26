@@ -7,7 +7,7 @@
 //! instead of only in the Apple job or at runtime.
 //!
 //! After an intended API change, rewrite the fixtures with
-//! `UPDATE_API_FIXTURES=1 cargo test api_contract` and review the diff.
+//! `UPDATE_FIXTURES=1 cargo test api_contract` and review the diff.
 
 use crate::bridge::BridgeEvent;
 use crate::storage::MessageStore;
@@ -46,7 +46,7 @@ struct Fixtures {
 impl Fixtures {
     fn new(subdir: &str) -> Self {
         let dir = fixtures_dir().join(subdir);
-        let update = std::env::var_os("UPDATE_API_FIXTURES").is_some();
+        let update = std::env::var_os("UPDATE_FIXTURES").is_some();
         if update {
             std::fs::create_dir_all(&dir).expect("create fixture directory");
         }
@@ -90,7 +90,7 @@ impl Fixtures {
         assert!(
             problems.is_empty(),
             "The API the apps decode changed. If that is intended, run \
-             `UPDATE_API_FIXTURES=1 cargo test api_contract`, then \
+             `UPDATE_FIXTURES=1 cargo test api_contract`, then \
              `scripts/check-api-contract.sh`, and update APIModels.swift.\n\n{}",
             problems.join("\n\n")
         );
