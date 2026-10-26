@@ -237,6 +237,7 @@ pub(super) async fn oauth_protected_resource_metadata(Host(host): Host) -> impl 
 pub(super) struct ClientRegistrationRequest {
     pub(super) redirect_uris: Vec<String>,
     pub(super) client_name: Option<String>,
+    #[allow(dead_code)] // RFC 7591 metadata, accepted but not stored.
     pub(super) client_uri: Option<String>,
     pub(super) scope: Option<String>,
     pub(super) grant_types: Option<Vec<String>>,

@@ -218,7 +218,6 @@ pub enum WebSocketEvent {
     },
     Resync,
     TopicsUpdated,
-    Heartbeat,
     Typing {
         chat_id: String,
         user_id: String,
@@ -249,9 +248,6 @@ pub enum WebSocketEvent {
         message_id: Option<String>,
         timestamp: Option<i64>,
         error: Option<String>,
-    },
-    Error {
-        error: String,
     },
 }
 
@@ -459,6 +455,7 @@ pub struct MarkReadRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslateMessageRequest {
+    #[allow(dead_code)] // Sent by clients; the server translates the stored text.
     pub text: String,
     pub message_id: String,
     #[serde(deserialize_with = "crate::identity::deserialize_contact_id")]
