@@ -59,6 +59,56 @@ build.
 `BabelBridgeMac` runs `BabelBridgeMacTests` only. `BabelBridgeWatch` runs the
 watch UI tests.
 
+## Demo launch arguments
+
+Debug builds accept launch arguments that load canned data instead of
+connecting to a server, which is the quickest way to reach a screen in the
+simulator, a preview, or a UI test. Add them under **Edit Scheme → Run →
+Arguments Passed On Launch**, or pass them in `XCUIApplication().launchArguments`.
+Most need `-demo` as well, since `-demo` is what switches the session to demo
+data. They are read with `ProcessInfo.processInfo.arguments` in the files named
+below, so search for the argument to find what it does.
+
+| Argument | Shows |
+| --- | --- |
+| `-demo` | Demo mode: canned contacts and messages, no server. CarPlay and the watch app read it too. |
+| `-demoConversation` | Opens the first chat in the Chats tab. |
+| `-demoSending` | With `-demoConversation`, shows that chat as sending. |
+| `-demoOnboarding` | The server setup screen. Does not need `-demo`. |
+| `-demoRelinking` | Two seconds after start, the WhatsApp link drops and the QR relinking flow appears. |
+| `-demoChatList` | Twenty group chats in the chat list. |
+| `-demoReadReceipts` | One group with 40 unread messages on the Messages tab, with a banner of the IDs counted as viewed. |
+| `-demoUnifiedFeed` | Three chats with recent messages for the unified Messages view. |
+| `-demoTopics` | Two groups with topic grouping (Weekend plans, Football). |
+| `-demoOutgoingTopic` | With `-demoTopics`, makes the last Football message your own. |
+| `-demoWhatsAppLayout` | A short one-to-one chat with a tall photo, in light mode, for comparing layout with WhatsApp. |
+| `-demoPhotoAlbum` | With `-demoWhatsAppLayout`, replaces the photo with a four-photo album. |
+| `-demoPhotoGallery` | The photo gallery with demo photos. |
+| `-demoChatGallery` | The per-chat gallery with demo media. |
+| `-demoVideo` | A chat with a playable video (Debug only). |
+| `-demoLiveReactions` | Reactions arriving live on a message. |
+| `-demoLiveEdits` | A message being edited live. |
+| `-demoSettings` | The chat list with Settings open. |
+| `-demoConversationSettings` | Conversation settings open when a conversation opens (pair with `-demoConversation`). The rows below that start in a conversation work the same way. |
+| `-demoTimezonePicker` | Conversation settings with the time zone picker open. |
+| `-demoCost` | A conversation with the translation cost sheet open. |
+| `-demoSearch` | A conversation with search open. |
+| `-demoActions` | The actions menu open on demo message 4. |
+| `-demoSwipeReplyReveal` | Demo message 4 swiped to the reply threshold. |
+| `-demoImageComposer` | The composer with one photo attached. |
+| `-demoImageAlbumComposer` | The composer with four photos attached. |
+| `-demoOptimizedPhotoComposer` | Currently the same as `-demoImageComposer`: one photo attached. |
+| `-demoPhotoSendProgress` | A photo send in its sending stage. |
+| `-demoPhotoTransferProgress` | A photo send in its transfer stage. |
+| `-demoClipboardText` | Puts two lines of text on the clipboard, for paste tests. |
+| `-demoClipboardImage` | Puts two images on the clipboard, for paste tests. |
+| `-demoNotification` | Posts a sample message notification after asking for permission. |
+| `-demoAppIcons` | With `-demo`, shows the alternate app icon picker. |
+
+The data comes from `AppSession.loadDemoData()` in
+`ios/WhatsAppTranslator/App/AppSession.swift`; the view-level flags are in the
+conversation, chat list, settings, and root views.
+
 ## iPhone Duo
 
 Babel Bridge follows Apple's [Designing for iPhone Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo)
