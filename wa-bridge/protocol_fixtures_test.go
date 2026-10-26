@@ -42,6 +42,9 @@ func fixtureEvents() map[string]interface{} {
 	history.IsHistory = true
 	history.UnreadCount = &unread
 	image := message("3EB0IMAGE", group, MessageContent{Type: "image", Caption: "Beach", MimeType: "image/jpeg", FileSize: 2048, FileHash: "aGFzaA==", Width: 1280, Height: 960, AlbumID: "3EB0ALBUM", AlbumIndex: &albumIndex})
+	// Ordinary audio: Go omits the false is_voice_note flag. Carries
+	// media_data so the attachment payload is pinned too.
+	audio := message("3EB0AUDIO", private, MessageContent{Type: "audio", MimeType: "audio/mpeg", FileSize: 5, DurationSeconds: &duration, MediaData: "YXVkaW8="})
 	voice := message("3EB0VOICE", private, MessageContent{Type: "audio", MimeType: "audio/ogg; codecs=opus", FileSize: 4096, DurationSeconds: &duration, IsVoiceNote: true})
 	location := message("3EB0LOCATION", private, MessageContent{Type: "location", Latitude: &lat, Longitude: &lng, LocationName: "Big Ben", Address: "London"})
 	reaction := message("3EB0REACTION", group, MessageContent{Type: "reaction", Emoji: "👍", TargetMessageID: "3EB0IMAGE", SenderTimestampMS: 1767225601000})
@@ -55,6 +58,7 @@ func fixtureEvents() map[string]interface{} {
 		"message_history":      NewMessageEvent(history),
 		"message_image":        NewMessageEvent(image),
 		"message_voice_note":   NewMessageEvent(voice),
+		"message_audio":        NewMessageEvent(audio),
 		"message_location":     NewMessageEvent(location),
 		"message_reaction":     NewMessageEvent(reaction),
 		"message_edit_caption": NewMessageEditEvent(edited, 1767225700000),

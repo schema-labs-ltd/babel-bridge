@@ -53,6 +53,7 @@ fn server_reads_every_bridge_event_fixture() {
         "log",
         "logged_out",
         "mark_as_read",
+        "message_audio",
         "message_edit_caption",
         "message_history",
         "message_image",
@@ -137,6 +138,15 @@ fn server_reads_every_bridge_event_fixture() {
             file_size: 4096,
             ..
         }
+    ));
+    assert!(matches!(
+        message("message_audio").content,
+        MessageContent::Audio {
+            is_voice_note: false,
+            media_data: Some(data),
+            mime_type,
+            ..
+        } if data == "YXVkaW8=" && mime_type == "audio/mpeg"
     ));
     assert!(matches!(
         message("message_location").content,
