@@ -1,28 +1,28 @@
 import SwiftUI
 
 struct ConversationView: View {
-    @Environment(AppSession.self) private var session
+    @Environment(AppSession.self) var session
     @Environment(\.translatorPalette) private var palette
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
     let contact: Contact
-    @State private var draft = ""
-    @State private var replyTarget: MessageReplyTarget?
-    @State private var focusedReplyMessage: ChatMessage?
-    @State private var showSettings = ProcessInfo.processInfo.arguments.contains("-demoConversationSettings")
-    @State private var showCost = ProcessInfo.processInfo.arguments.contains("-demoCost")
-    @State private var showSearch = ProcessInfo.processInfo.arguments.contains("-demoSearch")
-    @State private var showGallery = false
-    @State private var messageSearch = ""
-    @State private var starredOnly = false
-    @State private var selectedTopicID: String?
-    @State private var showTopicManagement = false
-    @State private var usage: UsageSummary?
-    private var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
+    @State var draft = ""
+    @State var replyTarget: MessageReplyTarget?
+    @State var focusedReplyMessage: ChatMessage?
+    @State var showSettings = ProcessInfo.processInfo.arguments.contains("-demoConversationSettings")
+    @State var showCost = ProcessInfo.processInfo.arguments.contains("-demoCost")
+    @State var showSearch = ProcessInfo.processInfo.arguments.contains("-demoSearch")
+    @State var showGallery = false
+    @State var messageSearch = ""
+    @State var starredOnly = false
+    @State var selectedTopicID: String?
+    @State var showTopicManagement = false
+    @State var usage: UsageSummary?
+    var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
-    private var conversationTitleButton: some View {
+    var conversationTitleButton: some View {
         Button { showSettings = true } label: {
             HStack(spacing: 9) {
                 ContactAvatar(contact: contact, url: session.avatarURLs[contact.id], size: 38)
@@ -43,7 +43,7 @@ struct ConversationView: View {
     }
 
     @ViewBuilder
-    private var conversationBarActions: some View {
+    var conversationBarActions: some View {
         Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
             .accessibilityIdentifier("open-chat-gallery")
         Menu("Conversation", systemImage: "ellipsis") { conversationActions }
@@ -69,11 +69,11 @@ struct ConversationView: View {
     }
     #endif
 
-    private var messages: [ChatMessage] {
+    var messages: [ChatMessage] {
         if let selectedTopicID { return session.topicPages[selectedTopicID]?.messages ?? [] }
         return session.messages[contact.id] ?? []
     }
-    private var activePhotoSend: PhotoSendProgress? {
+    var activePhotoSend: PhotoSendProgress? {
         session.photoSendProgress.values
             .filter { $0.contactID == contact.id }
             .sorted { $0.id > $1.id }
@@ -97,218 +97,7 @@ struct ConversationView: View {
         }
     }
 
-    private func conversationContent(layout: FoldableLayoutContext) -> some View {
-        // On a partially open iPhone Duo the timeline reads on one pane and the composer rests on the other.
-        let arrangement = FoldAwareChatLayout.arrangement(for: layout.division, in: layout.size)
-        let bottomSafeArea = layout.safeAreaInsets.bottom
-        #if os(iOS)
-        // iPhone Duo presents bars vertically on the outer display and in landscape on the inner display.
-        // A custom principal item never joins a vertical bar, so the header then lives in the content,
-        // exactly as it does at compact widths.
-        let showsInlineHeader = horizontalSizeClass == .compact || layout.usesVerticalBars
-        #endif
-        return ZStack {
-            ChatWallpaper()
-                .blur(radius: focusedReplyMessage == nil ? 0 : 8)
-            VStack(spacing: 0) {
-                if session.liveUpdatesReconnecting {
-                    Label("Reconnecting live updates… Your messages are saved.", systemImage: "wifi.slash")
-                        .font(.caption).padding(10).frame(maxWidth: .infinity)
-                        .background(.orange.opacity(0.12))
-                }
-                #if os(macOS)
-                MacConversationHeader(
-                    contact: contact,
-                    displayName: session.displayName(for: contact),
-                    avatarURL: session.avatarURLs[contact.id],
-                    localTime: session.localTimeDescription(for: contact.id),
-                    translationEnabled: session.savedConversationSettings[contact.id]?.translationEnabled == true,
-                    usage: usage,
-                    starredOnly: starredOnly,
-                    showContactSettings: { showSettings = true },
-                    search: { Task { await activateSearch() } },
-                    showGallery: { showGallery = true },
-                    toggleStarred: { Task { await toggleStarredFilter() } },
-                    showCost: { showCost = true },
-                    showConversationSettings: { showSettings = true }
-                )
-                TopicFilterBar(contactID: contact.id, selection: $selectedTopicID)
-                #endif
-                if showSearch {
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("Search messages", text: $messageSearch)
-                            .platformUncapitalizedInput()
-                        Button("Close search", systemImage: "xmark.circle.fill") {
-                            messageSearch = ""
-                            showSearch = false
-                        }
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .translatorGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                }
-                if starredOnly {
-                    FilterPill(title: "Starred messages", systemImage: "star.fill") {
-                        starredOnly = false
-                    }
-                    .padding(.top, 8)
-                }
-                #if os(iOS)
-                if let selectedTopic {
-                    FilterPill(title: selectedTopic.title, systemImage: "number") {
-                        selectedTopicID = nil
-                    }
-                    .padding(.top, 8)
-                }
-                #endif
-                if session.loadingCompleteHistoryContactIDs.contains(contact.id) {
-                    HStack(spacing: 7) {
-                        ProgressView().controlSize(.small)
-                        Text("Loading the full conversation…")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .translatorGlass(in: Capsule())
-                    .padding(.top, 8)
-                }
-                ZStack {
-                    messageTimeline
-                        .environment(\.chatBubbleMaxWidth, arrangement.bubbleMaxWidth)
-                        .blur(radius: focusedReplyMessage == nil ? 0 : 8)
-                        .opacity(focusedReplyMessage == nil ? 1 : 0.35)
-                        .allowsHitTesting(focusedReplyMessage == nil)
-                        .accessibilityHidden(focusedReplyMessage != nil)
-                    if let focusedReplyMessage {
-                        FocusedReplyOverlay(destination: session.displayName(for: contact), isSending: session.sendingContactIDs.contains(contact.id), cancel: cancelReply) {
-                            messageBubble(message: session.messages[focusedReplyMessage.contactId]?.first(where: { $0.id == focusedReplyMessage.id }) ?? focusedReplyMessage)
-                                .modifier(ViewedMessageTask(messages: [focusedReplyMessage], enabled: !showSettings && !showCost && !showGallery))
-                        }
-                    }
-                }
-                #if os(macOS)
-                composerPane(arrangement: arrangement, bottomSafeArea: bottomSafeArea)
-                #endif
-            }
-        }
-        #if os(iOS)
-        // The composer floats in the bottom safe area, so messages scroll behind its glass controls
-        // instead of stopping at its top edge, as they already do in the unified Messages feed.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            composerPane(arrangement: arrangement, bottomSafeArea: bottomSafeArea)
-        }
-        #endif
-        .navigationTitle(platformNavigationTitle)
-        .task(id: contact.id) { _ = try? await session.conversationSettings(for: contact.id) }
-        .task {
-            let arguments = ProcessInfo.processInfo.arguments
-            guard arguments.contains("-demoPhotoSendProgress") || arguments.contains("-demoPhotoTransferProgress") else { return }
-            session.photoSendProgress["demo-photo-send"] = PhotoSendProgress(
-                id: "demo-photo-send", contactID: contact.id,
-                stage: arguments.contains("-demoPhotoTransferProgress") ? .transferring : .sending,
-                completed: 4, total: 10, error: nil
-            )
-        }
-        .platformInlineNavigationTitle()
-        #if os(iOS)
-        .platformChatNavigationBackground()
-        .platformTopSafeAreaBar {
-            if showsInlineHeader {
-                conversationTitleButton
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .modifier(InlineHeaderBackground())
-            }
-        }
-        #endif
-        .toolbar {
-            #if os(iOS)
-            if !showsInlineHeader {
-                ToolbarItem(placement: .principal) { conversationTitleButton }
-            }
-            // Gallery and the conversation menu are their own group, apart from Messages, Chats and Settings.
-            // In a vertical bar on iPhone Duo a leading item gets its own glass button above the
-            // destinations, as the Messages feed's topic filter does; a trailing one joins their capsule.
-            // In a horizontal bar they stay at the right of the header, split off by a spacer.
-            if layout.usesVerticalBars {
-                ToolbarItemGroup(placement: .topBarLeading) { conversationBarActions }
-                    .foldableVisibilityPriority(.high)
-            } else {
-                if #available(iOS 26.0, *) {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) { conversationBarActions }
-                    .foldableVisibilityPriority(.high)
-            }
-            #endif
-        }
-        .task {
-            draft = ProcessInfo.processInfo.arguments.contains("-demo") ? "" : session.draftStore.text(for: contact.id)
-            await session.loadAvatar(for: contact.id)
-            await session.loadMessages(for: contact.id)
-            await session.loadTopics()
-            usage = try? await session.conversationUsage(for: contact.id)
-        }
-        .onChange(of: draft) { _, newValue in
-            session.draftStore.save(newValue, for: contact.id)
-        }
-        .task(id: selectedTopicID) {
-            if let selectedTopicID { await session.loadTopicMessages(selectedTopicID) }
-        }
-        .onChange(of: selectedTopicID) { _, _ in cancelReply() }
-        .onChange(of: session.topicCatalog.topics) { _, topics in
-            if let selectedTopicID, !topics.contains(where: { $0.id == selectedTopicID && $0.contactId == contact.id }) { self.selectedTopicID = nil }
-        }
-        .sheet(isPresented: $showSettings) {
-            ConversationSettingsView(contact: contact)
-                .foldableTrailingSheetPlacement()
-        }
-        .sheet(isPresented: $showCost) {
-            ConversationCostView(contact: contact)
-                .foldableTrailingSheetPlacement()
-        }
-        #if os(iOS)
-        .sheet(isPresented: $showTopicManagement) {
-            TopicManagementView(contactID: contact.id)
-                .modifier(ReadReceiptCover())
-                // Inside a conversation the sheet belongs beside that conversation, not over the hinge.
-                .foldableTrailingSheetPlacement()
-        }
-        .fullScreenCover(isPresented: $showGallery) { ChatMediaGallery(contact: contact).environment(session) }
-        #else
-        .sheet(isPresented: $showGallery) { ChatMediaGallery(contact: contact).environment(session) }
-        #endif
-    }
-
-    private func composerPane(arrangement: FoldAwareChatLayout.Arrangement, bottomSafeArea: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            if let progress = activePhotoSend {
-                PhotoSendProgressView(progress: progress)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-            }
-            ComposerView(
-                contactID: contact.id,
-                text: $draft,
-                reply: replyTarget,
-                showReplyPreview: focusedReplyMessage == nil,
-                isSending: session.sendingContactIDs.contains(contact.id),
-                cancelReply: cancelReply,
-                sendImages: sendImages,
-                send: send
-            )
-            .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
-        }
-        .foldAwareComposerPane(arrangement)
-    }
-
-    private var messageTimeline: some View {
+    var messageTimeline: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 #if os(macOS)
@@ -335,7 +124,7 @@ struct ConversationView: View {
         }
     }
 
-    private var platformNavigationTitle: String {
+    var platformNavigationTitle: String {
         #if os(macOS)
         "Babel Bridge"
         #else
@@ -412,7 +201,7 @@ struct ConversationView: View {
         }
     }
 
-    private func messageBubble(message: ChatMessage, albumMessages: [ChatMessage] = []) -> some View {
+    func messageBubble(message: ChatMessage, albumMessages: [ChatMessage] = []) -> some View {
         MessageBubble(
                 message: message,
                 isStarred: session.preferences.isStarred(messageID: message.id, contactID: contact.id),
@@ -474,12 +263,12 @@ struct ConversationView: View {
         focusedReplyMessage = message
     }
 
-    private func cancelReply() {
+    func cancelReply() {
         replyTarget = nil
         focusedReplyMessage = nil
     }
 
-    private func send() {
+    func send() {
         let value = draft
         let reply = replyTarget
         Task {
@@ -490,7 +279,7 @@ struct ConversationView: View {
         }
     }
 
-    private func sendImages(_ images: [OutgoingImage], _ caption: String?) -> Bool {
+    func sendImages(_ images: [OutgoingImage], _ caption: String?) -> Bool {
         let reply = replyTarget
         if session.startPhotoSend(images, caption: caption, to: contact.id, reply: reply) {
             cancelReply()
@@ -507,12 +296,12 @@ struct ConversationView: View {
         }
     }
 
-    private func activateSearch() async {
+    func activateSearch() async {
         await session.loadAllMessages(for: contact.id)
         showSearch = true
     }
 
-    private func toggleStarredFilter() async {
+    func toggleStarredFilter() async {
         if starredOnly {
             starredOnly = false
             return
@@ -522,267 +311,3 @@ struct ConversationView: View {
     }
 }
 
-struct PhotoSendProgressView: View {
-    @Environment(\.translatorPalette) private var palette
-    let progress: PhotoSendProgress
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: progress.stage == .complete ? "checkmark.circle.fill" : "photo.stack.fill")
-                .font(.title3)
-                .foregroundStyle(progress.stage == .failed ? .red : palette.accent)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(progress.statusText)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                ProgressView(value: progress.fractionCompleted)
-                    .tint(progress.stage == .failed ? .red : palette.accent)
-            }
-        }
-        .padding(12)
-        .translatorGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(progress.statusText)
-    }
-}
-
-struct ChatWallpaper: View {
-    @Environment(AppSession.self) private var session
-    @Environment(\.translatorPalette) private var palette
-
-    var body: some View {
-        palette.chatBackground
-            .overlay { WallpaperPattern(wallpaper: session.preferences.wallpaper) }
-            .ignoresSafeArea()
-    }
-}
-
-struct WallpaperPattern: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let wallpaper: AppWallpaper
-    var tileSize: CGFloat = 360
-
-    var body: some View {
-        Group {
-            if let asset = wallpaper.assetName {
-                // White source pixels become transparent; only the fine artwork is tinted.
-                // One mask therefore follows every palette in both light and dark appearance.
-                (colorScheme == .dark ? Color.white : Color.black)
-                    .opacity(colorScheme == .dark ? 0.17 : 0.12)
-                    .mask {
-                        Canvas { context, size in
-                            let pattern = context.resolve(Image(asset))
-                            for row in 0..<max(1, Int(ceil(size.height / tileSize))) {
-                                for column in 0..<max(1, Int(ceil(size.width / tileSize))) {
-                                    context.draw(pattern, in: CGRect(x: CGFloat(column) * tileSize, y: CGFloat(row) * tileSize, width: tileSize, height: tileSize))
-                                }
-                            }
-                        }
-                        .colorInvert()
-                        .luminanceToAlpha()
-                    }
-            } else {
-                Canvas { context, size in
-                    for row in 0..<max(0, Int(size.height / 64 + 1)) {
-                        for column in 0..<max(0, Int(size.width / 64 + 1)) {
-                            let index = (row * 3 + column) % 8
-                            if let symbol = context.resolveSymbol(id: index) {
-                                var tile = context
-                                tile.translateBy(x: CGFloat(column) * 64 + (row.isMultiple(of: 2) ? 8 : 36), y: CGFloat(row) * 64 + 20)
-                                tile.rotate(by: .degrees(Double((row + column) % 3 - 1) * 22))
-                                tile.draw(symbol, at: .zero)
-                            }
-                        }
-                    }
-                } symbols: {
-                    ForEach(Array(["cup.and.saucer", "paperplane", "heart", "camera", "sun.max", "leaf", "globe.europe.africa", "sparkles"].enumerated()), id: \.offset) { index, symbol in
-                        Image(systemName: symbol)
-                            .font(.system(size: 32, weight: .ultraLight))
-                            .foregroundStyle(Color.secondary.opacity(0.14))
-                            .tag(index)
-                    }
-                }
-
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
-#if os(iOS)
-/// A frosted fade behind the inline header, like the one under a WhatsApp chat header. The frost is
-/// strongest at the top of the display and eases through the header, so a scrolled bubble shows only
-/// faintly behind the name, then dissolves over the row beneath the header's bottom edge: the message
-/// just under the header is about half visible, the next one is clear, and there is no bar edge.
-private struct InlineHeaderBackground: ViewModifier {
-    /// The frost's strength at the header's bottom edge, as a fraction of full strength.
-    private static let edgeStrength = 0.68
-    /// How far below the header's bottom edge the frost reaches before it is gone.
-    private static let dissolveHeight: CGFloat = 60
-
-    func body(content: Content) -> some View {
-        content.background {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .mask {
-                    VStack(spacing: 0) {
-                        // Full strength at the top of the display, easing to the edge strength at the
-                        // header's bottom edge, so the header never reads as a solid band.
-                        LinearGradient(
-                            colors: [.black, .black.opacity(Self.edgeStrength)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        // Beneath the header the frost falls away quickly at first and then tails off,
-                        // which is softer than a straight dissolve of the same height.
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black.opacity(Self.edgeStrength), location: 0),
-                                .init(color: .black.opacity(0.36), location: 0.3),
-                                .init(color: .black.opacity(0.14), location: 0.6),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: Self.dissolveHeight)
-                    }
-                }
-                .padding(.bottom, -Self.dissolveHeight)
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-        }
-    }
-}
-#endif
-
-private struct DatePill: View {
-    let date: Date
-    var body: some View {
-        Text(date.formatted(.dateTime.weekday().day().month()))
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .translatorGlass(in: Capsule())
-    }
-}
-
-struct FilterPill: View {
-    let title: String
-    let systemImage: String
-    let clear: () -> Void
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: systemImage)
-            Text(title)
-            Button("Clear filter", systemImage: "xmark.circle.fill", action: clear)
-                .labelStyle(.iconOnly)
-        }
-        .font(.caption.weight(.semibold))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .translatorGlass(in: Capsule())
-    }
-}
-
-private struct ConversationCostView: View {
-    @Environment(AppSession.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    let contact: Contact
-    @State private var usage: UsageSummary?
-    @State private var error: String?
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if let usage {
-                    Section("Conversation cost") {
-                        costRow("Total", usage.costUsd.formatted(.currency(code: "USD").precision(.fractionLength(4))))
-                        costRow("Input tokens", usage.inputTokens.formatted())
-                        costRow("Cached input", usage.cachedInputTokens.formatted())
-                        costRow("Output tokens", usage.outputTokens.formatted())
-                    }
-                } else if let error {
-                    VStack(spacing: 14) {
-                        ContentUnavailableView("Couldn’t load cost", systemImage: "exclamationmark.triangle", description: Text(error))
-                        Button("Try again", systemImage: "arrow.clockwise") {
-                            Task { await load() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                } else {
-                    HStack { Spacer(); ProgressView(); Spacer() }
-                }
-            }
-            .navigationTitle(session.displayName(for: contact))
-            .platformInlineNavigationTitle()
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .task { await load() }
-        }
-        #if os(macOS)
-        .platformSheetSize(
-            minWidth: MacChatLayoutMetrics.costSheetMinimumWidth,
-            minHeight: MacChatLayoutMetrics.costSheetMinimumHeight
-        )
-        #endif
-    }
-
-    private func load() async {
-        error = nil
-        do { usage = try await session.conversationUsage(for: contact.id) }
-        catch { self.error = error.localizedDescription }
-    }
-
-    private func costRow(_ label: String, _ value: String) -> some View {
-        LabeledContent(label) {
-            Text(value)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        }
-    }
-}
-
-
-/// A row being created, fetched or translated is not evidence that it was seen.
-struct MessageReadVisibility: ViewModifier {
-    @Environment(AppSession.self) private var session
-    let messages: [ChatMessage]
-    let enabled: Bool
-    @State private var isVisible = false
-    func body(content: Content) -> some View {
-        content
-            .onScrollVisibilityChange(threshold: 0.5) { isVisible = $0 }
-            .modifier(ViewedMessageTask(messages: messages, enabled: enabled && isVisible && session.readReceiptCovers.isEmpty))
-    }
-}
-
-struct ViewedMessageTask: ViewModifier {
-    @Environment(AppSession.self) private var session
-    @Environment(\.scenePhase) private var scenePhase
-    let messages: [ChatMessage]
-    let enabled: Bool
-    private var key: String { "\(enabled && scenePhase == .active):" + messages.map(\.id).joined(separator: ",") }
-    func body(content: Content) -> some View {
-        content.task(id: key) {
-            guard enabled, scenePhase == .active else { return }
-            do {
-                try await Task.sleep(for: .milliseconds(700))
-                try Task.checkCancellation()
-                await session.recordMessageViews(messages)
-            } catch { /* Leaving the viewport, covering the view or suspending cancels the dwell. */ }
-        }
-    }
-}
-
-
-struct ReadReceiptCover: ViewModifier {
-    @Environment(AppSession.self) private var session
-    @State private var id = UUID()
-    func body(content: Content) -> some View {
-        content.onAppear { session.readReceiptCovers.insert(id) }
-            .onDisappear { session.readReceiptCovers.remove(id) }
-    }
-}
