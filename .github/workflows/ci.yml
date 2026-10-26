@@ -6,18 +6,36 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+# A new push to the same PR cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pinned static ffmpeg/ffprobe from eugeneware/ffmpeg-static release assets
+  # (includes libopus and libmp3lame, which the Rust voice and gallery tests
+  # use). Bump the release and both hashes together.
+  FFMPEG_RELEASE: "b6.1.1"
+  FFMPEG_SHA256: "bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa"
+  FFPROBE_SHA256: "25d9b6ccb05e3d9de9e04e31e2506d8dd7f9f0418981965ac6df12e8d3afd067"
+
 jobs:
   container-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Check production Rust container build
         run: docker build --target rust-builder --tag whatsapp-translator:rust-build-check .
 
-  test:
+  go:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,10 +46,77 @@ jobs:
           go-version-file: wa-bridge/go.mod
           cache-dependency-path: wa-bridge/go.sum
 
+      - name: Test Go bridge
+        working-directory: wa-bridge
+        run: go test ./...
+
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The go job tests the bridge, and no Rust test runs the binary.
+      SKIP_GO_BUILD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ffmpeg-static
+          key: ffmpeg-static-${{ env.FFMPEG_RELEASE }}-${{ env.FFMPEG_SHA256 }}-${{ runner.os }}-${{ runner.arch }}
+
+      # Downloads a static build instead of `apt-get install ffmpeg`, which
+      # pulls ~150 packages from the Ubuntu mirror and has stalled for 30+ min.
+      - name: Install ffmpeg
+        run: |
+          set -eu
+          dir="$HOME/.cache/ffmpeg-static"
+          if [ ! -x "$dir/ffmpeg" ] || [ ! -x "$dir/ffprobe" ]; then
+            rm -rf "$dir"
+            mkdir -p "$dir"
+            base="https://github.com/eugeneware/ffmpeg-static/releases/download/${FFMPEG_RELEASE}"
+            for tool in ffmpeg ffprobe; do
+              archive="$RUNNER_TEMP/${tool}.gz"
+              curl -fsSL --retry 4 --retry-all-errors --max-time 300 -o "$archive" "${base}/${tool}-linux-x64.gz"
+              if [ "$tool" = ffmpeg ]; then sum="$FFMPEG_SHA256"; else sum="$FFPROBE_SHA256"; fi
+              echo "${sum}  ${archive}" | sha256sum -c -
+              gunzip -c "$archive" > "$dir/$tool"
+              chmod +x "$dir/$tool"
+              rm -f "$archive"
+            done
+          fi
+          echo "$dir" >> "$GITHUB_PATH"
+          "$dir/ffmpeg" -hide_banner -version | head -n 1
+          "$dir/ffprobe" -hide_banner -version | head -n 1
+          encoders="$("$dir/ffmpeg" -hide_banner -encoders 2>/dev/null)"
+          for enc in libopus libmp3lame; do
+            printf '%s\n' "$encoders" | grep -q "$enc" || { echo "error: ffmpeg lacks $enc"; exit 1; }
+          done
+
+      - name: Test Rust backend
+        run: cargo test
+
+      - name: Run Rust clippy
+        run: cargo clippy
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -39,22 +124,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-
-      - name: Test Go bridge
-        working-directory: wa-bridge
-        run: go test ./...
-
-      - name: Check Rust formatting
-        run: cargo fmt --check
-
-      - name: Install audio conversion dependency
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Test Rust backend
-        run: cargo test
-
-      - name: Run Rust clippy
-        run: cargo clippy
 
       - name: Install frontend dependencies
         working-directory: web
@@ -68,13 +137,36 @@ jobs:
         working-directory: web
         run: npm run lint:extension && npm run typecheck:extension && npm run check:extension
 
+      - name: Read Playwright version
+        id: playwright
+        working-directory: web
+        run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}-chromium-${{ runner.os }}-${{ runner.arch }}
+
+      # The runner image already ships Chrome's system libraries, so the
+      # `--with-deps` apt step (which has stalled for 15+ min) only runs if
+      # the Chromium binary is missing a shared library.
       - name: Install Extension browser
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: |
+          set -eu
+          npx playwright install chromium
+          chromium="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')"
+          if ldd "$chromium" | grep -q 'not found'; then
+            echo "Chromium is missing system libraries; installing them."
+            ldd "$chromium" | grep 'not found' || true
+            sudo -n timeout 900 npx playwright install-deps chromium
+          fi
+          echo "CHROMIUM_PATH=$chromium" >> "$GITHUB_ENV"
 
       - name: Test Extension host bridge and UI
         working-directory: web
-        run: CHROMIUM_PATH="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" npm run test:extension
+        run: npm run test:extension
 
       - name: Upload Extension screenshots
         if: always()
