@@ -1,11 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const appJs = readFileSync(join(__dirname, '..', 'public', 'app.js'), 'utf8');
+// app.js installs most of its methods from public/app/*.js, so read them together.
+const appModulesDir = join(__dirname, '..', 'public', 'app');
+const appJs = [
+  readFileSync(join(__dirname, '..', 'public', 'app.js'), 'utf8'),
+  ...readdirSync(appModulesDir)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .map((name) => readFileSync(join(appModulesDir, name), 'utf8')),
+].join('\n');
 const indexHtml = readFileSync(
   join(__dirname, '..', 'public', 'index.html'),
   'utf8',
