@@ -435,6 +435,7 @@ async fn read_response_stream(
 struct StreamOutput {
     items: Vec<Value>,
     text: String,
+    done_text: String,
 }
 
 impl StreamOutput {
@@ -452,30 +453,86 @@ impl StreamOutput {
                     .push_str(payload["delta"].as_str().unwrap_or_default());
                 Ok(None)
             }
+            Some("response.output_text.done") => {
+                // The full text of one part; it supersedes that part's deltas.
+                if let Some(text) = payload["text"].as_str() {
+                    self.done_text.push_str(text);
+                }
+                Ok(None)
+            }
             _ => {
                 let Some(mut response) = parse_stream_payload(&payload)? else {
                     return Ok(None);
                 };
-                let output_missing = response["output"]
-                    .as_array()
-                    .is_none_or(|output| output.is_empty());
-                if output_missing {
-                    let items = if !self.items.is_empty() {
-                        std::mem::take(&mut self.items)
-                    } else if !self.text.is_empty() {
-                        vec![json!({
-                            "type": "message",
-                            "content": [{ "type": "output_text", "text": self.text }],
-                        })]
+                if !has_output_text(&response["output"]) {
+                    let items = Value::Array(std::mem::take(&mut self.items));
+                    let text = if self.done_text.is_empty() {
+                        &self.text
                     } else {
-                        Vec::new()
+                        &self.done_text
                     };
-                    response["output"] = json!(items);
+                    if has_output_text(&items) {
+                        response["output"] = items;
+                    } else if !text.is_empty() {
+                        response["output"] = json!([{
+                            "type": "message",
+                            "content": [{ "type": "output_text", "text": text }],
+                        }]);
+                    } else {
+                        // Shapes only, never text, so a new format can be diagnosed.
+                        warn!(
+                            output = %output_shape(&response["output"]),
+                            items = %output_shape(&items),
+                            "ChatGPT plan response finished without output text"
+                        );
+                    }
                 }
                 Ok(Some(response))
             }
         }
     }
+}
+
+/// Whether a Responses `output` array holds message text the parsers can read.
+fn has_output_text(output: &Value) -> bool {
+    output.as_array().is_some_and(|items| {
+        items.iter().any(|item| {
+            item["type"] == "message"
+                && item["content"].as_array().is_some_and(|parts| {
+                    parts.iter().any(|part| {
+                        part["type"] == "output_text"
+                            && part["text"].as_str().is_some_and(|text| !text.is_empty())
+                    })
+                })
+        })
+    })
+}
+
+/// Item and content part types, for example `message[output_text],reasoning`.
+fn output_shape(output: &Value) -> String {
+    output
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| {
+                    let kind = item["type"].as_str().unwrap_or("?");
+                    match item["content"].as_array() {
+                        Some(parts) => format!(
+                            "{kind}[{}]",
+                            parts
+                                .iter()
+                                .map(|part| part["type"].as_str().unwrap_or("?"))
+                                .collect::<Vec<_>>()
+                                .join("|")
+                        ),
+                        None => kind.to_string(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_else(|| "none".to_string())
 }
 
 /// Position of the blank line ending the next event, and that separator's length.
@@ -2376,6 +2433,47 @@ mod tests {
         );
         server.join().unwrap();
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn chatgpt_output_comes_from_stream_events_when_completed_has_only_reasoning() {
+        let message = serde_json::json!({"type": "message", "content": [{"type": "output_text", "text": "{\"language\":\"German\",\"isTargetLanguage\":false}"}]});
+        let events = [
+            serde_json::json!({"type": "response.output_item.done", "item": {"type": "reasoning", "summary": []}}),
+            serde_json::json!({"type": "response.output_item.done", "item": message}),
+            serde_json::json!({"type": "response.completed", "response": {"status": "completed", "output": [{"type": "reasoning", "summary": []}]}}),
+        ];
+        let (url, _requests, server) = spawn_capturing_openai_mock(vec![MockResponse {
+            status: "200 OK",
+            body: sse(&events),
+        }]);
+        let (service, dir) = chatgpt_service(url, &["gpt-6.1-sol"]);
+        assert_eq!(service.source_language("Hallo").await.unwrap().0, "German");
+        server.join().unwrap();
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn chatgpt_output_text_done_is_used_when_nothing_else_carries_text() {
+        let events = [
+            serde_json::json!({"type": "response.output_text.done", "text": "{\"language\":\"Italian\",\"isTargetLanguage\":false}"}),
+            serde_json::json!({"type": "response.completed", "response": {"status": "completed"}}),
+        ];
+        let (url, _requests, server) = spawn_capturing_openai_mock(vec![MockResponse {
+            status: "200 OK",
+            body: sse(&events),
+        }]);
+        let (service, dir) = chatgpt_service(url, &["gpt-6.1-sol"]);
+        assert_eq!(service.source_language("Ciao").await.unwrap().0, "Italian");
+        server.join().unwrap();
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn output_shape_names_types_without_text() {
+        let output = serde_json::json!([{"type": "reasoning"}, {"type": "message", "content": [{"type": "refusal", "refusal": "secret"}]}]);
+        assert_eq!(super::output_shape(&output), "reasoning,message[refusal]");
+        assert!(!super::has_output_text(&output));
     }
 
     #[test]
