@@ -1,0 +1,7 @@
+# Matches the production image (Dockerfile: rust:1.88-bookworm), so local
+# builds, CI and the container all use the same compiler and clippy.
+# Bump this and the Dockerfile together.
+[toolchain]
+channel = "1.88"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
