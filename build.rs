@@ -8,12 +8,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
-    // Only rebuild if Go source files change
-    println!("cargo:rerun-if-changed=wa-bridge/main.go");
-    println!("cargo:rerun-if-changed=wa-bridge/client.go");
-    println!("cargo:rerun-if-changed=wa-bridge/protocol.go");
-    println!("cargo:rerun-if-changed=wa-bridge/go.mod");
-    println!("cargo:rerun-if-changed=wa-bridge/go.sum");
+    // Rebuild when anything in the Go bridge changes. Cargo scans a watched
+    // directory recursively, so new or renamed Go files are picked up too, and
+    // Go's build cache keeps reruns caused by test-only edits cheap.
+    println!("cargo:rerun-if-changed=wa-bridge");
 
     // Skip Go build if explicitly disabled. Rerun when the variable changes,
     // so a skipped build (as in `make check` and CI) does not stick to later
