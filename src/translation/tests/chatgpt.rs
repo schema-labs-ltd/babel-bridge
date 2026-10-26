@@ -250,3 +250,41 @@ fn audio_needs_the_api_key_even_when_signed_in() {
     assert!(service.audio_api_key().is_err());
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[tokio::test]
+async fn a_stalled_plan_stream_fails_after_the_idle_timeout() {
+    use std::io::Write;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut request);
+        let event = "data: {\"type\":\"response.created\"}\n\n";
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n{:x}\r\n{event}\r\n",
+            event.len()
+        )
+        .unwrap();
+        stream.flush().unwrap();
+        // Hold the stream open without sending the terminal event.
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+    });
+    let response = reqwest::get(&url).await.unwrap();
+    let error = super::super::transport::read_response_stream(
+        response,
+        std::time::Duration::from_millis(200),
+    )
+    .await;
+    let Err(error) = error else {
+        panic!("a stalled stream must fail");
+    };
+    assert_eq!(
+        error
+            .downcast_ref::<super::super::OpenAiOutputFailure>()
+            .map(|f| f.0),
+        Some("stream_stalled")
+    );
+    server.join().unwrap();
+}

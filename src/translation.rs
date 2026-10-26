@@ -37,6 +37,22 @@ impl RequestPolicy {
         }
     }
 
+    /// Plan requests stream, so they get a longer overall limit and a separate
+    /// limit on silence between chunks, which catches a stalled stream sooner.
+    fn chatgpt_timeout(self) -> Duration {
+        match self {
+            Self::Interactive => Duration::from_secs(90),
+            Self::TopicBatch => Duration::from_secs(180),
+        }
+    }
+
+    fn chatgpt_idle_timeout(self) -> Duration {
+        match self {
+            Self::Interactive => Duration::from_secs(45),
+            Self::TopicBatch => Duration::from_secs(90),
+        }
+    }
+
     fn attempts(self) -> usize {
         match self {
             Self::Interactive => OPENAI_MAX_ATTEMPTS,
