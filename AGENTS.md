@@ -45,3 +45,10 @@ CI fails when these drift from their sources, so regenerate them in the same cha
 - `fixtures/api/` pins the HTTP and WebSocket JSON that the Apple apps decode. `responses/` is written by the Rust test `api_contract` (`src/api_contract.rs`), which drives the real router; `requests/` holds the bodies the apps send, which the server must accept.
 - After an intended API change, run `UPDATE_FIXTURES=1 cargo test api_contract`, review the fixture diff, update `ios/WhatsAppTranslator/Models/APIModels.swift`, then run `scripts/check-api-contract.sh`. That script builds `APIModels.swift` with `ios/APIContract/APIContractCheck.swift` and decodes every fixture; it runs on Linux with a Swift 6 toolchain, and the `CI / api-contract` job runs it on every pull request.
 - Keep `APIModels.swift` and `MessageTone.swift` free of Apple-only frameworks so the check keeps building on Linux. A new fixture needs a matching check in `APIContractCheck.swift`, or the script fails.
+
+## File size limit
+
+- A Lefthook pre-commit hook (`lefthook.yml`, `scripts/check-file-size.sh`) blocks any commit that stages a hand-written text file over 5,000 tokens, counted as bytes / 4 (20,000 bytes). Install it once per clone with `npx lefthook install` (or `lefthook install`).
+- It checks only staged files, so an existing oversized file blocks the commit only when it is edited. When that happens, split the file as the hook's message describes, in the same commit; do not bypass the hook with `--no-verify` or trim content to fit.
+- Binary files and files marked `linguist-generated` in `.gitattributes` (lockfiles, `web/extensions/dist/`, Xcode project and asset catalog files) are skipped. Mark new generated files there.
+- Run `scripts/check-file-size.sh $(git ls-files)` to list every file currently over the limit.
