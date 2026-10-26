@@ -39,6 +39,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if mode := os.Getenv("WA_FAKE_BRIDGE"); mode != "" && mode != "0" && mode != "false" {
+		runFakeBridge(ctx, cancel, mode)
+		return
+	}
+
 	// Create client
 	client, err := NewClient(ctx, *dataDir, *verbose)
 	if err != nil {

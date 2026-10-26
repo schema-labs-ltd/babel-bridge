@@ -108,6 +108,10 @@ async fn main() -> Result<()> {
                 .context("Failed to load Sign in with ChatGPT credentials")?;
             service = service.with_chatgpt(Arc::new(auth));
         }
+        if args.fake_ai {
+            warn!("WA_FAKE_AI is set: text AI returns placeholder output and OpenAI is not called");
+            service = service.with_fake_ai();
+        }
         if service.is_configured() {
             info!("AI features enabled (target: {})", args.default_language);
         } else {

@@ -182,6 +182,19 @@ The supported backend is the Rust app (`cargo run --release`). The `web/`
 package is only for frontend tests and Storybook previews; it does not run a
 separate Node API server.
 
+### Run without WhatsApp or OpenAI
+
+For UI work, screenshots and tests, fake mode needs no phone, linked account or API key:
+
+```bash
+cp .env.example .env
+(cd wa-bridge && go build -o wa-bridge .)
+set -a; . ./.env; set +a
+cargo run
+```
+
+`WA_FAKE_BRIDGE=true` makes `wa-bridge` serve a few canned chats (Spanish, Portuguese and English) instead of connecting to WhatsApp, acknowledges sends, and marks them delivered and then read; `WA_FAKE_BRIDGE=qr` shows a pairing QR code first. `WA_FAKE_AI=true` answers text AI locally: language detection guesses from the characters used and translations come back as `[Spanish → English] original text`. AI compose and styled replies return placeholder text. Topic classification needs structured AI output and reports an error in fake mode, and voice notes still need a real key.
+
 ## Translated voice notes
 
 In conversations with **Translate messages** enabled, incoming voice notes are transcribed, translated into your default language, and
