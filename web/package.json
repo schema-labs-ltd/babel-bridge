@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "lint": "npm run lint:web && npm run lint:extension",
+    "lint:web": "prettier --check \"public/**/*.{js,css,html,json}\" \"tests/**/*.js\" \"*.test.js\"",
+    "format": "prettier --write \"public/**/*.{js,css,html,json}\" \"tests/**/*.js\" \"*.test.js\" \"extensions/src/**/*\" \"extensions/*.mjs\" \"extensions/*.ts\" \"extensions/*.json\" \"extensions/tests/**/*\"",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "build:extension": "node extensions/build.mjs",

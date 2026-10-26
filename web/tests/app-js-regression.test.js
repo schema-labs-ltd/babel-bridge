@@ -6,10 +6,15 @@ import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appJs = readFileSync(join(__dirname, '..', 'public', 'app.js'), 'utf8');
-const indexHtml = readFileSync(join(__dirname, '..', 'public', 'index.html'), 'utf8');
+const indexHtml = readFileSync(
+  join(__dirname, '..', 'public', 'index.html'),
+  'utf8',
+);
 
 function extractMethodBody(source, methodName) {
-  const methodPattern = new RegExp(`(?:async\\s+)?${methodName}\\s*\\([^)]*\\)\\s*\\{`);
+  const methodPattern = new RegExp(
+    `(?:async\\s+)?${methodName}\\s*\\([^)]*\\)\\s*\\{`,
+  );
   const match = methodPattern.exec(source);
   const start = match?.index ?? -1;
   assert.notEqual(start, -1, `${methodName} should exist`);
@@ -34,12 +39,25 @@ function extractMethodBody(source, methodName) {
 
 test('WhatsApp disconnect discards an expired QR and opens linking while a fresh code is prepared', async () => {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const disconnect = new AsyncFunction(extractMethodBody(appJs, 'handleDisconnected'));
-  const app = { connected: true, qrData: 'expired', connectionState: 'linking_required',
-    async fetchCurrentQRCode() { return null; },
-    showConnecting() { this.preparingLink = true; },
-    showQRCode() { assert.fail('Expired code must not be redisplayed'); },
-    loadContacts() { assert.fail('Linking must open even with cached chats'); },
+  const disconnect = new AsyncFunction(
+    extractMethodBody(appJs, 'handleDisconnected'),
+  );
+  const app = {
+    connected: true,
+    qrData: 'expired',
+    connectionState: 'linking_required',
+    async fetchCurrentQRCode() {
+      return null;
+    },
+    showConnecting() {
+      this.preparingLink = true;
+    },
+    showQRCode() {
+      assert.fail('Expired code must not be redisplayed');
+    },
+    loadContacts() {
+      assert.fail('Linking must open even with cached chats');
+    },
   };
   await disconnect.call(app);
   assert.equal(app.connected, false);
@@ -49,12 +67,24 @@ test('WhatsApp disconnect discards an expired QR and opens linking while a fresh
 
 test('a late QR response cannot reopen linking after WhatsApp reconnects', async () => {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const disconnect = new AsyncFunction(extractMethodBody(appJs, 'handleDisconnected'));
+  const disconnect = new AsyncFunction(
+    extractMethodBody(appJs, 'handleDisconnected'),
+  );
   let resolve;
-  const app = { connected: false, qrData: null,
-    fetchCurrentQRCode() { return new Promise(done => { resolve = done; }); },
-    showQRCode() { assert.fail('A stale QR must not replace the connected inbox'); },
-    loadContacts() { assert.fail('A stale disconnect must not change the inbox'); },
+  const app = {
+    connected: false,
+    qrData: null,
+    fetchCurrentQRCode() {
+      return new Promise((done) => {
+        resolve = done;
+      });
+    },
+    showQRCode() {
+      assert.fail('A stale QR must not replace the connected inbox');
+    },
+    loadContacts() {
+      assert.fail('A stale disconnect must not change the inbox');
+    },
   };
   const pending = disconnect.call(app);
   app.connected = true;
@@ -66,25 +96,51 @@ test('a late QR response cannot reopen linking after WhatsApp reconnects', async
 
 test('foreground topic recovery refreshes a still-open socket session without marking messages read', async () => {
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const recover = new AsyncFunction('document', 'WebSocket', extractMethodBody(appJs, 'refreshAfterBecomingVisible'));
+  const recover = new AsyncFunction(
+    'document',
+    'WebSocket',
+    extractMethodBody(appJs, 'refreshAfterBecomingVisible'),
+  );
   for (const readyState of [1, 3]) {
     const calls = [];
-    const app = {ws: {readyState}, demoMode: false, authExpired: false,
-      connectWebSocket() { calls.push('connect'); },
-      topics: {async load() { calls.push('topics-and-selected-page'); }},
-      loadMessages() { assert.fail('A foreground topic refresh must not mark a conversation read'); },
+    const app = {
+      ws: { readyState },
+      demoMode: false,
+      authExpired: false,
+      connectWebSocket() {
+        calls.push('connect');
+      },
+      topics: {
+        async load() {
+          calls.push('topics-and-selected-page');
+        },
+      },
+      loadMessages() {
+        assert.fail(
+          'A foreground topic refresh must not mark a conversation read',
+        );
+      },
     };
-    await recover.call(app, {visibilityState: 'visible'}, {CLOSED: 3});
-    assert.deepEqual(calls, readyState === 3 ? ['connect', 'topics-and-selected-page'] : ['topics-and-selected-page']);
+    await recover.call(app, { visibilityState: 'visible' }, { CLOSED: 3 });
+    assert.deepEqual(
+      calls,
+      readyState === 3
+        ? ['connect', 'topics-and-selected-page']
+        : ['topics-and-selected-page'],
+    );
     calls.length = 0;
-    await recover.call(app, {visibilityState: 'hidden'}, {CLOSED: 3});
+    await recover.call(app, { visibilityState: 'hidden' }, { CLOSED: 3 });
     app.authExpired = true;
-    await recover.call(app, {visibilityState: 'visible'}, {CLOSED: 3});
-    app.authExpired = false; app.demoMode = true;
-    await recover.call(app, {visibilityState: 'visible'}, {CLOSED: 3});
+    await recover.call(app, { visibilityState: 'visible' }, { CLOSED: 3 });
+    app.authExpired = false;
+    app.demoMode = true;
+    await recover.call(app, { visibilityState: 'visible' }, { CLOSED: 3 });
     assert.deepEqual(calls, []);
   }
-  assert.match(extractMethodBody(appJs, 'bindEvents'), /this\.refreshAfterBecomingVisible\(\)/);
+  assert.match(
+    extractMethodBody(appJs, 'bindEvents'),
+    /this\.refreshAfterBecomingVisible\(\)/,
+  );
 });
 
 test('workspace export carries portable local state but not auth', () => {
@@ -142,10 +198,16 @@ test('AI compose drafts generated text instead of auto-sending it', () => {
 
 test('drafts persist silently without a composer banner', () => {
   const draftInputBody = extractMethodBody(appJs, 'handleDraftInput');
-  const restoreDraftBody = extractMethodBody(appJs, 'restoreDraftForCurrentContact');
+  const restoreDraftBody = extractMethodBody(
+    appJs,
+    'restoreDraftForCurrentContact',
+  );
 
   assert.match(draftInputBody, /this\.persistDrafts\(\)/);
-  assert.match(restoreDraftBody, /getDraftText\(this\.drafts, this\.currentContactId\)/);
+  assert.match(
+    restoreDraftBody,
+    /getDraftText\(this\.drafts, this\.currentContactId\)/,
+  );
   assert.doesNotMatch(indexHtml, /id="draft-banner"/);
   assert.doesNotMatch(indexHtml, /Discard draft/);
   assert.doesNotMatch(appJs, /updateDraftBanner|draft-clear-button/);
@@ -160,14 +222,20 @@ test('sidebar identity header omits profile avatar and connection status', () =>
 
 test('disconnected bridge shows cached contacts instead of permanent connecting state', () => {
   const disconnectedBody = extractMethodBody(appJs, 'handleDisconnected');
-  const cachedWorkspaceBody = extractMethodBody(appJs, 'showCachedWorkspaceDisconnected');
+  const cachedWorkspaceBody = extractMethodBody(
+    appJs,
+    'showCachedWorkspaceDisconnected',
+  );
 
   assert.match(disconnectedBody, /await this\.fetchCurrentQRCode\(\)/);
   assert.match(disconnectedBody, /await this\.loadContacts\(\)/);
   assert.match(disconnectedBody, /this\.contacts\.length > 0/);
   assert.match(disconnectedBody, /this\.showCachedWorkspaceDisconnected\(\)/);
   assert.match(disconnectedBody, /this\.showConnecting\(\)/);
-  assert.match(cachedWorkspaceBody, /main-container'\)\?\.classList\.remove\('hidden'\)/);
+  assert.match(
+    cachedWorkspaceBody,
+    /main-container'\)\?\.classList\.remove\('hidden'\)/,
+  );
   assert.match(cachedWorkspaceBody, /WhatsApp disconnected/);
   assert.match(cachedWorkspaceBody, /Cached inbox available/);
 });
@@ -190,20 +258,29 @@ test('qr pairing view is not hidden by disconnected status races', () => {
 test('composer send controls require a live bridge connection', () => {
   const updateSendButtonBody = extractMethodBody(appJs, 'updateSendButton');
 
-  assert.match(updateSendButtonBody, /this\.currentContactId && this\.connected/);
+  assert.match(
+    updateSendButtonBody,
+    /this\.currentContactId && this\.connected/,
+  );
 });
 
 test('contact previews prefer translated message text when available', () => {
-  const getMessagePreview = new Function('message', extractMethodBody(appJs, 'getMessagePreview'));
+  const getMessagePreview = new Function(
+    'message',
+    extractMethodBody(appJs, 'getMessagePreview'),
+  );
 
   assert.equal(
     getMessagePreview({
       isFromMe: false,
       isTranslated: true,
       translatedText: 'Perfect, can you arrive after 18:00?',
-      content: { type: 'text', body: 'Perfecto, puede llegar despues de las 18:00?' },
+      content: {
+        type: 'text',
+        body: 'Perfecto, puede llegar despues de las 18:00?',
+      },
     }),
-    'Perfect, can you arrive after 18:00?'
+    'Perfect, can you arrive after 18:00?',
   );
   assert.equal(
     getMessagePreview({
@@ -213,19 +290,25 @@ test('contact previews prefer translated message text when available', () => {
       translatedText: '18:30 nos va bien.',
       content: { type: 'text', body: '18:30 works for us.' },
     }),
-    'You: 18:30 works for us.'
+    'You: 18:30 works for us.',
   );
 });
 
 test('hidden inbox filters are cleared and cannot constrain the contact list', () => {
   const syncInboxControlsBody = extractMethodBody(appJs, 'syncInboxControls');
-  const getFilteredContactsBody = extractMethodBody(appJs, 'getFilteredContacts');
+  const getFilteredContactsBody = extractMethodBody(
+    appJs,
+    'getFilteredContacts',
+  );
 
   assert.match(syncInboxControlsBody, /inboxFilterControlsAvailable/);
   assert.match(syncInboxControlsBody, /normalizeInboxFilters/);
   assert.match(syncInboxControlsBody, /this\.persistInboxPreferences\(\)/);
   assert.match(getFilteredContactsBody, /effectiveFilters/);
-  assert.match(getFilteredContactsBody, /controlsAvailable:\s*this\.inboxFilterControlsAvailable\(\)/);
+  assert.match(
+    getFilteredContactsBody,
+    /controlsAvailable:\s*this\.inboxFilterControlsAvailable\(\)/,
+  );
 });
 
 test('conversation settings modal only exposes translator-facing fields', () => {
@@ -273,11 +356,20 @@ test('loaded reaction records are merged instead of rendered as standalone messa
   const renderContentBody = extractMethodBody(appJs, 'renderContent');
   const getMessagePreviewBody = extractMethodBody(appJs, 'getMessagePreview');
 
-  assert.match(handleMessageBody, /case 'reaction':\s*this\.handleReactionMessage\(data\.message\)/);
+  assert.match(
+    handleMessageBody,
+    /case 'reaction':\s*this\.handleReactionMessage\(data\.message\)/,
+  );
   assert.match(normalizeBody, /this\.applyReactionToMessages\(/);
   assert.match(normalizeBody, /this\.isDisplayableMessage\(message\)/);
-  assert.match(loadMessagesBody, /this\.normalizeLoadedMessages\(contactId,\s*messages\)/);
-  assert.match(loadOlderMessagesBody, /this\.normalizeLoadedMessages\(contactId,\s*olderMessages,\s*existingMessages\)/);
+  assert.match(
+    loadMessagesBody,
+    /this\.normalizeLoadedMessages\(\s*contactId,\s*messages,?\s*\)/,
+  );
+  assert.match(
+    loadOlderMessagesBody,
+    /this\.normalizeLoadedMessages\(\s*contactId,\s*olderMessages,\s*existingMessages,?\s*\)/,
+  );
   assert.doesNotMatch(renderContentBody, /case 'reaction'/);
   assert.doesNotMatch(getMessagePreviewBody, /case 'reaction'/);
 });
@@ -287,46 +379,105 @@ test('static and generated markup do not use inline event attributes', () => {
 
   assert.doesNotMatch(
     renderedSources,
-    /\son(?:click|error|change|input|submit|keydown|load)=/i
+    /\son(?:click|error|change|input|submit|keydown|load)=/i,
   );
 });
 
-
 test('confirmed reactions use one actor and preserve snapshot removals against older pages', () => {
   const app = {};
-  app.getReactionActor = new Function('reactionMsg', extractMethodBody(appJs, 'getReactionActor'));
-  app.applyReactionToMessage = new Function('targetMessage', 'reactionMsg', extractMethodBody(appJs, 'applyReactionToMessage'));
-  const message = {reactions: {}, reactionStates: {me: {id: 'remove', timestamp: 102, emoji: ''}}};
-  const reaction = (id, timestamp, emoji) => ({id, timestamp, isFromMe: true, content: {emoji}});
+  app.getReactionActor = new Function(
+    'reactionMsg',
+    extractMethodBody(appJs, 'getReactionActor'),
+  );
+  app.applyReactionToMessage = new Function(
+    'targetMessage',
+    'reactionMsg',
+    extractMethodBody(appJs, 'applyReactionToMessage'),
+  );
+  const message = {
+    reactions: {},
+    reactionStates: { me: { id: 'remove', timestamp: 102, emoji: '' } },
+  };
+  const reaction = (id, timestamp, emoji) => ({
+    id,
+    timestamp,
+    isFromMe: true,
+    content: { emoji },
+  });
   app.applyReactionToMessage(message, reaction('z-old', 101, '❤️'));
   assert.deepEqual(message.reactions, {});
   app.applyReactionToMessage(message, reaction('a-new', 103, '👍'));
   app.applyReactionToMessage(message, reaction('a-new', 103, '👍'));
-  assert.deepEqual(message.reactions, {'👍': ['me']});
+  assert.deepEqual(message.reactions, { '👍': ['me'] });
   app.applyReactionToMessage(message, reaction('b-new', 104, '❤️'));
-  assert.deepEqual(message.reactions, {'❤️': ['me']});
+  assert.deepEqual(message.reactions, { '❤️': ['me'] });
   app.applyReactionToMessage(message, reaction('c-new', 105, ''));
   assert.deepEqual(message.reactions, {});
 });
 
 test('a history response captured before a live edit cannot restore its old text', () => {
-  const original = {id:'one',contactId:'chat',timestamp:1,content:{type:'text',body:'Get'}};
-  const edited = {...original,content:{...original.content,body:'Grr',edited_at_ms:20}};
-  const app = {messages:new Map([['chat',[edited]]]),prepareMessageForCache:()=>{},isReactionMessage:()=>false,isDisplayableMessage:()=>true};
-  app.normalizeLoadedMessages = new Function('contactId','rawMessages','additionalReactionTargets',extractMethodBody(appJs,'normalizeLoadedMessages'));
-  assert.deepEqual(app.normalizeLoadedMessages('chat',[original],[]),[edited]);
+  const original = {
+    id: 'one',
+    contactId: 'chat',
+    timestamp: 1,
+    content: { type: 'text', body: 'Get' },
+  };
+  const edited = {
+    ...original,
+    content: { ...original.content, body: 'Grr', edited_at_ms: 20 },
+  };
+  const app = {
+    messages: new Map([['chat', [edited]]]),
+    prepareMessageForCache: () => {},
+    isReactionMessage: () => false,
+    isDisplayableMessage: () => true,
+  };
+  app.normalizeLoadedMessages = new Function(
+    'contactId',
+    'rawMessages',
+    'additionalReactionTargets',
+    extractMethodBody(appJs, 'normalizeLoadedMessages'),
+  );
+  assert.deepEqual(app.normalizeLoadedMessages('chat', [original], []), [
+    edited,
+  ]);
 });
 
 test('incoming embedded quotes reach web rendering without an original history message', () => {
   const app = {
     getMessageSenderJid: () => '447700900123@s.whatsapp.net',
-    formatMessageTime: () => '09:41', renderContent: () => '<p>Thanks!</p>', renderReactions: () => '',
-    escapeHtml: text => String(text || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'),
+    formatMessageTime: () => '09:41',
+    renderContent: () => '<p>Thanks!</p>',
+    renderReactions: () => '',
+    escapeHtml: (text) =>
+      String(text || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;'),
   };
-  app.prepareMessageForCache = new Function('message', extractMethodBody(appJs, 'prepareMessageForCache'));
-  app.renderMessage = new Function('message', 'isMessageStarred', extractMethodBody(appJs, 'renderMessage'));
-  const quote = {messageId: 'outside-history', senderName: 'Alex', text: 'Yep I can <bring lunch>'};
-  const message = app.prepareMessageForCache({id:'reply',contactId:'family@g.us',isFromMe:false,chatType:'group',senderName:'Sam',content:{type:'text',body:'Thanks!',reply_context:quote}});
+  app.prepareMessageForCache = new Function(
+    'message',
+    extractMethodBody(appJs, 'prepareMessageForCache'),
+  );
+  app.renderMessage = new Function(
+    'message',
+    'isMessageStarred',
+    extractMethodBody(appJs, 'renderMessage'),
+  );
+  const quote = {
+    messageId: 'outside-history',
+    senderName: 'Alex',
+    text: 'Yep I can <bring lunch>',
+  };
+  const message = app.prepareMessageForCache({
+    id: 'reply',
+    contactId: 'family@g.us',
+    isFromMe: false,
+    chatType: 'group',
+    senderName: 'Sam',
+    content: { type: 'text', body: 'Thanks!', reply_context: quote },
+  });
   const restored = JSON.parse(JSON.stringify(message));
   const html = app.renderMessage(restored, () => false);
   assert.match(html, /class="quoted-sender">Alex</);

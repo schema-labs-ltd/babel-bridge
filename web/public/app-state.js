@@ -12,13 +12,16 @@ const DEFAULT_FILTERS = {
   tasksOnly: false,
 };
 
-export function normalizeInboxFilters(filters = {}, { controlsAvailable = true } = {}) {
+export function normalizeInboxFilters(
+  filters = {},
+  { controlsAvailable = true } = {},
+) {
   if (!controlsAvailable) {
     return { ...DEFAULT_FILTERS };
   }
 
   return Object.fromEntries(
-    Object.keys(DEFAULT_FILTERS).map(key => [key, Boolean(filters?.[key])]),
+    Object.keys(DEFAULT_FILTERS).map((key) => [key, Boolean(filters?.[key])]),
   );
 }
 
@@ -177,7 +180,9 @@ const COMPOSER_REMINDER_PRESETS = [
 ];
 
 function normalizeText(value) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .trim()
+    .toLowerCase();
 }
 
 function cloneObject(value) {
@@ -199,7 +204,10 @@ function normalizeHexColor(value) {
   const color = String(value || '').trim();
   const shortMatch = color.match(/^#([\da-f]{3})$/i);
   if (shortMatch) {
-    return `#${shortMatch[1].split('').map(char => char + char).join('')}`.toLowerCase();
+    return `#${shortMatch[1]
+      .split('')
+      .map((char) => char + char)
+      .join('')}`.toLowerCase();
   }
   const longMatch = color.match(/^#([\da-f]{6})$/i);
   return longMatch ? `#${longMatch[1].toLowerCase()}` : null;
@@ -218,11 +226,15 @@ function hexToRgb(color) {
 function getRelativeLuminance(color) {
   const rgb = hexToRgb(color);
   if (!rgb) return null;
-  const toLinear = channel => {
+  const toLinear = (channel) => {
     const value = channel / 255;
     return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
-  return (0.2126 * toLinear(rgb.r)) + (0.7152 * toLinear(rgb.g)) + (0.0722 * toLinear(rgb.b));
+  return (
+    0.2126 * toLinear(rgb.r) +
+    0.7152 * toLinear(rgb.g) +
+    0.0722 * toLinear(rgb.b)
+  );
 }
 
 export function getContrastRatio(foreground, background) {
@@ -245,10 +257,15 @@ export function getAppearanceThemeCatalog() {
 
 export function resolveAppearanceTheme(preferences = {}, options = {}) {
   const requestedTheme = normalizeText(preferences?.theme);
-  const theme = APPEARANCE_THEME_CONFIG[requestedTheme] ? requestedTheme : 'whatsapp';
+  const theme = APPEARANCE_THEME_CONFIG[requestedTheme]
+    ? requestedTheme
+    : 'whatsapp';
   const requestedMode = normalizeText(preferences?.mode);
-  const mode = ['light', 'dark', 'system'].includes(requestedMode) ? requestedMode : 'system';
-  const systemMode = normalizeText(options?.systemMode) === 'dark' ? 'dark' : 'light';
+  const mode = ['light', 'dark', 'system'].includes(requestedMode)
+    ? requestedMode
+    : 'system';
+  const systemMode =
+    normalizeText(options?.systemMode) === 'dark' ? 'dark' : 'light';
   const resolvedMode = mode === 'system' ? systemMode : mode;
   const definition = { ...APPEARANCE_THEME_CONFIG[theme][resolvedMode] };
 
@@ -262,11 +279,12 @@ export function resolveAppearanceTheme(preferences = {}, options = {}) {
 }
 
 function createChecklistId(text, updatedAt, index = 0) {
-  const slug = String(text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 32) || 'task';
+  const slug =
+    String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 32) || 'task';
   return `${slug}-${updatedAt}-${index}`;
 }
 
@@ -313,7 +331,7 @@ export function parseLabelsInput(value) {
   const seen = new Set();
   return String(value || '')
     .split(/[\n,]/)
-    .map(label => label.trim())
+    .map((label) => label.trim())
     .filter(Boolean)
     .filter((label) => {
       const key = label.toLowerCase();
@@ -342,10 +360,16 @@ export function parseChecklistInput(value) {
     });
 }
 
-export function upsertChecklistItems(existingItems, text, updatedAt = Date.now()) {
+export function upsertChecklistItems(
+  existingItems,
+  text,
+  updatedAt = Date.now(),
+) {
   const previous = Array.isArray(existingItems) ? existingItems : [];
   const existingByText = new Map(
-    previous.map(item => [normalizeText(item?.text), { ...item }]).filter(([key]) => Boolean(key)),
+    previous
+      .map((item) => [normalizeText(item?.text), { ...item }])
+      .filter(([key]) => Boolean(key)),
   );
 
   return parseChecklistInput(text).map((item, index) => {
@@ -377,7 +401,7 @@ export function toggleChecklistItem(items, itemId, updatedAt = Date.now()) {
 export function getChecklistSummary(metadata = {}) {
   const checklist = getChecklistItems(metadata);
   const total = checklist.length;
-  const completed = checklist.filter(item => item?.done).length;
+  const completed = checklist.filter((item) => item?.done).length;
   const open = Math.max(0, total - completed);
   let label = 'No tasks';
   if (open > 0) {
@@ -400,8 +424,10 @@ export function getTimezoneInfo(metadata = {}, now = Date.now()) {
       minute: '2-digit',
       hour12: false,
     }).formatToParts(new Date(now));
-    const hour = Number(parts.find(part => part.type === 'hour')?.value ?? '0');
-    const minute = parts.find(part => part.type === 'minute')?.value ?? '00';
+    const hour = Number(
+      parts.find((part) => part.type === 'hour')?.value ?? '0',
+    );
+    const minute = parts.find((part) => part.type === 'minute')?.value ?? '00';
     const localTime = `${String(hour).padStart(2, '0')}:${minute}`;
 
     let status = 'daytime';
@@ -480,7 +506,8 @@ export function getDraftPreview(drafts, contactId, maxLength = 48) {
   const draft = getDraftText(drafts, contactId);
   if (!draft) return '';
 
-  const preview = draft.length > maxLength ? `${draft.slice(0, maxLength - 1)}…` : draft;
+  const preview =
+    draft.length > maxLength ? `${draft.slice(0, maxLength - 1)}…` : draft;
   return `Draft: ${preview}`;
 }
 
@@ -500,12 +527,15 @@ export function getReplyState({
     return 'drafting';
   }
 
-  const latestMessage = Array.isArray(messages) && messages.length > 0
-    ? messages[messages.length - 1]
-    : null;
+  const latestMessage =
+    Array.isArray(messages) && messages.length > 0
+      ? messages[messages.length - 1]
+      : null;
 
   if (latestMessage) {
-    return latestMessage.isFromMe || latestMessage.is_from_me ? 'waiting' : 'needs-reply';
+    return latestMessage.isFromMe || latestMessage.is_from_me
+      ? 'waiting'
+      : 'needs-reply';
   }
 
   if ((contact?.unreadCount || 0) > 0) {
@@ -516,22 +546,28 @@ export function getReplyState({
 }
 
 function createQuickReplyId(text, updatedAt) {
-  const slug = String(text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 24) || 'quick-reply';
+  const slug =
+    String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24) || 'quick-reply';
   return `${slug}-${updatedAt}`;
 }
 
-export function upsertQuickReply(quickReplies, text, updatedAt = Date.now(), maxItems = 8) {
+export function upsertQuickReply(
+  quickReplies,
+  text,
+  updatedAt = Date.now(),
+  maxItems = 8,
+) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return Array.isArray(quickReplies) ? [...quickReplies] : [];
 
   const normalized = trimmed.toLowerCase();
   const nextReplies = (Array.isArray(quickReplies) ? quickReplies : [])
-    .filter(reply => normalizeText(reply?.text) !== normalized)
-    .map(reply => ({ ...reply }));
+    .filter((reply) => normalizeText(reply?.text) !== normalized)
+    .map((reply) => ({ ...reply }));
 
   nextReplies.unshift({
     id: createQuickReplyId(trimmed, updatedAt),
@@ -544,8 +580,8 @@ export function upsertQuickReply(quickReplies, text, updatedAt = Date.now(), max
 
 export function removeQuickReply(quickReplies, quickReplyId) {
   return (Array.isArray(quickReplies) ? quickReplies : [])
-    .filter(reply => reply?.id !== quickReplyId)
-    .map(reply => ({ ...reply }));
+    .filter((reply) => reply?.id !== quickReplyId)
+    .map((reply) => ({ ...reply }));
 }
 
 function messageSnippet(message, maxLength = 140) {
@@ -572,14 +608,20 @@ export function getMessageSnippet(message, maxLength = 140) {
 export function getUntranslatedIncomingMessages(messages = []) {
   return (Array.isArray(messages) ? messages : []).filter((message) => {
     const isOutgoing = Boolean(message?.isFromMe || message?.is_from_me);
-    const isTranslated = Boolean(message?.isTranslated || message?.is_translated);
+    const isTranslated = Boolean(
+      message?.isTranslated || message?.is_translated,
+    );
     const content = message?.content || {};
     const hasText = Boolean(content.body || content.caption || content.text);
     return !isOutgoing && !isTranslated && hasText;
   });
 }
 
-export function toggleStarredMessage(starredLookup, message, updatedAt = Date.now()) {
+export function toggleStarredMessage(
+  starredLookup,
+  message,
+  updatedAt = Date.now(),
+) {
   const nextLookup = cloneObject(starredLookup);
   const id = message?.id;
   if (!id) return nextLookup;
@@ -643,14 +685,20 @@ function getMetadata(metadataByContact, contactId) {
   return metadataByContact?.[contactId] || {};
 }
 
-function contactMatchesSearch(contact, draftPreview, messagePreview, metadata, normalizedQuery) {
+function contactMatchesSearch(
+  contact,
+  draftPreview,
+  messagePreview,
+  metadata,
+  normalizedQuery,
+) {
   if (!normalizedQuery) return true;
 
   const priority = getPriorityInfo(metadata);
   const checklistSummary = getChecklistSummary(metadata);
   const timezoneInfo = getTimezoneInfo(metadata);
   const checklistSearchText = getChecklistItems(metadata)
-    .map(item => item?.text)
+    .map((item) => item?.text)
     .filter(Boolean)
     .join(' ');
 
@@ -677,7 +725,7 @@ function contactMatchesSearch(contact, draftPreview, messagePreview, metadata, n
     .toLowerCase();
 
   const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
-  return tokens.every(token => haystack.includes(token));
+  return tokens.every((token) => haystack.includes(token));
 }
 
 export function getVisibleContacts({
@@ -700,7 +748,9 @@ export function getVisibleContacts({
     const priority = getPriorityInfo(metadata);
     const checklistSummary = getChecklistSummary(metadata);
     const isPinned = metadata?.pinnedAt != null || contact?.pinnedAt != null;
-    const hasNotes = Boolean(normalizeText(metadata?.notes || metadata?.notePreview));
+    const hasNotes = Boolean(
+      normalizeText(metadata?.notes || metadata?.notePreview),
+    );
     const labels = getContactLabels(metadata);
     const hasLabels = labels.length > 0;
     const reminderStatus = getReminderStatus(metadata, now);
@@ -761,7 +811,10 @@ export function getVisibleContacts({
       return false;
     }
 
-    if (mergedFilters.needsReplyOnly && !['needs-reply', 'drafting'].includes(replyState)) {
+    if (
+      mergedFilters.needsReplyOnly &&
+      !['needs-reply', 'drafting'].includes(replyState)
+    ) {
       return false;
     }
 
@@ -809,9 +862,10 @@ export function getContactActionSnapshot({
   const labels = getContactLabels(metadata);
   const timezoneInfo = getTimezoneInfo(metadata, now);
   const unreadCount = Math.max(0, Number(contact?.unreadCount || 0));
-  const lastMessageTime = normalizeTimestamp(contact?.lastMessageTime)
-    || normalizeTimestamp(messages?.[messages.length - 1]?.timestamp)
-    || 0;
+  const lastMessageTime =
+    normalizeTimestamp(contact?.lastMessageTime) ||
+    normalizeTimestamp(messages?.[messages.length - 1]?.timestamp) ||
+    0;
   const reminderAt = normalizeTimestamp(metadata?.reminderAt);
   const draftUpdatedAt = normalizeTimestamp(draft?.updatedAt);
 
@@ -827,7 +881,9 @@ export function getContactActionSnapshot({
   }
 
   if (checklist.open > 0) {
-    reasons.push(`${checklist.open} open task${checklist.open === 1 ? '' : 's'}`);
+    reasons.push(
+      `${checklist.open} open task${checklist.open === 1 ? '' : 's'}`,
+    );
   }
 
   if (priority.value !== 'normal') {
@@ -914,47 +970,54 @@ export function buildVisitorDashboard({
   maxFocusContacts = 5,
   maxUpcomingReminders = 4,
 } = {}) {
-  const actionSnapshots = (contacts || [])
-    .map((contact) => {
-      const metadata = getMetadata(metadataByContact, contact?.id);
-      return {
+  const actionSnapshots = (contacts || []).map((contact) => {
+    const metadata = getMetadata(metadataByContact, contact?.id);
+    return {
+      contact,
+      metadata,
+      snapshot: getContactActionSnapshot({
         contact,
+        drafts,
         metadata,
-        snapshot: getContactActionSnapshot({
-          contact,
-          drafts,
-          metadata,
-          messages: messagesByContact?.[contact?.id] || [],
-          now,
-        }),
-      };
-    });
+        messages: messagesByContact?.[contact?.id] || [],
+        now,
+      }),
+    };
+  });
 
-  const activeSnapshots = actionSnapshots.filter(entry => !entry.snapshot.isSnoozed);
+  const activeSnapshots = actionSnapshots.filter(
+    (entry) => !entry.snapshot.isSnoozed,
+  );
 
   const focusContacts = activeSnapshots
     .filter((entry) => {
       const snapshot = entry.snapshot;
-      return snapshot.attentionScore > 0
-        && (
-          snapshot.replyState === 'drafting'
-          || snapshot.replyState === 'needs-reply'
-          || snapshot.reminderStatus === 'due'
-          || snapshot.checklist.open > 0
-          || snapshot.priority.isImportant
-          || snapshot.hasDraft
-        );
+      return (
+        snapshot.attentionScore > 0 &&
+        (snapshot.replyState === 'drafting' ||
+          snapshot.replyState === 'needs-reply' ||
+          snapshot.reminderStatus === 'due' ||
+          snapshot.checklist.open > 0 ||
+          snapshot.priority.isImportant ||
+          snapshot.hasDraft)
+      );
     })
     .sort((a, b) => {
       if (b.snapshot.attentionScore !== a.snapshot.attentionScore) {
         return b.snapshot.attentionScore - a.snapshot.attentionScore;
       }
-      return (b.snapshot.lastMessageTime || 0) - (a.snapshot.lastMessageTime || 0);
+      return (
+        (b.snapshot.lastMessageTime || 0) - (a.snapshot.lastMessageTime || 0)
+      );
     })
     .slice(0, Math.max(1, maxFocusContacts));
 
   const upcomingReminders = activeSnapshots
-    .filter(entry => entry.snapshot.reminderStatus === 'upcoming' && entry.snapshot.reminderAt)
+    .filter(
+      (entry) =>
+        entry.snapshot.reminderStatus === 'upcoming' &&
+        entry.snapshot.reminderAt,
+    )
     .sort((a, b) => {
       if (a.snapshot.reminderAt !== b.snapshot.reminderAt) {
         return a.snapshot.reminderAt - b.snapshot.reminderAt;
@@ -964,10 +1027,17 @@ export function buildVisitorDashboard({
     .slice(0, Math.max(1, maxUpcomingReminders));
 
   const stats = {
-    needsReply: activeSnapshots.filter((entry) => ['needs-reply', 'drafting'].includes(entry.snapshot.replyState)).length,
-    dueReminders: activeSnapshots.filter(entry => entry.snapshot.reminderStatus === 'due').length,
-    drafts: activeSnapshots.filter(entry => entry.snapshot.hasDraft).length,
-    openTasks: activeSnapshots.reduce((sum, entry) => sum + entry.snapshot.checklist.open, 0),
+    needsReply: activeSnapshots.filter((entry) =>
+      ['needs-reply', 'drafting'].includes(entry.snapshot.replyState),
+    ).length,
+    dueReminders: activeSnapshots.filter(
+      (entry) => entry.snapshot.reminderStatus === 'due',
+    ).length,
+    drafts: activeSnapshots.filter((entry) => entry.snapshot.hasDraft).length,
+    openTasks: activeSnapshots.reduce(
+      (sum, entry) => sum + entry.snapshot.checklist.open,
+      0,
+    ),
   };
 
   return {
@@ -975,13 +1045,14 @@ export function buildVisitorDashboard({
     focusContacts,
     upcomingReminders,
     totalContacts: (contacts || []).length,
-    snoozedContacts: actionSnapshots.filter(entry => entry.snapshot.isSnoozed).length,
+    snoozedContacts: actionSnapshots.filter((entry) => entry.snapshot.isSnoozed)
+      .length,
   };
 }
 
 export function createDemoWorkspace(now = Date.now()) {
-  const minutesAgo = minutes => now - minutes * 60_000;
-  const minutesFromNow = minutes => now + minutes * 60_000;
+  const minutesAgo = (minutes) => now - minutes * 60_000;
+  const minutesFromNow = (minutes) => now + minutes * 60_000;
 
   const contacts = [
     {
@@ -1032,7 +1103,10 @@ export function createDemoWorkspace(now = Date.now()) {
         isFromMe: false,
         senderName: 'Sofia',
         senderJid: '34600111222@s.whatsapp.net',
-        content: { type: 'text', body: 'Las llaves estan en la caja junto a la puerta azul.' },
+        content: {
+          type: 'text',
+          body: 'Las llaves estan en la caja junto a la puerta azul.',
+        },
         originalText: 'Las llaves estan en la caja junto a la puerta azul.',
         translatedText: 'The keys are in the box next to the blue door.',
         sourceLanguage: 'Spanish',
@@ -1045,8 +1119,12 @@ export function createDemoWorkspace(now = Date.now()) {
         timestamp: minutesAgo(14),
         isFromMe: true,
         senderJid: 'demo@s.whatsapp.net',
-        content: { type: 'text', body: '18:30 works for us. I will send the taxi plate when we leave the station.' },
-        translatedText: '18:30 nos va bien. Te enviare la matricula del taxi cuando salgamos de la estacion.',
+        content: {
+          type: 'text',
+          body: '18:30 works for us. I will send the taxi plate when we leave the station.',
+        },
+        translatedText:
+          '18:30 nos va bien. Te enviare la matricula del taxi cuando salgamos de la estacion.',
         sourceLanguage: 'Spanish',
         isTranslated: true,
       },
@@ -1057,7 +1135,10 @@ export function createDemoWorkspace(now = Date.now()) {
         isFromMe: false,
         senderName: 'Sofia',
         senderJid: '34600111222@s.whatsapp.net',
-        content: { type: 'text', body: 'Perfecto, puede llegar despues de las 18:00?' },
+        content: {
+          type: 'text',
+          body: 'Perfecto, puede llegar despues de las 18:00?',
+        },
         originalText: 'Perfecto, puede llegar despues de las 18:00?',
         translatedText: 'Perfect, can you arrive after 18:00?',
         sourceLanguage: 'Spanish',
@@ -1072,7 +1153,10 @@ export function createDemoWorkspace(now = Date.now()) {
         isFromMe: false,
         senderName: 'Jules',
         senderJid: '33677889900@s.whatsapp.net',
-        content: { type: 'text', body: 'Peux-tu envoyer la version corrigee apres le dejeuner ?' },
+        content: {
+          type: 'text',
+          body: 'Peux-tu envoyer la version corrigee apres le dejeuner ?',
+        },
       },
       {
         id: 'demo-tutor-2',
@@ -1080,8 +1164,12 @@ export function createDemoWorkspace(now = Date.now()) {
         timestamp: minutesAgo(42),
         isFromMe: true,
         senderJid: 'demo@s.whatsapp.net',
-        content: { type: 'text', body: 'Yes, I will send the corrected version after lunch.' },
-        translatedText: 'Oui, je vais envoyer la version corrigee apres le dejeuner.',
+        content: {
+          type: 'text',
+          body: 'Yes, I will send the corrected version after lunch.',
+        },
+        translatedText:
+          'Oui, je vais envoyer la version corrigee apres le dejeuner.',
         sourceLanguage: 'French',
         isTranslated: true,
       },
@@ -1095,7 +1183,10 @@ export function createDemoWorkspace(now = Date.now()) {
         senderName: 'Mika',
         senderJid: '819012345678@s.whatsapp.net',
         chatType: 'group',
-        content: { type: 'text', body: 'Venue pin still needs confirming before everyone heads out.' },
+        content: {
+          type: 'text',
+          body: 'Venue pin still needs confirming before everyone heads out.',
+        },
       },
       {
         id: 'demo-osaka-2',
@@ -1120,7 +1211,10 @@ export function createDemoWorkspace(now = Date.now()) {
         isFromMe: false,
         senderName: 'Theo',
         senderJid: '447700900123@s.whatsapp.net',
-        content: { type: 'text', body: 'I will send the boiler quote tomorrow morning.' },
+        content: {
+          type: 'text',
+          body: 'I will send the boiler quote tomorrow morning.',
+        },
       },
     ],
   };
@@ -1130,14 +1224,25 @@ export function createDemoWorkspace(now = Date.now()) {
       alias: 'Casa Azul host',
       priority: 'urgent',
       labels: ['Travel', 'VIP'],
-      notes: 'Prefers concise Spanish replies. Confirm timings and transport details clearly.',
+      notes:
+        'Prefers concise Spanish replies. Confirm timings and transport details clearly.',
       timezone: 'Europe/Madrid',
       targetLanguage: 'Spanish',
       reminderText: 'Send the taxi plate before arrival',
       reminderAt: minutesAgo(1),
       checklist: [
-        { id: 'demo-casa-task-1', text: 'Confirm check-in time', done: false, updatedAt: minutesAgo(30) },
-        { id: 'demo-casa-task-2', text: 'Send taxi plate', done: false, updatedAt: minutesAgo(30) },
+        {
+          id: 'demo-casa-task-1',
+          text: 'Confirm check-in time',
+          done: false,
+          updatedAt: minutesAgo(30),
+        },
+        {
+          id: 'demo-casa-task-2',
+          text: 'Send taxi plate',
+          done: false,
+          updatedAt: minutesAgo(30),
+        },
       ],
     },
     'demo-tutor': {
@@ -1147,21 +1252,42 @@ export function createDemoWorkspace(now = Date.now()) {
       timezone: 'Europe/Paris',
       targetLanguage: 'French',
       checklist: [
-        { id: 'demo-tutor-task-1', text: 'Attach corrected deck', done: false, updatedAt: minutesAgo(60) },
-        { id: 'demo-tutor-task-2', text: 'Confirm next lesson time', done: true, updatedAt: minutesAgo(60) },
+        {
+          id: 'demo-tutor-task-1',
+          text: 'Attach corrected deck',
+          done: false,
+          updatedAt: minutesAgo(60),
+        },
+        {
+          id: 'demo-tutor-task-2',
+          text: 'Confirm next lesson time',
+          done: true,
+          updatedAt: minutesAgo(60),
+        },
       ],
     },
     'demo-osaka-group': {
       priority: 'high',
       labels: ['Japan', 'Group'],
-      notes: 'Group chat for arrival logistics. Keep messages practical and avoid long explanations.',
+      notes:
+        'Group chat for arrival logistics. Keep messages practical and avoid long explanations.',
       timezone: 'Asia/Tokyo',
       targetLanguage: 'Japanese',
       reminderText: 'Share the venue pin and train exit',
       reminderAt: minutesFromNow(75),
       checklist: [
-        { id: 'demo-osaka-task-1', text: 'Confirm venue pin', done: false, updatedAt: minutesAgo(90) },
-        { id: 'demo-osaka-task-2', text: 'Share local train exit', done: false, updatedAt: minutesAgo(90) },
+        {
+          id: 'demo-osaka-task-1',
+          text: 'Confirm venue pin',
+          done: false,
+          updatedAt: minutesAgo(90),
+        },
+        {
+          id: 'demo-osaka-task-2',
+          text: 'Share local train exit',
+          done: false,
+          updatedAt: minutesAgo(90),
+        },
       ],
     },
     'demo-plumber': {
@@ -1181,9 +1307,21 @@ export function createDemoWorkspace(now = Date.now()) {
   };
 
   const quickReplies = [
-    { id: `demo-reply-1-${now}`, text: 'Thanks, I will confirm shortly.', updatedAt: minutesAgo(15) },
-    { id: `demo-reply-2-${now}`, text: 'Could you send the address again?', updatedAt: minutesAgo(16) },
-    { id: `demo-reply-3-${now}`, text: 'I will send the details before we leave.', updatedAt: minutesAgo(17) },
+    {
+      id: `demo-reply-1-${now}`,
+      text: 'Thanks, I will confirm shortly.',
+      updatedAt: minutesAgo(15),
+    },
+    {
+      id: `demo-reply-2-${now}`,
+      text: 'Could you send the address again?',
+      updatedAt: minutesAgo(16),
+    },
+    {
+      id: `demo-reply-3-${now}`,
+      text: 'I will send the details before we leave.',
+      updatedAt: minutesAgo(17),
+    },
   ];
 
   return {
@@ -1196,16 +1334,31 @@ export function createDemoWorkspace(now = Date.now()) {
   };
 }
 
-export function suggestDemoReply({ message = {}, metadata = {}, contact = {} } = {}) {
+export function suggestDemoReply({
+  message = {},
+  metadata = {},
+  contact = {},
+} = {}) {
   const text = messageSnippet(message).toLowerCase();
   const displayName = getContactDisplayName(contact, metadata);
   const targetLanguage = String(metadata?.targetLanguage || '').trim();
-  const languageNote = targetLanguage ? ` I will keep it clear in ${targetLanguage}.` : '';
+  const languageNote = targetLanguage
+    ? ` I will keep it clear in ${targetLanguage}.`
+    : '';
 
-  if (text.includes('18:00') || text.includes('check') || text.includes('llave') || text.includes('key')) {
+  if (
+    text.includes('18:00') ||
+    text.includes('check') ||
+    text.includes('llave') ||
+    text.includes('key')
+  ) {
     return `Thanks ${displayName.split(' ')[0]}, 18:30 still works. I will send the taxi plate before we arrive.${languageNote}`;
   }
-  if (text.includes('venue') || text.includes('exit') || text.includes('出口')) {
+  if (
+    text.includes('venue') ||
+    text.includes('exit') ||
+    text.includes('出口')
+  ) {
     return `I am confirming the venue pin now and will share the correct station exit with everyone shortly.${languageNote}`;
   }
   if (text.includes('quote') || text.includes('tomorrow')) {
@@ -1215,12 +1368,21 @@ export function suggestDemoReply({ message = {}, metadata = {}, contact = {} } =
   return `Thanks, I have this. I will reply with the next clear step shortly.${languageNote}`;
 }
 
-export function getSmartReplyOptions({ message = {}, metadata = {}, contact = {} } = {}) {
+export function getSmartReplyOptions({
+  message = {},
+  metadata = {},
+  contact = {},
+} = {}) {
   if (!message) return [];
 
-  const displayName = getContactDisplayName(contact, metadata).split(' ')[0] || 'there';
-  const targetLanguage = String(metadata?.targetLanguage || metadata?.languageOverride || '').trim();
-  const languageNote = targetLanguage ? ` I will keep it clear in ${targetLanguage}.` : '';
+  const displayName =
+    getContactDisplayName(contact, metadata).split(' ')[0] || 'there';
+  const targetLanguage = String(
+    metadata?.targetLanguage || metadata?.languageOverride || '',
+  ).trim();
+  const languageNote = targetLanguage
+    ? ` I will keep it clear in ${targetLanguage}.`
+    : '';
   const primary = suggestDemoReply({
     message,
     metadata: { ...metadata, targetLanguage },
@@ -1228,12 +1390,14 @@ export function getSmartReplyOptions({ message = {}, metadata = {}, contact = {}
   });
 
   const text = messageSnippet(message).toLowerCase();
-  const detailPrompt = text.includes('address') || text.includes('venue') || text.includes('exit')
-    ? 'Could you send the exact location details again so I can confirm the next step?'
-    : 'Could you send the key detail again so I can confirm properly?';
-  const delayReply = text.includes('tomorrow') || text.includes('quote')
-    ? `Thanks ${displayName}, tomorrow works. I will confirm once I have checked it.${languageNote}`
-    : `Thanks ${displayName}, I am checking this now and will confirm shortly.${languageNote}`;
+  const detailPrompt =
+    text.includes('address') || text.includes('venue') || text.includes('exit')
+      ? 'Could you send the exact location details again so I can confirm the next step?'
+      : 'Could you send the key detail again so I can confirm properly?';
+  const delayReply =
+    text.includes('tomorrow') || text.includes('quote')
+      ? `Thanks ${displayName}, tomorrow works. I will confirm once I have checked it.${languageNote}`
+      : `Thanks ${displayName}, I am checking this now and will confirm shortly.${languageNote}`;
 
   return [
     { id: 'confirm', label: 'Confirm', text: primary },
@@ -1244,20 +1408,20 @@ export function getSmartReplyOptions({ message = {}, metadata = {}, contact = {}
 
 export function getComposerProfilePresets(metadata = {}) {
   const currentLanguage = normalizeText(
-    metadata?.targetLanguage
-    || metadata?.languageOverride
-    || metadata?.language
-    || 'Spanish',
+    metadata?.targetLanguage ||
+      metadata?.languageOverride ||
+      metadata?.language ||
+      'Spanish',
   );
   const currentTone = normalizeText(metadata?.translationStyle || '');
 
   return {
-    languages: COMPOSER_LANGUAGE_PRESETS.map(label => ({
+    languages: COMPOSER_LANGUAGE_PRESETS.map((label) => ({
       label,
       value: label,
       active: normalizeText(label) === currentLanguage,
     })),
-    tones: COMPOSER_TONE_PRESETS.map(label => ({
+    tones: COMPOSER_TONE_PRESETS.map((label) => ({
       label,
       value: label.toLowerCase(),
       active: normalizeText(label) === currentTone,
@@ -1296,20 +1460,24 @@ function getLatestDirectionalMessage(messages = [], isFromMe) {
 
 function textContainsQuestion(text) {
   const normalized = normalizeText(text);
-  return /\?/.test(String(text || ''))
-    || /\b(can|could|would|will|when|where|what|which|who|how|is|are|do|does|did|peux|puedes|puede|何|どこ|いつ)\b/i.test(normalized);
+  return (
+    /\?/.test(String(text || '')) ||
+    /\b(can|could|would|will|when|where|what|which|who|how|is|are|do|does|did|peux|puedes|puede|何|どこ|いつ)\b/i.test(
+      normalized,
+    )
+  );
 }
 
 function textMentionsAny(text, values = []) {
   const normalized = normalizeText(text);
-  return values.some(value => {
+  return values.some((value) => {
     const token = normalizeText(value);
     return token && normalized.includes(token);
   });
 }
 
 function getOpenChecklistItems(metadata = {}) {
-  return getChecklistItems(metadata).filter(item => item && !item.done);
+  return getChecklistItems(metadata).filter((item) => item && !item.done);
 }
 
 export function buildConversationBrief({
@@ -1329,8 +1497,12 @@ export function buildConversationBrief({
     now,
   });
   const openTasks = getOpenChecklistItems(metadata);
-  const latestIncomingSnippet = latestIncoming ? messageSnippet(latestIncoming, 92) : '';
-  const latestOutgoingSnippet = latestOutgoing ? messageSnippet(latestOutgoing, 92) : '';
+  const latestIncomingSnippet = latestIncoming
+    ? messageSnippet(latestIncoming, 92)
+    : '';
+  const latestOutgoingSnippet = latestOutgoing
+    ? messageSnippet(latestOutgoing, 92)
+    : '';
   const hasQuestion = textContainsQuestion(latestIncomingSnippet);
 
   let nextAction = 'No immediate action suggested.';
@@ -1349,17 +1521,22 @@ export function buildConversationBrief({
   const contextLines = [
     latestIncomingSnippet ? `Incoming: ${latestIncomingSnippet}` : '',
     latestOutgoingSnippet ? `Last sent: ${latestOutgoingSnippet}` : '',
-    snapshot.timezoneInfo ? `${snapshot.timezoneInfo.label} · ${snapshot.timezoneInfo.statusLabel}` : '',
+    snapshot.timezoneInfo
+      ? `${snapshot.timezoneInfo.label} · ${snapshot.timezoneInfo.statusLabel}`
+      : '',
   ].filter(Boolean);
 
   return {
     latestIncomingSnippet,
     latestOutgoingSnippet,
     hasQuestion,
-    openTasks: openTasks.map(item => ({ ...item })),
+    openTasks: openTasks.map((item) => ({ ...item })),
     nextAction,
     contextLines,
-    summary: contextLines[0] || snapshot.summary || 'Add messages or local context to build a brief.',
+    summary:
+      contextLines[0] ||
+      snapshot.summary ||
+      'Add messages or local context to build a brief.',
   };
 }
 
@@ -1372,14 +1549,26 @@ export function buildConversationActionPlan({
   maxItems = 4,
 } = {}) {
   const contactId = contact?.id || '';
-  const brief = buildConversationBrief({ contact, metadata, messages, drafts, now });
-  const snapshot = getContactActionSnapshot({ contact, drafts, metadata, messages, now });
+  const brief = buildConversationBrief({
+    contact,
+    metadata,
+    messages,
+    drafts,
+    now,
+  });
+  const snapshot = getContactActionSnapshot({
+    contact,
+    drafts,
+    metadata,
+    messages,
+    now,
+  });
   const openTasks = getOpenChecklistItems(metadata);
   const untranslated = getUntranslatedIncomingMessages(messages);
   const draftText = getDraftText(drafts, contactId);
   const actions = [];
   const addAction = (action) => {
-    if (!action?.id || actions.some(entry => entry.id === action.id)) return;
+    if (!action?.id || actions.some((entry) => entry.id === action.id)) return;
     actions.push(action);
   };
 
@@ -1463,8 +1652,20 @@ export function buildConversationHandoffBrief({
 } = {}) {
   const contactId = contact?.id || '';
   const displayName = getContactDisplayName(contact, metadata);
-  const brief = buildConversationBrief({ contact, metadata, messages, drafts, now });
-  const snapshot = getContactActionSnapshot({ contact, drafts, metadata, messages, now });
+  const brief = buildConversationBrief({
+    contact,
+    metadata,
+    messages,
+    drafts,
+    now,
+  });
+  const snapshot = getContactActionSnapshot({
+    contact,
+    drafts,
+    metadata,
+    messages,
+    now,
+  });
   const labels = getContactLabels(metadata);
   const notes = String(metadata?.notes || '').trim();
   const draftText = getDraftText(drafts, contactId);
@@ -1473,9 +1674,10 @@ export function buildConversationHandoffBrief({
   const recentMessages = (Array.isArray(messages) ? messages : [])
     .slice(-Math.max(1, maxMessages))
     .map((message) => {
-      const sender = message?.isFromMe || message?.is_from_me
-        ? 'Me'
-        : (message?.senderName || message?.sender_name || displayName);
+      const sender =
+        message?.isFromMe || message?.is_from_me
+          ? 'Me'
+          : message?.senderName || message?.sender_name || displayName;
       return `- ${sender}: ${messageSnippet(message, 140)}`;
     });
 
@@ -1484,12 +1686,18 @@ export function buildConversationHandoffBrief({
     `Next action: ${brief.nextAction}`,
     snapshot.summary ? `Status: ${snapshot.summary}` : '',
     labels.length ? `Labels: ${labels.join(', ')}` : '',
-    snapshot.timezoneInfo ? `Local time: ${snapshot.timezoneInfo.localTime} (${snapshot.timezoneInfo.statusLabel})` : '',
+    snapshot.timezoneInfo
+      ? `Local time: ${snapshot.timezoneInfo.localTime} (${snapshot.timezoneInfo.statusLabel})`
+      : '',
     reminder ? `Reminder: ${reminder}` : '',
-    openTasks.length ? `Open tasks:\n${openTasks.map(task => `- ${task.text}`).join('\n')}` : '',
+    openTasks.length
+      ? `Open tasks:\n${openTasks.map((task) => `- ${task.text}`).join('\n')}`
+      : '',
     draftText ? `Saved draft:\n${draftText}` : '',
     notes ? `Private notes:\n${notes}` : '',
-    recentMessages.length ? `Recent messages:\n${recentMessages.join('\n')}` : '',
+    recentMessages.length
+      ? `Recent messages:\n${recentMessages.join('\n')}`
+      : '',
   ].filter(Boolean);
 
   return sections.join('\n\n');
@@ -1516,7 +1724,12 @@ export function getContextualReminderPresets({
       reminderAt: tomorrow.getTime(),
       reason: 'Detected tomorrow in the conversation',
     });
-  } else if (/\bquote\b|\bprice\b|\bconfirm\b|\bcheck\b|\bfollow up\b/.test(normalized) || reminderText) {
+  } else if (
+    /\bquote\b|\bprice\b|\bconfirm\b|\bcheck\b|\bfollow up\b/.test(
+      normalized,
+    ) ||
+    reminderText
+  ) {
     const soon = new Date(now + 2 * 60 * 60 * 1000);
     soon.setMinutes(0, 0, 0);
     presets.unshift({
@@ -1527,9 +1740,10 @@ export function getContextualReminderPresets({
     });
   }
 
-  return presets.filter((preset, index, list) => (
-    list.findIndex(candidate => candidate.id === preset.id) === index
-  ));
+  return presets.filter(
+    (preset, index, list) =>
+      list.findIndex((candidate) => candidate.id === preset.id) === index,
+  );
 }
 
 export function getComposerSendReadiness({
@@ -1539,21 +1753,37 @@ export function getComposerSendReadiness({
   now = Date.now(),
 } = {}) {
   const trimmedDraft = String(draftText || '').trim();
-  const latestIncomingSnippet = latestIncomingMessage ? messageSnippet(latestIncomingMessage, 160) : '';
+  const latestIncomingSnippet = latestIncomingMessage
+    ? messageSnippet(latestIncomingMessage, 160)
+    : '';
   const openTasks = getOpenChecklistItems(metadata);
   const timezoneInfo = getTimezoneInfo(metadata, now);
   const checks = [];
 
   if (!trimmedDraft) {
-    checks.push({ id: 'draft', status: 'info', label: 'Type a draft to check reply coverage.' });
+    checks.push({
+      id: 'draft',
+      status: 'info',
+      label: 'Type a draft to check reply coverage.',
+    });
   } else {
-    checks.push({ id: 'draft', status: 'ready', label: metadata.translationEnabled === true ? 'Draft is ready to translate.' : 'Draft will send as written.' });
+    checks.push({
+      id: 'draft',
+      status: 'ready',
+      label:
+        metadata.translationEnabled === true
+          ? 'Draft is ready to translate.'
+          : 'Draft will send as written.',
+    });
   }
 
   if (latestIncomingSnippet && textContainsQuestion(latestIncomingSnippet)) {
     checks.push({
       id: 'question',
-      status: textContainsQuestion(trimmedDraft) || trimmedDraft.length > 12 ? 'ready' : 'warning',
+      status:
+        textContainsQuestion(trimmedDraft) || trimmedDraft.length > 12
+          ? 'ready'
+          : 'warning',
       label: textContainsQuestion(trimmedDraft)
         ? 'Draft asks a clarifying question.'
         : 'Latest incoming looks like a question; answer it directly.',
@@ -1563,8 +1793,16 @@ export function getComposerSendReadiness({
   if (openTasks.length > 0) {
     checks.push({
       id: 'tasks',
-      status: textMentionsAny(trimmedDraft, openTasks.map(item => item.text)) ? 'ready' : 'warning',
-      label: textMentionsAny(trimmedDraft, openTasks.map(item => item.text))
+      status: textMentionsAny(
+        trimmedDraft,
+        openTasks.map((item) => item.text),
+      )
+        ? 'ready'
+        : 'warning',
+      label: textMentionsAny(
+        trimmedDraft,
+        openTasks.map((item) => item.text),
+      )
         ? 'Draft references an open task.'
         : `Open task still visible: ${openTasks[0].text}`,
     });
@@ -1584,11 +1822,14 @@ export function getComposerSendReadiness({
     });
   }
 
-  const warnings = checks.filter(check => check.status === 'warning').length;
+  const warnings = checks.filter((check) => check.status === 'warning').length;
   return {
     checks,
     warnings,
-    scoreLabel: warnings === 0 ? 'Ready' : `${warnings} check${warnings === 1 ? '' : 's'}`,
+    scoreLabel:
+      warnings === 0
+        ? 'Ready'
+        : `${warnings} check${warnings === 1 ? '' : 's'}`,
   };
 }
 
@@ -1602,26 +1843,44 @@ export function getComposerAssistState({
   now = Date.now(),
 } = {}) {
   const translationEnabled = metadata.translationEnabled === true;
-  const targetLanguage = String(
-    metadata?.targetLanguage
-    || metadata?.languageOverride
-    || metadata?.language
-    || (demoMode ? 'Spanish' : 'Automatic'),
-  ).trim() || 'Automatic';
+  const targetLanguage =
+    String(
+      metadata?.targetLanguage ||
+        metadata?.languageOverride ||
+        metadata?.language ||
+        (demoMode ? 'Spanish' : 'Automatic'),
+    ).trim() || 'Automatic';
   const translationStyle = String(metadata?.translationStyle || '').trim();
   const trimmedDraft = String(draftText || '').trim();
-  const latestIncomingSnippet = latestIncomingMessage ? messageSnippet(latestIncomingMessage, 96) : '';
+  const latestIncomingSnippet = latestIncomingMessage
+    ? messageSnippet(latestIncomingMessage, 96)
+    : '';
   const suggestedReply = latestIncomingMessage
-    ? suggestDemoReply({ message: latestIncomingMessage, metadata: { ...metadata, targetLanguage }, contact })
+    ? suggestDemoReply({
+        message: latestIncomingMessage,
+        metadata: { ...metadata, targetLanguage },
+        contact,
+      })
     : '';
   const smartReplies = latestIncomingMessage
-    ? getSmartReplyOptions({ message: latestIncomingMessage, metadata: { ...metadata, targetLanguage }, contact })
+    ? getSmartReplyOptions({
+        message: latestIncomingMessage,
+        metadata: { ...metadata, targetLanguage },
+        contact,
+      })
     : [];
-  const translatedPreview = trimmedDraft && translationEnabled && demoMode
-    ? simulateTranslation(trimmedDraft, targetLanguage)
-    : '';
-  const styleSummary = translationStyle ? `${translationStyle} tone` : 'standard tone';
-  const profilePresets = getComposerProfilePresets({ ...metadata, targetLanguage, translationStyle });
+  const translatedPreview =
+    trimmedDraft && translationEnabled && demoMode
+      ? simulateTranslation(trimmedDraft, targetLanguage)
+      : '';
+  const styleSummary = translationStyle
+    ? `${translationStyle} tone`
+    : 'standard tone';
+  const profilePresets = getComposerProfilePresets({
+    ...metadata,
+    targetLanguage,
+    translationStyle,
+  });
   const readiness = getComposerSendReadiness({
     draftText: trimmedDraft,
     metadata,
@@ -1632,7 +1891,9 @@ export function getComposerAssistState({
     contact,
     metadata,
     messages,
-    drafts: contact?.id ? { [contact.id]: { text: trimmedDraft, updatedAt: now } } : {},
+    drafts: contact?.id
+      ? { [contact.id]: { text: trimmedDraft, updatedAt: now } }
+      : {},
     now,
   });
 
@@ -1657,8 +1918,18 @@ export function getComposerAssistState({
     hasDraft: Boolean(trimmedDraft),
     hasIncomingContext: Boolean(latestIncomingMessage),
     canUseSuggestedReply: smartReplies.length > 0 || Boolean(suggestedReply),
-    showPreview: Boolean(trimmedDraft || latestIncomingMessage || targetLanguage || translationStyle || demoMode),
-    previewLabel: !translationEnabled ? 'Send as written' : demoMode ? 'Demo translation preview' : 'Translation route',
+    showPreview: Boolean(
+      trimmedDraft ||
+      latestIncomingMessage ||
+      targetLanguage ||
+      translationStyle ||
+      demoMode,
+    ),
+    previewLabel: !translationEnabled
+      ? 'Send as written'
+      : demoMode
+        ? 'Demo translation preview'
+        : 'Translation route',
   };
 }
 
@@ -1671,17 +1942,26 @@ export function simulateTranslation(text, targetLanguage = 'Spanish') {
   const lowerText = trimmed.toLowerCase();
   const phraseMap = {
     spanish: [
-      [/18:30|taxi|plate|station/, '18:30 nos va bien. Te enviare la matricula del taxi antes de llegar.'],
+      [
+        /18:30|taxi|plate|station/,
+        '18:30 nos va bien. Te enviare la matricula del taxi antes de llegar.',
+      ],
       [/thank|thanks|confirm|shortly/, 'Gracias, lo confirmare en breve.'],
       [/address|send.*again/, 'Puedes enviarme la direccion otra vez?'],
     ],
     french: [
-      [/deck|lesson|lunch|corrected/, 'Merci, j enverrai la version corrigee apres le dejeuner et je confirmerai le prochain cours.'],
+      [
+        /deck|lesson|lunch|corrected/,
+        'Merci, j enverrai la version corrigee apres le dejeuner et je confirmerai le prochain cours.',
+      ],
       [/thank|thanks|confirm|shortly/, 'Merci, je confirmerai cela bientot.'],
     ],
     japanese: [
       [/venue|pin|station|exit/, '会場のピンと駅の出口をすぐに共有します。'],
-      [/thank|thanks|confirm|shortly/, 'ありがとうございます。すぐに確認します。'],
+      [
+        /thank|thanks|confirm|shortly/,
+        'ありがとうございます。すぐに確認します。',
+      ],
     ],
   };
 

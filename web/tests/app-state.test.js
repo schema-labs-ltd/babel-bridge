@@ -60,7 +60,10 @@ test('getDraftPreview returns a user-facing summary', () => {
     chat_1: { text: 'This is a saved draft message', updatedAt: 123 },
   };
 
-  assert.equal(getDraftPreview(drafts, 'chat_1'), 'Draft: This is a saved draft message');
+  assert.equal(
+    getDraftPreview(drafts, 'chat_1'),
+    'Draft: This is a saved draft message',
+  );
   assert.equal(getDraftPreview(drafts, 'missing'), '');
 });
 
@@ -88,20 +91,39 @@ test('filterMessagesByQuery supports text search and starred-only filtering', ()
   ];
 
   assert.deepEqual(
-    filterMessagesByQuery(messages, 'airport', { starredLookup: {} }).map(message => message.id),
+    filterMessagesByQuery(messages, 'airport', { starredLookup: {} }).map(
+      (message) => message.id,
+    ),
     ['1'],
   );
 
   assert.deepEqual(
-    filterMessagesByQuery(messages, '', { starredOnly: true, starredLookup: { '2': { id: '2' } } }).map(message => message.id),
+    filterMessagesByQuery(messages, '', {
+      starredOnly: true,
+      starredLookup: { 2: { id: '2' } },
+    }).map((message) => message.id),
     ['2'],
   );
 });
 
 test('getVisibleContacts prioritizes drafts, unread filter, and search matching', () => {
   const contacts = [
-    { id: 'alice', name: 'Alice', phone: '111', type: 'private', unreadCount: 0, lastMessageTime: 10 },
-    { id: 'project', name: 'Project Team', phone: null, type: 'group', unreadCount: 3, lastMessageTime: 20 },
+    {
+      id: 'alice',
+      name: 'Alice',
+      phone: '111',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 10,
+    },
+    {
+      id: 'project',
+      name: 'Project Team',
+      phone: null,
+      type: 'group',
+      unreadCount: 3,
+      lastMessageTime: 20,
+    },
   ];
 
   const drafts = {
@@ -115,7 +137,7 @@ test('getVisibleContacts prioritizes drafts, unread filter, and search matching'
     filters: { unreadOnly: false, groupsOnly: false, draftsOnly: false },
     messagePreviewByContact: {},
     metadataByContact: {},
-  }).map(contact => contact.id);
+  }).map((contact) => contact.id);
 
   assert.deepEqual(visibleWithSearch, ['alice']);
 
@@ -126,7 +148,7 @@ test('getVisibleContacts prioritizes drafts, unread filter, and search matching'
     filters: { unreadOnly: true, groupsOnly: false, draftsOnly: false },
     messagePreviewByContact: {},
     metadataByContact: {},
-  }).map(contact => contact.id);
+  }).map((contact) => contact.id);
 
   assert.deepEqual(unreadOnly, ['project']);
 
@@ -137,14 +159,20 @@ test('getVisibleContacts prioritizes drafts, unread filter, and search matching'
     filters: { unreadOnly: false, groupsOnly: false, draftsOnly: true },
     messagePreviewByContact: {},
     metadataByContact: {},
-  }).map(contact => contact.id);
+  }).map((contact) => contact.id);
 
   assert.deepEqual(draftsOnly, ['alice']);
 });
 
 test('sidebar search ignores active inbox filters and snoozing', () => {
   const contacts = [
-    { id: 'alice', name: 'Alice', type: 'private', unreadCount: 0, lastMessageTime: 10 },
+    {
+      id: 'alice',
+      name: 'Alice',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 10,
+    },
   ];
 
   const visible = getVisibleContacts({
@@ -153,7 +181,7 @@ test('sidebar search ignores active inbox filters and snoozing', () => {
     filters: { unreadOnly: true },
     metadataByContact: { alice: { snoozedUntil: 2_000 } },
     now: 1_000,
-  }).map(contact => contact.id);
+  }).map((contact) => contact.id);
 
   assert.deepEqual(visible, ['alice']);
 });
@@ -170,8 +198,22 @@ test('hidden inbox controls cannot leave an unread-only filter active', () => {
 
 test('getVisibleContacts supports pinned and notes-only inbox filters', () => {
   const contacts = [
-    { id: 'vip', name: 'VIP Client', phone: '555', type: 'private', unreadCount: 0, lastMessageTime: 30 },
-    { id: 'family', name: 'Family', phone: '777', type: 'group', unreadCount: 2, lastMessageTime: 40 },
+    {
+      id: 'vip',
+      name: 'VIP Client',
+      phone: '555',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 30,
+    },
+    {
+      id: 'family',
+      name: 'Family',
+      phone: '777',
+      type: 'group',
+      unreadCount: 2,
+      lastMessageTime: 40,
+    },
   ];
 
   const metadataByContact = {
@@ -187,7 +229,7 @@ test('getVisibleContacts supports pinned and notes-only inbox filters', () => {
       filters: { pinnedOnly: true },
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['vip'],
   );
 
@@ -199,7 +241,7 @@ test('getVisibleContacts supports pinned and notes-only inbox filters', () => {
       filters: { notesOnly: true },
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['vip'],
   );
 
@@ -211,7 +253,7 @@ test('getVisibleContacts supports pinned and notes-only inbox filters', () => {
       filters: {},
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['vip'],
   );
 });
@@ -226,8 +268,22 @@ test('parseLabelsInput trims, deduplicates, and preserves visitor-defined labels
 test('snoozed conversations stay out of the default inbox until the snooze expires', () => {
   const now = 1_710_000_000_000;
   const contacts = [
-    { id: 'snoozed', name: 'Later', phone: '111', type: 'private', unreadCount: 0, lastMessageTime: 20 },
-    { id: 'active', name: 'Now', phone: '222', type: 'private', unreadCount: 1, lastMessageTime: 30 },
+    {
+      id: 'snoozed',
+      name: 'Later',
+      phone: '111',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 20,
+    },
+    {
+      id: 'active',
+      name: 'Now',
+      phone: '222',
+      type: 'private',
+      unreadCount: 1,
+      lastMessageTime: 30,
+    },
   ];
   const metadataByContact = {
     snoozed: { snoozedUntil: now + 60_000 },
@@ -244,7 +300,7 @@ test('snoozed conversations stay out of the default inbox until the snooze expir
       messagePreviewByContact: {},
       metadataByContact,
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['active'],
   );
 
@@ -257,7 +313,7 @@ test('snoozed conversations stay out of the default inbox until the snooze expir
       messagePreviewByContact: {},
       metadataByContact,
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['snoozed'],
   );
 });
@@ -265,8 +321,22 @@ test('snoozed conversations stay out of the default inbox until the snooze expir
 test('getVisibleContacts supports reminder and label-focused triage views', () => {
   const now = 1_710_000_000_000;
   const contacts = [
-    { id: 'vip', name: 'VIP Client', phone: '555', type: 'private', unreadCount: 0, lastMessageTime: 30 },
-    { id: 'trip', name: 'Trip Planner', phone: '777', type: 'private', unreadCount: 2, lastMessageTime: 40 },
+    {
+      id: 'vip',
+      name: 'VIP Client',
+      phone: '555',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 30,
+    },
+    {
+      id: 'trip',
+      name: 'Trip Planner',
+      phone: '777',
+      type: 'private',
+      unreadCount: 2,
+      lastMessageTime: 40,
+    },
   ];
   const metadataByContact = {
     vip: {
@@ -293,7 +363,7 @@ test('getVisibleContacts supports reminder and label-focused triage views', () =
       messagePreviewByContact: {},
       metadataByContact,
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['vip'],
   );
 
@@ -306,7 +376,7 @@ test('getVisibleContacts supports reminder and label-focused triage views', () =
       messagePreviewByContact: {},
       metadataByContact,
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['vip', 'trip'],
   );
 
@@ -319,35 +389,99 @@ test('getVisibleContacts supports reminder and label-focused triage views', () =
       messagePreviewByContact: {},
       metadataByContact,
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['vip'],
   );
 });
 
 test('getReplyState identifies reply queues, drafts, and waiting states', () => {
   const now = 1_710_000_000_000;
-  const incomingMessage = { id: 'm1', timestamp: now - 10_000, isFromMe: false, content: { type: 'text', body: 'Can you confirm?' } };
-  const outgoingMessage = { id: 'm2', timestamp: now - 5_000, isFromMe: true, content: { type: 'text', body: 'On it' } };
+  const incomingMessage = {
+    id: 'm1',
+    timestamp: now - 10_000,
+    isFromMe: false,
+    content: { type: 'text', body: 'Can you confirm?' },
+  };
+  const outgoingMessage = {
+    id: 'm2',
+    timestamp: now - 5_000,
+    isFromMe: true,
+    content: { type: 'text', body: 'On it' },
+  };
 
-  assert.equal(getReplyState({ contact: { id: 'vip', unreadCount: 0 }, messages: [incomingMessage], drafts: {} }), 'needs-reply');
-  assert.equal(getReplyState({ contact: { id: 'vip', unreadCount: 0 }, messages: [outgoingMessage], drafts: {} }), 'waiting');
-  assert.equal(getReplyState({ contact: { id: 'vip', unreadCount: 0 }, messages: [incomingMessage], drafts: { vip: { text: 'Draft reply', updatedAt: now } } }), 'drafting');
-  assert.equal(getReplyState({ contact: { id: 'vip', unreadCount: 4 }, messages: [], drafts: {} }), 'needs-reply');
-  assert.equal(getReplyState({ contact: { id: 'vip', unreadCount: 4 }, messages: [], drafts: {}, metadata: { snoozedUntil: now + 60_000 }, now }), 'snoozed');
+  assert.equal(
+    getReplyState({
+      contact: { id: 'vip', unreadCount: 0 },
+      messages: [incomingMessage],
+      drafts: {},
+    }),
+    'needs-reply',
+  );
+  assert.equal(
+    getReplyState({
+      contact: { id: 'vip', unreadCount: 0 },
+      messages: [outgoingMessage],
+      drafts: {},
+    }),
+    'waiting',
+  );
+  assert.equal(
+    getReplyState({
+      contact: { id: 'vip', unreadCount: 0 },
+      messages: [incomingMessage],
+      drafts: { vip: { text: 'Draft reply', updatedAt: now } },
+    }),
+    'drafting',
+  );
+  assert.equal(
+    getReplyState({
+      contact: { id: 'vip', unreadCount: 4 },
+      messages: [],
+      drafts: {},
+    }),
+    'needs-reply',
+  );
+  assert.equal(
+    getReplyState({
+      contact: { id: 'vip', unreadCount: 4 },
+      messages: [],
+      drafts: {},
+      metadata: { snoozedUntil: now + 60_000 },
+      now,
+    }),
+    'snoozed',
+  );
 });
 
 test('getVisibleContacts supports alias search and reply queue filters', () => {
   const now = 1_710_000_000_000;
   const contacts = [
-    { id: 'host', name: 'Maria Lopez', phone: '111', type: 'private', unreadCount: 1, lastMessageTime: 30 },
-    { id: 'vendor', name: 'Office Vendor', phone: '222', type: 'private', unreadCount: 0, lastMessageTime: 40 },
+    {
+      id: 'host',
+      name: 'Maria Lopez',
+      phone: '111',
+      type: 'private',
+      unreadCount: 1,
+      lastMessageTime: 30,
+    },
+    {
+      id: 'vendor',
+      name: 'Office Vendor',
+      phone: '222',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 40,
+    },
   ];
   const metadataByContact = {
     host: { alias: 'Madrid Airbnb host' },
     vendor: { alias: 'Printer supplier' },
   };
 
-  assert.equal(getContactDisplayName(contacts[0], metadataByContact.host), 'Madrid Airbnb host');
+  assert.equal(
+    getContactDisplayName(contacts[0], metadataByContact.host),
+    'Madrid Airbnb host',
+  );
 
   assert.deepEqual(
     getVisibleContacts({
@@ -358,11 +492,25 @@ test('getVisibleContacts supports alias search and reply queue filters', () => {
       messagePreviewByContact: {},
       metadataByContact,
       messagesByContact: {
-        host: [{ id: 'host-1', isFromMe: false, timestamp: now - 1_000, content: { type: 'text', body: 'Can you send the check-in code?' } }],
-        vendor: [{ id: 'vendor-1', isFromMe: true, timestamp: now - 2_000, content: { type: 'text', body: 'Invoice paid, thanks' } }],
+        host: [
+          {
+            id: 'host-1',
+            isFromMe: false,
+            timestamp: now - 1_000,
+            content: { type: 'text', body: 'Can you send the check-in code?' },
+          },
+        ],
+        vendor: [
+          {
+            id: 'vendor-1',
+            isFromMe: true,
+            timestamp: now - 2_000,
+            content: { type: 'text', body: 'Invoice paid, thanks' },
+          },
+        ],
       },
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['host'],
   );
 
@@ -375,11 +523,25 @@ test('getVisibleContacts supports alias search and reply queue filters', () => {
       messagePreviewByContact: {},
       metadataByContact,
       messagesByContact: {
-        host: [{ id: 'host-1', isFromMe: false, timestamp: now - 1_000, content: { type: 'text', body: 'Can you send the check-in code?' } }],
-        vendor: [{ id: 'vendor-1', isFromMe: true, timestamp: now - 2_000, content: { type: 'text', body: 'Invoice paid, thanks' } }],
+        host: [
+          {
+            id: 'host-1',
+            isFromMe: false,
+            timestamp: now - 1_000,
+            content: { type: 'text', body: 'Can you send the check-in code?' },
+          },
+        ],
+        vendor: [
+          {
+            id: 'vendor-1',
+            isFromMe: true,
+            timestamp: now - 2_000,
+            content: { type: 'text', body: 'Invoice paid, thanks' },
+          },
+        ],
       },
       now,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['host'],
   );
 });
@@ -393,9 +555,17 @@ test('upsertQuickReply deduplicates snippets and removeQuickReply deletes by id'
   assert.equal(deduped.length, 1);
   assert.equal(deduped[0].updatedAt, 200);
 
-  const expanded = upsertQuickReply(deduped, 'Thanks — I will send it shortly.', 300, 2);
+  const expanded = upsertQuickReply(
+    deduped,
+    'Thanks — I will send it shortly.',
+    300,
+    2,
+  );
   const trimmed = upsertQuickReply(expanded, 'Got it, thank you!', 400, 2);
-  assert.deepEqual(trimmed.map(reply => reply.text), ['Got it, thank you!', 'Thanks — I will send it shortly.']);
+  assert.deepEqual(
+    trimmed.map((reply) => reply.text),
+    ['Got it, thank you!', 'Thanks — I will send it shortly.'],
+  );
 
   assert.deepEqual(removeQuickReply(trimmed, trimmed[0].id), [trimmed[1]]);
 });
@@ -425,8 +595,22 @@ test('priority info normalizes visitor triage preferences and surfaces important
 
 test('getVisibleContacts supports important-only inbox triage and priority-aware search', () => {
   const contacts = [
-    { id: 'host', name: 'Airport host', phone: '111', type: 'private', unreadCount: 0, lastMessageTime: 20 },
-    { id: 'friend', name: 'Dinner plans', phone: '222', type: 'private', unreadCount: 0, lastMessageTime: 10 },
+    {
+      id: 'host',
+      name: 'Airport host',
+      phone: '111',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 20,
+    },
+    {
+      id: 'friend',
+      name: 'Dinner plans',
+      phone: '222',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 10,
+    },
   ];
 
   const metadataByContact = {
@@ -442,7 +626,7 @@ test('getVisibleContacts supports important-only inbox triage and priority-aware
       filters: { importantOnly: true },
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['host'],
   );
 
@@ -454,20 +638,29 @@ test('getVisibleContacts supports important-only inbox triage and priority-aware
       filters: {},
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['host'],
   );
 });
 
 test('checklists can be parsed from visitor notes, updated, and summarized', () => {
-  const parsed = parseChecklistInput('- [ ] Confirm check-in code\n- [x] Book taxi\nBring passport');
-  assert.deepEqual(parsed.map(item => ({ text: item.text, done: item.done })), [
-    { text: 'Confirm check-in code', done: false },
-    { text: 'Book taxi', done: true },
-    { text: 'Bring passport', done: false },
-  ]);
+  const parsed = parseChecklistInput(
+    '- [ ] Confirm check-in code\n- [x] Book taxi\nBring passport',
+  );
+  assert.deepEqual(
+    parsed.map((item) => ({ text: item.text, done: item.done })),
+    [
+      { text: 'Confirm check-in code', done: false },
+      { text: 'Book taxi', done: true },
+      { text: 'Bring passport', done: false },
+    ],
+  );
 
-  const initial = upsertChecklistItems([], '- [ ] Confirm check-in code\n- [x] Book taxi', 100);
+  const initial = upsertChecklistItems(
+    [],
+    '- [ ] Confirm check-in code\n- [x] Book taxi',
+    100,
+  );
   assert.equal(initial.length, 2);
   assert.equal(initial[0].done, false);
   assert.equal(initial[1].done, true);
@@ -476,11 +669,18 @@ test('checklists can be parsed from visitor notes, updated, and summarized', () 
   assert.equal(toggled[0].done, true);
   assert.equal(toggled[0].updatedAt, 200);
 
-  const updated = upsertChecklistItems(toggled, '- [ ] Confirm check-in code\nBring passport', 300);
-  assert.deepEqual(updated.map(item => ({ text: item.text, done: item.done })), [
-    { text: 'Confirm check-in code', done: false },
-    { text: 'Bring passport', done: false },
-  ]);
+  const updated = upsertChecklistItems(
+    toggled,
+    '- [ ] Confirm check-in code\nBring passport',
+    300,
+  );
+  assert.deepEqual(
+    updated.map((item) => ({ text: item.text, done: item.done })),
+    [
+      { text: 'Confirm check-in code', done: false },
+      { text: 'Bring passport', done: false },
+    ],
+  );
 
   assert.deepEqual(getChecklistSummary({ checklist: updated }), {
     total: 2,
@@ -492,8 +692,22 @@ test('checklists can be parsed from visitor notes, updated, and summarized', () 
 
 test('getVisibleContacts supports open-task inbox triage and checklist search', () => {
   const contacts = [
-    { id: 'trip', name: 'Trip planner', phone: '111', type: 'private', unreadCount: 0, lastMessageTime: 20 },
-    { id: 'done', name: 'Handled', phone: '222', type: 'private', unreadCount: 0, lastMessageTime: 10 },
+    {
+      id: 'trip',
+      name: 'Trip planner',
+      phone: '111',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 20,
+    },
+    {
+      id: 'done',
+      name: 'Handled',
+      phone: '222',
+      type: 'private',
+      unreadCount: 0,
+      lastMessageTime: 10,
+    },
   ];
 
   const metadataByContact = {
@@ -504,9 +718,7 @@ test('getVisibleContacts supports open-task inbox triage and checklist search', 
       ],
     },
     done: {
-      checklist: [
-        { id: 'c', text: 'Archive receipt', done: true },
-      ],
+      checklist: [{ id: 'c', text: 'Archive receipt', done: true }],
     },
   };
 
@@ -518,7 +730,7 @@ test('getVisibleContacts supports open-task inbox triage and checklist search', 
       filters: { tasksOnly: true },
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['trip'],
   );
 
@@ -530,7 +742,7 @@ test('getVisibleContacts supports open-task inbox triage and checklist search', 
       filters: {},
       messagePreviewByContact: {},
       metadataByContact,
-    }).map(contact => contact.id),
+    }).map((contact) => contact.id),
     ['trip'],
   );
 });
@@ -556,7 +768,14 @@ test('getContactActionSnapshot highlights the most urgent visitor context first'
       checklist: [{ id: 'task-1', text: 'Share contract recap', done: false }],
       labels: ['VIP'],
     },
-    messages: [{ id: 'm1', timestamp: now - 5_000, isFromMe: false, content: { type: 'text', body: 'Can you send the recap?' } }],
+    messages: [
+      {
+        id: 'm1',
+        timestamp: now - 5_000,
+        isFromMe: false,
+        content: { type: 'text', body: 'Can you send the recap?' },
+      },
+    ],
     now,
   });
 
@@ -571,9 +790,24 @@ test('getContactActionSnapshot highlights the most urgent visitor context first'
 test('buildVisitorDashboard summarizes focus work, reminders, drafts, and open tasks', () => {
   const now = 1_710_000_000_000;
   const contacts = [
-    { id: 'vip', name: 'VIP Client', unreadCount: 1, lastMessageTime: now - 1_000 },
-    { id: 'trip', name: 'Trip Planner', unreadCount: 0, lastMessageTime: now - 10_000 },
-    { id: 'later', name: 'Later', unreadCount: 0, lastMessageTime: now - 20_000 },
+    {
+      id: 'vip',
+      name: 'VIP Client',
+      unreadCount: 1,
+      lastMessageTime: now - 1_000,
+    },
+    {
+      id: 'trip',
+      name: 'Trip Planner',
+      unreadCount: 0,
+      lastMessageTime: now - 10_000,
+    },
+    {
+      id: 'later',
+      name: 'Later',
+      unreadCount: 0,
+      lastMessageTime: now - 20_000,
+    },
   ];
 
   const dashboard = buildVisitorDashboard({
@@ -586,7 +820,9 @@ test('buildVisitorDashboard summarizes focus work, reminders, drafts, and open t
         priority: 'urgent',
         reminderText: 'Send the contract recap',
         reminderAt: now - 60_000,
-        checklist: [{ id: 'task-1', text: 'Share contract recap', done: false }],
+        checklist: [
+          { id: 'task-1', text: 'Share contract recap', done: false },
+        ],
       },
       trip: {
         reminderText: 'Share the itinerary',
@@ -598,12 +834,28 @@ test('buildVisitorDashboard summarizes focus work, reminders, drafts, and open t
       },
       later: {
         snoozedUntil: now + 86_400_000,
-        checklist: [{ id: 'task-4', text: 'Ignore while snoozed', done: false }],
+        checklist: [
+          { id: 'task-4', text: 'Ignore while snoozed', done: false },
+        ],
       },
     },
     messagesByContact: {
-      vip: [{ id: 'vip-1', timestamp: now - 1_000, isFromMe: false, content: { type: 'text', body: 'Can you send the recap?' } }],
-      trip: [{ id: 'trip-1', timestamp: now - 10_000, isFromMe: true, content: { type: 'text', body: 'Working on the itinerary now.' } }],
+      vip: [
+        {
+          id: 'vip-1',
+          timestamp: now - 1_000,
+          isFromMe: false,
+          content: { type: 'text', body: 'Can you send the recap?' },
+        },
+      ],
+      trip: [
+        {
+          id: 'trip-1',
+          timestamp: now - 10_000,
+          isFromMe: true,
+          content: { type: 'text', body: 'Working on the itinerary now.' },
+        },
+      ],
     },
     now,
   });
@@ -616,7 +868,7 @@ test('buildVisitorDashboard summarizes focus work, reminders, drafts, and open t
   });
   assert.equal(dashboard.focusContacts[0].contact.id, 'vip');
   assert.deepEqual(
-    dashboard.upcomingReminders.map(entry => entry.contact.id),
+    dashboard.upcomingReminders.map((entry) => entry.contact.id),
     ['trip'],
   );
   assert.equal(dashboard.snoozedContacts, 1);
@@ -645,7 +897,7 @@ test('createDemoWorkspace provides a usable visitor demo inbox', () => {
 
 test('demo reply and translation helpers make the product explorable without a backend', () => {
   const demo = createDemoWorkspace(1_710_000_000_000);
-  const contact = demo.contacts.find(entry => entry.id === 'demo-casa-azul');
+  const contact = demo.contacts.find((entry) => entry.id === 'demo-casa-azul');
   const metadata = demo.metadataByContact[contact.id];
   const message = demo.messagesByContact[contact.id].at(-1);
   const reply = suggestDemoReply({ message, metadata, contact });
@@ -653,11 +905,17 @@ test('demo reply and translation helpers make the product explorable without a b
   assert.match(reply, /18:30/);
   assert.match(reply, /taxi plate/);
   assert.equal(
-    simulateTranslation('18:30 works and I will send the taxi plate', 'Spanish'),
+    simulateTranslation(
+      '18:30 works and I will send the taxi plate',
+      'Spanish',
+    ),
     '18:30 nos va bien. Te enviare la matricula del taxi antes de llegar.',
   );
   assert.equal(
-    simulateTranslation('Please share the venue pin and station exit', 'Japanese'),
+    simulateTranslation(
+      'Please share the venue pin and station exit',
+      'Japanese',
+    ),
     '会場のピンと駅の出口をすぐに共有します。',
   );
 });
@@ -671,24 +929,45 @@ test('composer assist builds a translation preview and reply starter', () => {
 
   const state = getComposerAssistState({
     draftText: '18:30 works and I will send the taxi plate',
-    metadata: { languageOverride: 'Spanish', translationStyle: 'friendly', translationEnabled: true },
+    metadata: {
+      languageOverride: 'Spanish',
+      translationStyle: 'friendly',
+      translationEnabled: true,
+    },
     contact: { id: 'host', name: 'Sofia' },
     latestIncomingMessage: incoming,
     demoMode: true,
   });
 
-  assert.equal(getMessageSnippet(incoming), 'Puede llegar despues de las 18:00?');
+  assert.equal(
+    getMessageSnippet(incoming),
+    'Puede llegar despues de las 18:00?',
+  );
   assert.equal(state.targetLanguage, 'Spanish');
   assert.equal(state.styleSummary, 'friendly tone');
   assert.equal(state.previewLabel, 'Demo translation preview');
   assert.match(state.translatedPreview, /18:30 nos va bien/);
   assert.match(state.suggestedReply, /18:30 still works/);
   assert.equal(state.canUseSuggestedReply, true);
-  assert.deepEqual(state.smartReplies.map(reply => reply.id), ['confirm', 'ask-detail', 'buy-time']);
-  assert.equal(state.profilePresets.languages.find(preset => preset.value === 'Spanish').active, true);
-  assert.equal(state.profilePresets.tones.find(preset => preset.value === 'friendly').active, true);
+  assert.deepEqual(
+    state.smartReplies.map((reply) => reply.id),
+    ['confirm', 'ask-detail', 'buy-time'],
+  );
+  assert.equal(
+    state.profilePresets.languages.find((preset) => preset.value === 'Spanish')
+      .active,
+    true,
+  );
+  assert.equal(
+    state.profilePresets.tones.find((preset) => preset.value === 'friendly')
+      .active,
+    true,
+  );
   assert.equal(state.readiness.scoreLabel, 'Ready');
-  assert.equal(state.conversationBrief.nextAction, 'Review and send the saved draft.');
+  assert.equal(
+    state.conversationBrief.nextAction,
+    'Review and send the saved draft.',
+  );
 });
 
 test('composer assist still explains the route without a draft', () => {
@@ -706,7 +985,9 @@ test('composer assist still explains the route without a draft', () => {
 
 test('smart reply options give distinct one-tap composer choices', () => {
   const replies = getSmartReplyOptions({
-    message: { content: { body: 'Please share the venue pin and station exit' } },
+    message: {
+      content: { body: 'Please share the venue pin and station exit' },
+    },
     metadata: { languageOverride: 'Japanese' },
     contact: { id: 'planner', name: 'Akari' },
   });
@@ -725,12 +1006,21 @@ test('composer profile and reminder presets expose fast setup choices', () => {
   const now = new Date('2026-04-27T10:20:00Z').getTime();
   const reminders = getComposerReminderPresets(now);
 
-  assert.equal(profile.languages.find(preset => preset.value === 'French').active, true);
-  assert.equal(profile.tones.find(preset => preset.value === 'formal').active, true);
-  assert.deepEqual(reminders.map(preset => preset.id), ['later-today', 'tomorrow', 'next-week']);
+  assert.equal(
+    profile.languages.find((preset) => preset.value === 'French').active,
+    true,
+  );
+  assert.equal(
+    profile.tones.find((preset) => preset.value === 'formal').active,
+    true,
+  );
+  assert.deepEqual(
+    reminders.map((preset) => preset.id),
+    ['later-today', 'tomorrow', 'next-week'],
+  );
   assert.equal(new Date(reminders[0].reminderAt).getMinutes(), 0);
   assert.ok(reminders[0].reminderAt > now);
-  assert.ok(reminders[0].reminderAt <= now + (3 * 60 * 60 * 1000));
+  assert.ok(reminders[0].reminderAt <= now + 3 * 60 * 60 * 1000);
   assert.equal(new Date(reminders[1].reminderAt).getHours(), 9);
 });
 
@@ -739,7 +1029,10 @@ test('contextual reminders promote follow-up timing detected in the conversation
   const latestIncomingMessage = {
     id: 'incoming',
     isFromMe: false,
-    content: { type: 'text', body: 'Can you confirm the quote tomorrow morning?' },
+    content: {
+      type: 'text',
+      body: 'Can you confirm the quote tomorrow morning?',
+    },
   };
 
   const presets = getContextualReminderPresets({ latestIncomingMessage, now });
@@ -765,8 +1058,18 @@ test('composer readiness warns about missed tasks and quiet-hour contacts', () =
   });
 
   assert.equal(readiness.warnings, 2);
-  assert.equal(readiness.checks.some(check => check.id === 'tasks' && check.status === 'warning'), true);
-  assert.equal(readiness.checks.some(check => check.id === 'timezone' && check.status === 'warning'), true);
+  assert.equal(
+    readiness.checks.some(
+      (check) => check.id === 'tasks' && check.status === 'warning',
+    ),
+    true,
+  );
+  assert.equal(
+    readiness.checks.some(
+      (check) => check.id === 'timezone' && check.status === 'warning',
+    ),
+    true,
+  );
 });
 
 test('conversation brief turns latest messages and tasks into a next action', () => {
@@ -815,16 +1118,20 @@ test('conversation action plan prioritizes drafts, questions, tasks, and transla
     metadata: {
       checklist: [{ id: 'task-1', text: 'Confirm venue pin', done: false }],
     },
-    drafts: { trip: { text: 'I will confirm the venue pin shortly.', updatedAt: now } },
+    drafts: {
+      trip: { text: 'I will confirm the venue pin shortly.', updatedAt: now },
+    },
     messages,
     now,
   });
 
   assert.equal(plan.untranslatedCount, 2);
-  assert.deepEqual(
-    plan.actions.map(action => action.id).slice(0, 4),
-    ['review-draft', 'answer-question', 'translate-incoming', 'task-task-1'],
-  );
+  assert.deepEqual(plan.actions.map((action) => action.id).slice(0, 4), [
+    'review-draft',
+    'answer-question',
+    'translate-incoming',
+    'task-task-1',
+  ]);
 });
 
 test('conversation handoff brief is copy-ready and includes visitor context', () => {
@@ -838,8 +1145,17 @@ test('conversation handoff brief is copy-ready and includes visitor context', ()
     },
     drafts: { host: { text: '18:30 works for us.', updatedAt: 123 } },
     messages: [
-      { id: 'in', isFromMe: false, senderName: 'Sofia', content: { type: 'text', body: 'Puede llegar despues de las 18:00?' } },
-      { id: 'out', isFromMe: true, content: { type: 'text', body: 'I will confirm.' } },
+      {
+        id: 'in',
+        isFromMe: false,
+        senderName: 'Sofia',
+        content: { type: 'text', body: 'Puede llegar despues de las 18:00?' },
+      },
+      {
+        id: 'out',
+        isFromMe: true,
+        content: { type: 'text', body: 'I will confirm.' },
+      },
     ],
   });
 
@@ -854,17 +1170,28 @@ test('conversation handoff brief is copy-ready and includes visitor context', ()
 test('untranslated incoming messages excludes outgoing, translated, and media-only entries', () => {
   const messages = [
     { id: 'incoming', isFromMe: false, content: { body: 'Hola' } },
-    { id: 'translated', isFromMe: false, isTranslated: true, content: { body: 'Bonjour' } },
+    {
+      id: 'translated',
+      isFromMe: false,
+      isTranslated: true,
+      content: { body: 'Bonjour' },
+    },
     { id: 'outgoing', isFromMe: true, content: { body: 'Hello' } },
     { id: 'media', isFromMe: false, content: { type: 'image' } },
   ];
 
-  assert.deepEqual(getUntranslatedIncomingMessages(messages).map(message => message.id), ['incoming']);
+  assert.deepEqual(
+    getUntranslatedIncomingMessages(messages).map((message) => message.id),
+    ['incoming'],
+  );
 });
 
 test('resolveAppearanceTheme falls back safely and honors system dark mode', () => {
   assert.deepEqual(
-    resolveAppearanceTheme({ theme: 'unknown', mode: 'maybe' }, { systemMode: 'dark' }),
+    resolveAppearanceTheme(
+      { theme: 'unknown', mode: 'maybe' },
+      { systemMode: 'dark' },
+    ),
     {
       theme: 'whatsapp',
       mode: 'system',
@@ -883,7 +1210,10 @@ test('resolveAppearanceTheme falls back safely and honors system dark mode', () 
 
 test('resolveAppearanceTheme returns the selected light theme variant explicitly', () => {
   assert.deepEqual(
-    resolveAppearanceTheme({ theme: 'ocean', mode: 'light' }, { systemMode: 'dark' }),
+    resolveAppearanceTheme(
+      { theme: 'ocean', mode: 'light' },
+      { systemMode: 'dark' },
+    ),
     {
       theme: 'ocean',
       mode: 'light',
@@ -903,8 +1233,17 @@ test('resolveAppearanceTheme returns the selected light theme variant explicitly
 test('appearance theme catalog includes additional recognizable developer themes', () => {
   const catalog = getAppearanceThemeCatalog();
   assert.deepEqual(
-    catalog.map(theme => theme.id),
-    ['whatsapp', 'ocean', 'sunset', 'github', 'dracula', 'nord', 'linear', 'vercel'],
+    catalog.map((theme) => theme.id),
+    [
+      'whatsapp',
+      'ocean',
+      'sunset',
+      'github',
+      'dracula',
+      'nord',
+      'linear',
+      'vercel',
+    ],
   );
 });
 
@@ -938,13 +1277,16 @@ test('timezone info surfaces visitor-friendly local time and quiet hours context
     statusLabel: 'Working hours',
   });
 
-  assert.deepEqual(getTimezoneInfo({ timezone: 'America/Los_Angeles' }, quietUtc), {
-    timezone: 'America/Los_Angeles',
-    localTime: '16:30',
-    label: '16:30 local time',
-    status: 'working-hours',
-    statusLabel: 'Working hours',
-  });
+  assert.deepEqual(
+    getTimezoneInfo({ timezone: 'America/Los_Angeles' }, quietUtc),
+    {
+      timezone: 'America/Los_Angeles',
+      localTime: '16:30',
+      label: '16:30 local time',
+      status: 'working-hours',
+      statusLabel: 'Working hours',
+    },
+  );
 
   assert.deepEqual(getTimezoneInfo({ timezone: 'Asia/Tokyo' }, quietUtc), {
     timezone: 'Asia/Tokyo',

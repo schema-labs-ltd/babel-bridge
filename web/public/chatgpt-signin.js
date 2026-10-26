@@ -3,7 +3,8 @@
 // than the server, so the user pastes that address back to finish sign-in.
 
 export function chatGptStatusText(status) {
-  if (!status?.available) return 'Sign in with ChatGPT isn’t available on this server.';
+  if (!status?.available)
+    return 'Sign in with ChatGPT isn’t available on this server.';
   if (!status.signedIn) {
     return status.apiKeyConfigured
       ? 'Not signed in. Text AI uses the server’s OpenAI API key.'
@@ -17,17 +18,18 @@ export function chatGptStatusText(status) {
 }
 
 export function setupChatGptSignIn(app) {
-  const $ = id => document.getElementById(id);
+  const $ = (id) => document.getElementById(id);
   let status = null;
   let busy = false;
 
   async function request(path, options = {}) {
     const response = await app.apiFetch(path, {
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       ...options,
     });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+    if (!response.ok)
+      throw new Error(body.error || `Request failed (${response.status})`);
     return body;
   }
 
@@ -50,12 +52,14 @@ export function setupChatGptSignIn(app) {
     $('chatgpt-sign-out').disabled = busy;
     if (signedIn) $('chatgpt-callback-step').hidden = true;
     const select = $('chatgpt-model-select');
-    select.replaceChildren(...(status?.models || []).map(model => {
-      const option = document.createElement('option');
-      option.value = model.slug;
-      option.textContent = model.displayName;
-      return option;
-    }));
+    select.replaceChildren(
+      ...(status?.models || []).map((model) => {
+        const option = document.createElement('option');
+        option.value = model.slug;
+        option.textContent = model.displayName;
+        return option;
+      }),
+    );
     select.disabled = busy || !status?.models?.length;
     if (status?.model) select.value = status.model;
   }
@@ -89,7 +93,10 @@ export function setupChatGptSignIn(app) {
     const tab = window.open('about:blank', '_blank');
     run(async () => {
       try {
-        const {authorizeUrl} = await request('/api/chatgpt/sign-in', {method: 'POST', body: '{}'});
+        const { authorizeUrl } = await request('/api/chatgpt/sign-in', {
+          method: 'POST',
+          body: '{}',
+        });
         if (tab) tab.location.href = authorizeUrl;
         else window.open(authorizeUrl, '_blank', 'noopener');
         $('chatgpt-callback-url').value = '';
@@ -101,22 +108,42 @@ export function setupChatGptSignIn(app) {
     });
   });
 
-  $('chatgpt-finish')?.addEventListener('click', () => run(async () => {
-    const callbackUrl = $('chatgpt-callback-url').value.trim();
-    if (!callbackUrl) throw new Error('Paste the address your browser showed after you approved.');
-    status = await request('/api/chatgpt/callback', {method: 'POST', body: JSON.stringify({callbackUrl})});
-  }));
+  $('chatgpt-finish')?.addEventListener('click', () =>
+    run(async () => {
+      const callbackUrl = $('chatgpt-callback-url').value.trim();
+      if (!callbackUrl)
+        throw new Error(
+          'Paste the address your browser showed after you approved.',
+        );
+      status = await request('/api/chatgpt/callback', {
+        method: 'POST',
+        body: JSON.stringify({ callbackUrl }),
+      });
+    }),
+  );
 
-  $('chatgpt-model-select')?.addEventListener('change', event => run(async () => {
-    status = await request('/api/chatgpt/model', {method: 'PUT', body: JSON.stringify({model: event.target.value})});
-  }));
+  $('chatgpt-model-select')?.addEventListener('change', (event) =>
+    run(async () => {
+      status = await request('/api/chatgpt/model', {
+        method: 'PUT',
+        body: JSON.stringify({ model: event.target.value }),
+      });
+    }),
+  );
 
-  $('chatgpt-sign-out')?.addEventListener('click', () => run(async () => {
-    status = await request('/api/chatgpt/sign-out', {method: 'POST', body: '{}'});
-    if (!status.revocationConfirmed) {
-      setError('Signed out here, but ChatGPT didn’t confirm it. You can disconnect Babel Bridge in ChatGPT Settings.');
-    }
-  }));
+  $('chatgpt-sign-out')?.addEventListener('click', () =>
+    run(async () => {
+      status = await request('/api/chatgpt/sign-out', {
+        method: 'POST',
+        body: '{}',
+      });
+      if (!status.revocationConfirmed) {
+        setError(
+          'Signed out here, but ChatGPT didn’t confirm it. You can disconnect Babel Bridge in ChatGPT Settings.',
+        );
+      }
+    }),
+  );
 
-  return {refresh};
+  return { refresh };
 }

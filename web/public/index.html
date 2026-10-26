@@ -1,636 +1,1257 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="WhatsApp Translator">
-  <meta name="theme-color" content="#111b21">
-  <meta name="mobile-web-app-capable" content="yes">
-  <title>WhatsApp Translator</title>
-  <script>
-    (() => {
-      try {
-        const stored = JSON.parse(localStorage.getItem('wa_appearance_preferences') || '{}');
-        const theme = ['whatsapp', 'ocean', 'sunset', 'github', 'dracula', 'nord', 'linear', 'vercel'].includes(String(stored.theme || '').toLowerCase())
-          ? String(stored.theme).toLowerCase()
-          : 'whatsapp';
-        const requestedMode = String(stored.mode || '').toLowerCase();
-        const mode = ['light', 'dark', 'system'].includes(requestedMode) ? requestedMode : 'system';
-        const resolvedMode = mode === 'system'
-          ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-          : mode;
-        const themeColorMap = {
-          'whatsapp-light': '#f7f5f2',
-          'whatsapp-dark': '#111b21',
-          'ocean-light': '#f4f7fb',
-          'ocean-dark': '#0f172a',
-          'sunset-light': '#fff6ef',
-          'sunset-dark': '#1f1720',
-          'github-light': '#f6f8fa',
-          'github-dark': '#0d1117',
-          'dracula-light': '#f7f4ff',
-          'dracula-dark': '#282a36',
-          'nord-light': '#eceff4',
-          'nord-dark': '#2e3440',
-          'linear-light': '#f7f8f8',
-          'linear-dark': '#08090a',
-          'vercel-light': '#ffffff',
-          'vercel-dark': '#000000',
-        };
-        const dataTheme = `${theme}-${resolvedMode}`;
-        document.documentElement.dataset.theme = dataTheme;
-        document.documentElement.style.colorScheme = resolvedMode;
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColorMap[dataTheme] || '#111b21');
-      } catch {
-        document.documentElement.dataset.theme = 'whatsapp-dark';
-        document.documentElement.style.colorScheme = 'dark';
-      }
-    })();
-  </script>
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-  <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" href="styles.css?v=20260916-topics">
-  <!-- QR Code library -->
-  <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <!-- Prevent phone number detection on iOS -->
-  <meta name="format-detection" content="telephone=no">
-</head>
-<body>
-  <div id="app">
-    <!-- Password Overlay -->
-    <div id="password-overlay" class="overlay hidden">
-      <div class="overlay-content overlay-card auth-card">
-        <div class="overlay-badge" aria-hidden="true">WT</div>
-        <span class="overlay-kicker">Private translator</span>
-        <h2>Unlock WhatsApp Translator</h2>
-        <p>Sign in to open translated WhatsApp chats.</p>
-        <form id="password-form" class="password-form">
-          <input type="password" id="password-input" placeholder="Enter password" autocomplete="current-password">
-          <button id="password-submit" class="password-button" type="submit">Continue</button>
-        </form>
-        <p id="password-error" class="password-error hidden">Incorrect password. Try again.</p>
-      </div>
-    </div>
-
-    <!-- QR Code Overlay -->
-    <div id="qr-overlay" class="overlay hidden">
-      <div class="overlay-content overlay-card overlay-centered">
-        <h2>Scan QR Code</h2>
-        <p>Open WhatsApp on your phone and scan this code to connect</p>
-        <div id="qr-container"></div>
-        <p class="instructions">
-          1. Open WhatsApp on your phone<br>
-          2. Tap Menu or Settings<br>
-          3. Tap "Linked Devices"<br>
-          4. Tap "Link a Device"<br>
-          5. Point your phone at this screen
-        </p>
-      </div>
-    </div>
-
-    <!-- Connecting Overlay -->
-    <div id="connecting-overlay" class="overlay">
-      <div class="overlay-content overlay-card overlay-centered">
-        <h2>Connecting...</h2>
-        <div class="spinner"></div>
-        <p>Establishing connection to WhatsApp</p>
-        <button id="demo-mode-button" class="overlay-primary-button" type="button">Preview demo chats</button>
-        <p class="overlay-helper">See translated WhatsApp conversations without linking a phone.</p>
-      </div>
-    </div>
-
-    <!-- Main Container -->
-    <div id="main-container" class="hidden">
-      <!-- Left Panel: Contacts -->
-      <aside id="contacts-panel">
-        <header class="panel-header">
-          <div class="user-info">
-            <div class="user-details">
-              <span id="user-name">Loading...</span>
-              <span id="user-phone" class="phone"></span>
-            </div>
-          </div>
-          <div class="header-actions">
-            <button id="command-palette-button" class="header-icon-button" title="Open command palette">
-              <svg viewBox="0 0 24 24" width="20" height="20">
-                <path fill="currentColor" d="M10 18a8 8 0 1 1 5.292-14.002A8 8 0 0 1 10 18zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12zm8.707 4.293-4.141-4.141 1.414-1.414 4.141 4.141-1.414 1.414z"/>
-              </svg>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="WhatsApp Translator" />
+    <meta name="theme-color" content="#111b21" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>WhatsApp Translator</title>
+    <script>
+      (() => {
+        try {
+          const stored = JSON.parse(
+            localStorage.getItem("wa_appearance_preferences") || "{}",
+          );
+          const theme = [
+            "whatsapp",
+            "ocean",
+            "sunset",
+            "github",
+            "dracula",
+            "nord",
+            "linear",
+            "vercel",
+          ].includes(String(stored.theme || "").toLowerCase())
+            ? String(stored.theme).toLowerCase()
+            : "whatsapp";
+          const requestedMode = String(stored.mode || "").toLowerCase();
+          const mode = ["light", "dark", "system"].includes(requestedMode)
+            ? requestedMode
+            : "system";
+          const resolvedMode =
+            mode === "system"
+              ? window.matchMedia &&
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : mode;
+          const themeColorMap = {
+            "whatsapp-light": "#f7f5f2",
+            "whatsapp-dark": "#111b21",
+            "ocean-light": "#f4f7fb",
+            "ocean-dark": "#0f172a",
+            "sunset-light": "#fff6ef",
+            "sunset-dark": "#1f1720",
+            "github-light": "#f6f8fa",
+            "github-dark": "#0d1117",
+            "dracula-light": "#f7f4ff",
+            "dracula-dark": "#282a36",
+            "nord-light": "#eceff4",
+            "nord-dark": "#2e3440",
+            "linear-light": "#f7f8f8",
+            "linear-dark": "#08090a",
+            "vercel-light": "#ffffff",
+            "vercel-dark": "#000000",
+          };
+          const dataTheme = `${theme}-${resolvedMode}`;
+          document.documentElement.dataset.theme = dataTheme;
+          document.documentElement.style.colorScheme = resolvedMode;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", themeColorMap[dataTheme] || "#111b21");
+        } catch {
+          document.documentElement.dataset.theme = "whatsapp-dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="styles.css?v=20260916-topics" />
+    <!-- QR Code library -->
+    <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <!-- Prevent phone number detection on iOS -->
+    <meta name="format-detection" content="telephone=no" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Password Overlay -->
+      <div id="password-overlay" class="overlay hidden">
+        <div class="overlay-content overlay-card auth-card">
+          <div class="overlay-badge" aria-hidden="true">WT</div>
+          <span class="overlay-kicker">Private translator</span>
+          <h2>Unlock WhatsApp Translator</h2>
+          <p>Sign in to open translated WhatsApp chats.</p>
+          <form id="password-form" class="password-form">
+            <input
+              type="password"
+              id="password-input"
+              placeholder="Enter password"
+              autocomplete="current-password"
+            />
+            <button id="password-submit" class="password-button" type="submit">
+              Continue
             </button>
-            <button id="app-appearance-button" class="header-icon-button" title="Global settings" aria-label="Global settings">
-              <svg viewBox="0 0 24 24" width="20" height="20">
-                <path fill="currentColor" d="M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.98l2.11-1.65-2-3.46-2.49 1a7.1 7.1 0 0 0-1.69-.98L15 3.27h-4l-.4 2.65c-.61.25-1.18.59-1.69.98l-2.49-1-2 3.46 2.11 1.65c-.05.33-.09.66-.09.99s.03.66.08.98l-2.11 1.65 2 3.46 2.49-1c.52.4 1.08.73 1.69.98l.4 2.65h4l.4-2.65c.61-.25 1.18-.58 1.69-.98l2.49 1 2-3.46-2.14-1.65zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/>
-              </svg>
-            </button>
-            <button id="logout-button" class="logout-button" title="Logout and clear all data">
-              <svg viewBox="0 0 24 24" width="20" height="20">
-                <path fill="currentColor" d="M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9z"/>
-              </svg>
-            </button>
-          </div>
-        </header>
-
-        <section class="inbox-toolbar">
-          <label class="inbox-search" for="inbox-search-input">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.47 6.47 0 0 0 4.23-1.57l.27.28v.79L20 21.5 21.5 20l-6-6zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/>
-            </svg>
-            <input id="inbox-search-input" type="search" placeholder="Search chats">
-          </label>
-          <div class="inbox-filter-row">
-            <button class="inbox-filter-chip" data-inbox-filter="unreadOnly" type="button">Unread</button>
-            <button class="inbox-filter-chip" data-inbox-filter="needsReplyOnly" type="button">Needs reply</button>
-            <button class="inbox-filter-chip" data-inbox-filter="groupsOnly" type="button">Groups</button>
-            <button class="inbox-filter-chip" data-inbox-filter="draftsOnly" type="button">Drafts</button>
-            <button class="inbox-filter-chip" data-inbox-filter="importantOnly" type="button">Important</button>
-            <button class="inbox-filter-chip" data-inbox-filter="tasksOnly" type="button">Tasks</button>
-            <button class="inbox-filter-chip" data-inbox-filter="pinnedOnly" type="button">Pinned</button>
-            <button class="inbox-filter-chip" data-inbox-filter="notesOnly" type="button">Notes</button>
-            <button class="inbox-filter-chip" data-inbox-filter="dueRemindersOnly" type="button">Due</button>
-            <button class="inbox-filter-chip" data-inbox-filter="labelsOnly" type="button">Labels</button>
-            <button class="inbox-filter-chip" data-inbox-filter="snoozedOnly" type="button">Snoozed</button>
-            <button id="inbox-clear-button" class="inbox-filter-clear" type="button">Clear</button>
-          </div>
-        </section>
-        
-        <div id="contacts-list" class="contacts-list">
-          <div class="empty-state">
-            <p>No conversations yet</p>
-            <p class="hint">Messages will appear here</p>
-          </div>
+          </form>
+          <p id="password-error" class="password-error hidden">
+            Incorrect password. Try again.
+          </p>
         </div>
+      </div>
 
-        <footer class="sidebar-footer">
-          <div class="usage-info">
-            <span class="usage-label">Translation Cost</span>
-            <span id="global-cost" class="usage-cost">$0.00</span>
-          </div>
-        </footer>
-      </aside>
-
-      <!-- Right Panel: Messages -->
-      <main id="messages-panel">
-        <div id="no-chat-selected" class="empty-chat">
-          <div class="empty-chat-content">
-            <div class="empty-chat-intro">
-              <div class="empty-icon">
-                <svg viewBox="0 0 24 24" width="80" height="80">
-                  <path fill="currentColor" d="M19.005 3.175H4.674C3.642 3.175 3 3.789 3 4.821V21.02l3.544-3.514h12.461c1.033 0 2.064-1.06 2.064-2.093V4.821c-.001-1.032-1.032-1.646-2.064-1.646zm-4.989 9.869H7.041V11.1h6.975v1.944zm3-4H7.041V7.1h9.975v1.944z"/>
-                </svg>
-              </div>
-              <h2>Choose a chat</h2>
-              <p>Translation is off by default. Enable Translate messages in a conversation's settings when you need it.</p>
-            </div>
-            <section id="visitor-dashboard" class="visitor-dashboard hidden">
-              <div class="visitor-dashboard-hero">
-                <div>
-                  <span class="visitor-dashboard-kicker">Today</span>
-                  <h3>Start with the conversations that matter most</h3>
-                  <p>Jump straight into replies, reminders, drafts, and open tasks without digging through the inbox.</p>
-                </div>
-                <button id="visitor-dashboard-open-palette" class="visitor-dashboard-command-button" type="button">Open command palette</button>
-              </div>
-              <div id="visitor-dashboard-stats" class="visitor-dashboard-stats"></div>
-              <div class="visitor-dashboard-grid">
-                <section class="visitor-dashboard-panel">
-                  <div class="visitor-dashboard-panel-header">
-                    <h3>Focus queue</h3>
-                    <span id="visitor-dashboard-focus-count" class="visitor-dashboard-count"></span>
-                  </div>
-                  <div id="visitor-dashboard-focus" class="visitor-dashboard-list"></div>
-                </section>
-                <section class="visitor-dashboard-panel">
-                  <div class="visitor-dashboard-panel-header">
-                    <h3>Upcoming reminders</h3>
-                    <span id="visitor-dashboard-reminder-count" class="visitor-dashboard-count"></span>
-                  </div>
-                  <div id="visitor-dashboard-reminders" class="visitor-dashboard-list"></div>
-                </section>
-              </div>
-            </section>
-          </div>
+      <!-- QR Code Overlay -->
+      <div id="qr-overlay" class="overlay hidden">
+        <div class="overlay-content overlay-card overlay-centered">
+          <h2>Scan QR Code</h2>
+          <p>Open WhatsApp on your phone and scan this code to connect</p>
+          <div id="qr-container"></div>
+          <p class="instructions">
+            1. Open WhatsApp on your phone<br />
+            2. Tap Menu or Settings<br />
+            3. Tap "Linked Devices"<br />
+            4. Tap "Link a Device"<br />
+            5. Point your phone at this screen
+          </p>
         </div>
+      </div>
 
-        <div id="chat-view" class="chat-view hidden">
-          <header class="chat-header">
-            <button id="back-button" class="back-button" aria-label="Back to contacts">
-              <svg viewBox="0 0 24 24" width="24" height="24">
-                <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-              </svg>
-            </button>
-            <div class="avatar">
-              <span id="chat-avatar-initial">?</span>
+      <!-- Connecting Overlay -->
+      <div id="connecting-overlay" class="overlay">
+        <div class="overlay-content overlay-card overlay-centered">
+          <h2>Connecting...</h2>
+          <div class="spinner"></div>
+          <p>Establishing connection to WhatsApp</p>
+          <button
+            id="demo-mode-button"
+            class="overlay-primary-button"
+            type="button"
+          >
+            Preview demo chats
+          </button>
+          <p class="overlay-helper">
+            See translated WhatsApp conversations without linking a phone.
+          </p>
+        </div>
+      </div>
+
+      <!-- Main Container -->
+      <div id="main-container" class="hidden">
+        <!-- Left Panel: Contacts -->
+        <aside id="contacts-panel">
+          <header class="panel-header">
+            <div class="user-info">
+              <div class="user-details">
+                <span id="user-name">Loading...</span>
+                <span id="user-phone" class="phone"></span>
+              </div>
             </div>
-            <div class="chat-info">
-              <span id="chat-name" class="chat-name">Contact Name</span>
-              <span id="chat-note-indicator" class="chat-note-indicator hidden"></span>
-              <span id="typing-indicator" class="typing-indicator hidden">typing...</span>
-            </div>
-            <div class="chat-actions">
-              <button id="chat-workspace-toggle" class="chat-settings-button chat-workspace-button" type="button" title="Toggle workspace" aria-label="Toggle workspace">
+            <div class="header-actions">
+              <button
+                id="command-palette-button"
+                class="header-icon-button"
+                title="Open command palette"
+              >
                 <svg viewBox="0 0 24 24" width="20" height="20">
-                  <path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm6 0H5v14h4V5zm2 14h8V5h-8v14z"/>
+                  <path
+                    fill="currentColor"
+                    d="M10 18a8 8 0 1 1 5.292-14.002A8 8 0 0 1 10 18zm0-2a6 6 0 1 0 0-12 6 6 0 0 0 0 12zm8.707 4.293-4.141-4.141 1.414-1.414 4.141 4.141-1.414 1.414z"
+                  />
                 </svg>
               </button>
-              <span class="cost-badge chat-cost-badge" data-chat-cost>$0.00</span>
-              <button id="chat-menu-button" class="chat-settings-button chat-menu-button" type="button" title="Conversation actions" aria-label="Conversation actions" aria-haspopup="menu" aria-expanded="false">
+              <button
+                id="app-appearance-button"
+                class="header-icon-button"
+                title="Global settings"
+                aria-label="Global settings"
+              >
                 <svg viewBox="0 0 24 24" width="20" height="20">
-                  <path fill="currentColor" d="M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
+                  <path
+                    fill="currentColor"
+                    d="M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.98l2.11-1.65-2-3.46-2.49 1a7.1 7.1 0 0 0-1.69-.98L15 3.27h-4l-.4 2.65c-.61.25-1.18.59-1.69.98l-2.49-1-2 3.46 2.11 1.65c-.05.33-.09.66-.09.99s.03.66.08.98l-2.11 1.65 2 3.46 2.49-1c.52.4 1.08.73 1.69.98l.4 2.65h4l.4-2.65c.61-.25 1.18-.58 1.69-.98l2.49 1 2-3.46-2.14-1.65zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"
+                  />
                 </svg>
               </button>
-              <div id="chat-actions-menu" class="chat-actions-menu hidden" role="menu" aria-label="Conversation actions">
-                <button id="chat-search-toggle" class="chat-menu-item" type="button" role="menuitem">Search messages</button>
-                <button id="chat-starred-toggle" class="chat-menu-item" type="button" role="menuitem">Show starred messages only</button>
-                <button id="chat-translate-all" class="chat-menu-item" type="button" role="menuitem">Translate incoming messages</button>
-                <button id="chat-settings-button" class="chat-menu-item" type="button" role="menuitem">Conversation settings</button>
-                <div class="chat-menu-divider" aria-hidden="true"></div>
-                <div class="chat-menu-meta">
-                  <span class="chat-menu-meta-label">Conversation cost</span>
-                  <span class="chat-menu-cost" data-chat-cost>$0.00</span>
-                </div>
-              </div>
+              <button
+                id="logout-button"
+                class="logout-button"
+                title="Logout and clear all data"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                  <path
+                    fill="currentColor"
+                    d="M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9z"
+                  />
+                </svg>
+              </button>
             </div>
           </header>
 
-          <button id="workspace-backdrop" class="workspace-backdrop hidden" type="button" aria-label="Close conversation context"></button>
+          <section class="inbox-toolbar">
+            <label class="inbox-search" for="inbox-search-input">
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.47 6.47 0 0 0 4.23-1.57l.27.28v.79L20 21.5 21.5 20l-6-6zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"
+                />
+              </svg>
+              <input
+                id="inbox-search-input"
+                type="search"
+                placeholder="Search chats"
+              />
+            </label>
+            <div class="inbox-filter-row">
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="unreadOnly"
+                type="button"
+              >
+                Unread
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="needsReplyOnly"
+                type="button"
+              >
+                Needs reply
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="groupsOnly"
+                type="button"
+              >
+                Groups
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="draftsOnly"
+                type="button"
+              >
+                Drafts
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="importantOnly"
+                type="button"
+              >
+                Important
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="tasksOnly"
+                type="button"
+              >
+                Tasks
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="pinnedOnly"
+                type="button"
+              >
+                Pinned
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="notesOnly"
+                type="button"
+              >
+                Notes
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="dueRemindersOnly"
+                type="button"
+              >
+                Due
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="labelsOnly"
+                type="button"
+              >
+                Labels
+              </button>
+              <button
+                class="inbox-filter-chip"
+                data-inbox-filter="snoozedOnly"
+                type="button"
+              >
+                Snoozed
+              </button>
+              <button
+                id="inbox-clear-button"
+                class="inbox-filter-clear"
+                type="button"
+              >
+                Clear
+              </button>
+            </div>
+          </section>
 
-          <div class="chat-shell">
-            <div class="chat-main-column">
-              <div id="chat-search-bar" class="chat-search-bar hidden">
-                <input id="chat-search-input" type="search" placeholder="Search messages in this conversation">
-                <span id="chat-search-count" class="chat-search-count">0 matches</span>
-                <button id="chat-search-clear" class="chat-search-clear" title="Clear search">Clear</button>
+          <div id="contacts-list" class="contacts-list">
+            <div class="empty-state">
+              <p>No conversations yet</p>
+              <p class="hint">Messages will appear here</p>
+            </div>
+          </div>
+
+          <footer class="sidebar-footer">
+            <div class="usage-info">
+              <span class="usage-label">Translation Cost</span>
+              <span id="global-cost" class="usage-cost">$0.00</span>
+            </div>
+          </footer>
+        </aside>
+
+        <!-- Right Panel: Messages -->
+        <main id="messages-panel">
+          <div id="no-chat-selected" class="empty-chat">
+            <div class="empty-chat-content">
+              <div class="empty-chat-intro">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" width="80" height="80">
+                    <path
+                      fill="currentColor"
+                      d="M19.005 3.175H4.674C3.642 3.175 3 3.789 3 4.821V21.02l3.544-3.514h12.461c1.033 0 2.064-1.06 2.064-2.093V4.821c-.001-1.032-1.032-1.646-2.064-1.646zm-4.989 9.869H7.041V11.1h6.975v1.944zm3-4H7.041V7.1h9.975v1.944z"
+                    />
+                  </svg>
+                </div>
+                <h2>Choose a chat</h2>
+                <p>
+                  Translation is off by default. Enable Translate messages in a
+                  conversation's settings when you need it.
+                </p>
               </div>
-
-              <div id="messages-list" class="messages-list">
-                <!-- Messages will be inserted here -->
-              </div>
-
-              <footer class="message-input-area">
-                <p id="reply-only-hint" class="form-hint" role="status" hidden>Reply only · Choose an incoming message and tap Reply before sending.</p>
-            <div id="reply-preview" class="reply-preview hidden">
-                  <div class="reply-preview-content">
-                    <span class="reply-preview-sender">Name</span>
-                    <span class="reply-preview-text">Message text...</span>
+              <section id="visitor-dashboard" class="visitor-dashboard hidden">
+                <div class="visitor-dashboard-hero">
+                  <div>
+                    <span class="visitor-dashboard-kicker">Today</span>
+                    <h3>Start with the conversations that matter most</h3>
+                    <p>
+                      Jump straight into replies, reminders, drafts, and open
+                      tasks without digging through the inbox.
+                    </p>
                   </div>
-                  <button id="reply-preview-close" class="reply-preview-close" aria-label="Cancel reply">
-                    <svg viewBox="0 0 24 24" width="20" height="20">
-                      <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                    </svg>
+                  <button
+                    id="visitor-dashboard-open-palette"
+                    class="visitor-dashboard-command-button"
+                    type="button"
+                  >
+                    Open command palette
                   </button>
                 </div>
-                <div id="composer-assist" class="composer-assist hidden">
-                  <div class="composer-assist-main">
-                    <span id="composer-assist-kicker" class="composer-assist-kicker">Translation route</span>
-                    <strong id="composer-assist-title">Spanish · standard tone</strong>
-                    <span id="composer-assist-preview" class="composer-assist-preview">Type a message to preview the translation route.</span>
-                    <div id="composer-profile-presets" class="composer-profile-presets"></div>
-                    <div id="composer-smart-replies" class="composer-smart-replies"></div>
-                    <div id="composer-readiness" class="composer-readiness" aria-live="polite"></div>
-                  </div>
-                  <div class="composer-assist-actions">
-                    <button id="composer-use-suggestion" class="composer-assist-button" type="button">Use smart reply</button>
-                    <button id="composer-remind-tomorrow" class="composer-assist-button" type="button">Remind tomorrow</button>
-                    <div id="composer-reminder-presets" class="composer-reminder-presets"></div>
-                    <button id="composer-edit-profile" class="composer-assist-button subtle" type="button">Edit profile</button>
-                  </div>
-                </div>
-                <div class="quick-replies-bar">
-                  <div class="quick-replies-header">
-                    <span class="quick-replies-label">Quick replies</span>
-                    <button id="quick-reply-save" class="quick-reply-save" type="button">Save draft</button>
-                  </div>
-                  <div id="quick-replies-list" class="quick-replies-list"></div>
-                </div>
-                <div class="input-container">
-                  <input type="file" id="image-input" accept="image/*" style="display: none;">
-                  <div class="emoji-button-container">
-                    <button id="emoji-button" class="emoji-button" title="Insert emoji">
-                      <svg viewBox="0 0 24 24" width="24" height="24">
-                        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-6c.78 2.34 2.72 4 5 4s4.22-1.66 5-4H7zm2-3c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm6 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1z"/>
-                      </svg>
-                    </button>
-                    <div id="emoji-picker" class="emoji-picker hidden">
-                      <div class="emoji-picker-header">
-                        <div class="emoji-tabs">
-                          <button class="emoji-tab active" data-category="recent" title="Recent">🕐</button>
-                          <button class="emoji-tab" data-category="smileys" title="Smileys">😀</button>
-                          <button class="emoji-tab" data-category="gestures" title="Gestures">👋</button>
-                          <button class="emoji-tab" data-category="hearts" title="Hearts">❤️</button>
-                          <button class="emoji-tab" data-category="animals" title="Animals">🐶</button>
-                          <button class="emoji-tab" data-category="food" title="Food">🍕</button>
-                          <button class="emoji-tab" data-category="travel" title="Travel">✈️</button>
-                          <button class="emoji-tab" data-category="objects" title="Objects">💡</button>
-                          <button class="emoji-tab" data-category="symbols" title="Symbols">✨</button>
-                        </div>
-                      </div>
-                      <div class="emoji-picker-content" id="emoji-picker-content">
-                        <!-- Emojis loaded by JavaScript -->
-                      </div>
+                <div
+                  id="visitor-dashboard-stats"
+                  class="visitor-dashboard-stats"
+                ></div>
+                <div class="visitor-dashboard-grid">
+                  <section class="visitor-dashboard-panel">
+                    <div class="visitor-dashboard-panel-header">
+                      <h3>Focus queue</h3>
+                      <span
+                        id="visitor-dashboard-focus-count"
+                        class="visitor-dashboard-count"
+                      ></span>
                     </div>
-                  </div>
-                  <button id="attach-button" class="attach-button" title="Send image">
-                    <svg viewBox="0 0 24 24" width="24" height="24">
-                      <path fill="currentColor" d="M16.5 6.5v8.25a4.25 4.25 0 1 1-8.5 0V5.75a2.75 2.75 0 1 1 5.5 0v8.5a1.25 1.25 0 1 1-2.5 0V7h-1.5v7.25a2.75 2.75 0 0 0 5.5 0v-8.5a4.25 4.25 0 1 0-8.5 0v9a5.75 5.75 0 1 0 11.5 0V6.5z"/>
-                    </svg>
+                    <div
+                      id="visitor-dashboard-focus"
+                      class="visitor-dashboard-list"
+                    ></div>
+                  </section>
+                  <section class="visitor-dashboard-panel">
+                    <div class="visitor-dashboard-panel-header">
+                      <h3>Upcoming reminders</h3>
+                      <span
+                        id="visitor-dashboard-reminder-count"
+                        class="visitor-dashboard-count"
+                      ></span>
+                    </div>
+                    <div
+                      id="visitor-dashboard-reminders"
+                      class="visitor-dashboard-list"
+                    ></div>
+                  </section>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div id="chat-view" class="chat-view hidden">
+            <header class="chat-header">
+              <button
+                id="back-button"
+                class="back-button"
+                aria-label="Back to contacts"
+              >
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                  <path
+                    fill="currentColor"
+                    d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
+                  />
+                </svg>
+              </button>
+              <div class="avatar">
+                <span id="chat-avatar-initial">?</span>
+              </div>
+              <div class="chat-info">
+                <span id="chat-name" class="chat-name">Contact Name</span>
+                <span
+                  id="chat-note-indicator"
+                  class="chat-note-indicator hidden"
+                ></span>
+                <span id="typing-indicator" class="typing-indicator hidden"
+                  >typing...</span
+                >
+              </div>
+              <div class="chat-actions">
+                <button
+                  id="chat-workspace-toggle"
+                  class="chat-settings-button chat-workspace-button"
+                  type="button"
+                  title="Toggle workspace"
+                  aria-label="Toggle workspace"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path
+                      fill="currentColor"
+                      d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm6 0H5v14h4V5zm2 14h8V5h-8v14z"
+                    />
+                  </svg>
+                </button>
+                <span class="cost-badge chat-cost-badge" data-chat-cost
+                  >$0.00</span
+                >
+                <button
+                  id="chat-menu-button"
+                  class="chat-settings-button chat-menu-button"
+                  type="button"
+                  title="Conversation actions"
+                  aria-label="Conversation actions"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path
+                      fill="currentColor"
+                      d="M12 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"
+                    />
+                  </svg>
+                </button>
+                <div
+                  id="chat-actions-menu"
+                  class="chat-actions-menu hidden"
+                  role="menu"
+                  aria-label="Conversation actions"
+                >
+                  <button
+                    id="chat-search-toggle"
+                    class="chat-menu-item"
+                    type="button"
+                    role="menuitem"
+                  >
+                    Search messages
                   </button>
-                  <textarea
-                    id="message-input"
-                    placeholder="Type a message"
-                    rows="1"
-                    maxlength="65536"
-                  ></textarea>
-                  <div class="send-button-group">
-                    <button id="send-button" class="send-button" disabled title="Send message">
-                      <svg viewBox="0 0 24 24" width="24" height="24">
-                        <path fill="currentColor" d="M1.101 21.757L23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"/>
+                  <button
+                    id="chat-starred-toggle"
+                    class="chat-menu-item"
+                    type="button"
+                    role="menuitem"
+                  >
+                    Show starred messages only
+                  </button>
+                  <button
+                    id="chat-translate-all"
+                    class="chat-menu-item"
+                    type="button"
+                    role="menuitem"
+                  >
+                    Translate incoming messages
+                  </button>
+                  <button
+                    id="chat-settings-button"
+                    class="chat-menu-item"
+                    type="button"
+                    role="menuitem"
+                  >
+                    Conversation settings
+                  </button>
+                  <div class="chat-menu-divider" aria-hidden="true"></div>
+                  <div class="chat-menu-meta">
+                    <span class="chat-menu-meta-label">Conversation cost</span>
+                    <span class="chat-menu-cost" data-chat-cost>$0.00</span>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            <button
+              id="workspace-backdrop"
+              class="workspace-backdrop hidden"
+              type="button"
+              aria-label="Close conversation context"
+            ></button>
+
+            <div class="chat-shell">
+              <div class="chat-main-column">
+                <div id="chat-search-bar" class="chat-search-bar hidden">
+                  <input
+                    id="chat-search-input"
+                    type="search"
+                    placeholder="Search messages in this conversation"
+                  />
+                  <span id="chat-search-count" class="chat-search-count"
+                    >0 matches</span
+                  >
+                  <button
+                    id="chat-search-clear"
+                    class="chat-search-clear"
+                    title="Clear search"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div id="messages-list" class="messages-list">
+                  <!-- Messages will be inserted here -->
+                </div>
+
+                <footer class="message-input-area">
+                  <p
+                    id="reply-only-hint"
+                    class="form-hint"
+                    role="status"
+                    hidden
+                  >
+                    Reply only · Choose an incoming message and tap Reply before
+                    sending.
+                  </p>
+                  <div id="reply-preview" class="reply-preview hidden">
+                    <div class="reply-preview-content">
+                      <span class="reply-preview-sender">Name</span>
+                      <span class="reply-preview-text">Message text...</span>
+                    </div>
+                    <button
+                      id="reply-preview-close"
+                      class="reply-preview-close"
+                      aria-label="Cancel reply"
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path
+                          fill="currentColor"
+                          d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                        />
                       </svg>
                     </button>
-                    <button id="send-dropdown-toggle" class="send-dropdown-toggle" disabled title="More send options">
-                      <svg viewBox="0 0 24 24" width="12" height="12">
-                        <path fill="currentColor" d="M7 10l5 5 5-5z"/>
-                      </svg>
-                    </button>
-                    <div id="send-dropdown" class="send-dropdown hidden">
-                      <button id="send-ai-button" class="send-dropdown-item">
-                        <svg viewBox="0 0 24 24" width="16" height="16">
-                          <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                        </svg>
-                        <span>Send with AI</span>
+                  </div>
+                  <div id="composer-assist" class="composer-assist hidden">
+                    <div class="composer-assist-main">
+                      <span
+                        id="composer-assist-kicker"
+                        class="composer-assist-kicker"
+                        >Translation route</span
+                      >
+                      <strong id="composer-assist-title"
+                        >Spanish · standard tone</strong
+                      >
+                      <span
+                        id="composer-assist-preview"
+                        class="composer-assist-preview"
+                        >Type a message to preview the translation route.</span
+                      >
+                      <div
+                        id="composer-profile-presets"
+                        class="composer-profile-presets"
+                      ></div>
+                      <div
+                        id="composer-smart-replies"
+                        class="composer-smart-replies"
+                      ></div>
+                      <div
+                        id="composer-readiness"
+                        class="composer-readiness"
+                        aria-live="polite"
+                      ></div>
+                    </div>
+                    <div class="composer-assist-actions">
+                      <button
+                        id="composer-use-suggestion"
+                        class="composer-assist-button"
+                        type="button"
+                      >
+                        Use smart reply
+                      </button>
+                      <button
+                        id="composer-remind-tomorrow"
+                        class="composer-assist-button"
+                        type="button"
+                      >
+                        Remind tomorrow
+                      </button>
+                      <div
+                        id="composer-reminder-presets"
+                        class="composer-reminder-presets"
+                      ></div>
+                      <button
+                        id="composer-edit-profile"
+                        class="composer-assist-button subtle"
+                        type="button"
+                      >
+                        Edit profile
                       </button>
                     </div>
                   </div>
-                </div>
-              </footer>
-            </div>
-
-            <aside id="conversation-workspace" class="conversation-workspace">
-              <div class="conversation-workspace-frame">
-                <div class="workspace-header">
-                  <div>
-                    <span class="workspace-kicker">Workspace</span>
-                    <h3>Conversation context</h3>
+                  <div class="quick-replies-bar">
+                    <div class="quick-replies-header">
+                      <span class="quick-replies-label">Quick replies</span>
+                      <button
+                        id="quick-reply-save"
+                        class="quick-reply-save"
+                        type="button"
+                      >
+                        Save draft
+                      </button>
+                    </div>
+                    <div
+                      id="quick-replies-list"
+                      class="quick-replies-list"
+                    ></div>
                   </div>
-                  <button id="workspace-settings-button" class="workspace-edit-button" type="button">Edit</button>
-                </div>
-                <div id="conversation-workspace-summary" class="workspace-summary"></div>
-                <div id="workspace-brief" class="workspace-brief"></div>
-                <div class="workspace-actions">
-                  <button id="workspace-copy-brief" class="workspace-action-button" type="button">Copy brief</button>
-                  <button id="workspace-translate-all" class="workspace-action-button" type="button">Translate incoming</button>
-                </div>
-                <div id="workspace-action-plan" class="workspace-action-plan"></div>
-                <div class="workspace-section">
-                  <span class="workspace-section-label">Right now</span>
-                  <p id="workspace-primary-status" class="workspace-primary-status">No local context yet.</p>
-                </div>
-                <div class="workspace-section">
-                  <span class="workspace-section-label">Notes</span>
-                  <p id="workspace-notes" class="workspace-notes">No notes yet.</p>
-                </div>
-                <div class="workspace-section">
-                  <div class="workspace-section-heading">
-                    <span class="workspace-section-label">Checklist</span>
-                    <span id="workspace-checklist-summary" class="workspace-section-meta">No tasks</span>
+                  <div class="input-container">
+                    <input
+                      type="file"
+                      id="image-input"
+                      accept="image/*"
+                      style="display: none"
+                    />
+                    <div class="emoji-button-container">
+                      <button
+                        id="emoji-button"
+                        class="emoji-button"
+                        title="Insert emoji"
+                      >
+                        <svg viewBox="0 0 24 24" width="24" height="24">
+                          <path
+                            fill="currentColor"
+                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-6c.78 2.34 2.72 4 5 4s4.22-1.66 5-4H7zm2-3c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm6 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1z"
+                          />
+                        </svg>
+                      </button>
+                      <div id="emoji-picker" class="emoji-picker hidden">
+                        <div class="emoji-picker-header">
+                          <div class="emoji-tabs">
+                            <button
+                              class="emoji-tab active"
+                              data-category="recent"
+                              title="Recent"
+                            >
+                              🕐
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="smileys"
+                              title="Smileys"
+                            >
+                              😀
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="gestures"
+                              title="Gestures"
+                            >
+                              👋
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="hearts"
+                              title="Hearts"
+                            >
+                              ❤️
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="animals"
+                              title="Animals"
+                            >
+                              🐶
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="food"
+                              title="Food"
+                            >
+                              🍕
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="travel"
+                              title="Travel"
+                            >
+                              ✈️
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="objects"
+                              title="Objects"
+                            >
+                              💡
+                            </button>
+                            <button
+                              class="emoji-tab"
+                              data-category="symbols"
+                              title="Symbols"
+                            >
+                              ✨
+                            </button>
+                          </div>
+                        </div>
+                        <div
+                          class="emoji-picker-content"
+                          id="emoji-picker-content"
+                        >
+                          <!-- Emojis loaded by JavaScript -->
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      id="attach-button"
+                      class="attach-button"
+                      title="Send image"
+                    >
+                      <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path
+                          fill="currentColor"
+                          d="M16.5 6.5v8.25a4.25 4.25 0 1 1-8.5 0V5.75a2.75 2.75 0 1 1 5.5 0v8.5a1.25 1.25 0 1 1-2.5 0V7h-1.5v7.25a2.75 2.75 0 0 0 5.5 0v-8.5a4.25 4.25 0 1 0-8.5 0v9a5.75 5.75 0 1 0 11.5 0V6.5z"
+                        />
+                      </svg>
+                    </button>
+                    <textarea
+                      id="message-input"
+                      placeholder="Type a message"
+                      rows="1"
+                      maxlength="65536"
+                    ></textarea>
+                    <div class="send-button-group">
+                      <button
+                        id="send-button"
+                        class="send-button"
+                        disabled
+                        title="Send message"
+                      >
+                        <svg viewBox="0 0 24 24" width="24" height="24">
+                          <path
+                            fill="currentColor"
+                            d="M1.101 21.757L23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        id="send-dropdown-toggle"
+                        class="send-dropdown-toggle"
+                        disabled
+                        title="More send options"
+                      >
+                        <svg viewBox="0 0 24 24" width="12" height="12">
+                          <path fill="currentColor" d="M7 10l5 5 5-5z" />
+                        </svg>
+                      </button>
+                      <div id="send-dropdown" class="send-dropdown hidden">
+                        <button id="send-ai-button" class="send-dropdown-item">
+                          <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path
+                              fill="currentColor"
+                              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"
+                            />
+                          </svg>
+                          <span>Send with AI</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div id="workspace-checklist" class="workspace-checklist"></div>
-                </div>
-                <div class="workspace-section">
-                  <div class="workspace-section-heading">
-                    <span class="workspace-section-label">Labels</span>
-                    <span id="workspace-timezone" class="workspace-section-meta"></span>
-                  </div>
-                  <div id="workspace-labels" class="workspace-labels"></div>
-                </div>
-                <div class="workspace-section">
-                  <span class="workspace-section-label">Reminder</span>
-                  <p id="workspace-reminder" class="workspace-reminder">No reminder set.</p>
-                </div>
+                </footer>
               </div>
-            </aside>
+
+              <aside id="conversation-workspace" class="conversation-workspace">
+                <div class="conversation-workspace-frame">
+                  <div class="workspace-header">
+                    <div>
+                      <span class="workspace-kicker">Workspace</span>
+                      <h3>Conversation context</h3>
+                    </div>
+                    <button
+                      id="workspace-settings-button"
+                      class="workspace-edit-button"
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div
+                    id="conversation-workspace-summary"
+                    class="workspace-summary"
+                  ></div>
+                  <div id="workspace-brief" class="workspace-brief"></div>
+                  <div class="workspace-actions">
+                    <button
+                      id="workspace-copy-brief"
+                      class="workspace-action-button"
+                      type="button"
+                    >
+                      Copy brief
+                    </button>
+                    <button
+                      id="workspace-translate-all"
+                      class="workspace-action-button"
+                      type="button"
+                    >
+                      Translate incoming
+                    </button>
+                  </div>
+                  <div
+                    id="workspace-action-plan"
+                    class="workspace-action-plan"
+                  ></div>
+                  <div class="workspace-section">
+                    <span class="workspace-section-label">Right now</span>
+                    <p
+                      id="workspace-primary-status"
+                      class="workspace-primary-status"
+                    >
+                      No local context yet.
+                    </p>
+                  </div>
+                  <div class="workspace-section">
+                    <span class="workspace-section-label">Notes</span>
+                    <p id="workspace-notes" class="workspace-notes">
+                      No notes yet.
+                    </p>
+                  </div>
+                  <div class="workspace-section">
+                    <div class="workspace-section-heading">
+                      <span class="workspace-section-label">Checklist</span>
+                      <span
+                        id="workspace-checklist-summary"
+                        class="workspace-section-meta"
+                        >No tasks</span
+                      >
+                    </div>
+                    <div
+                      id="workspace-checklist"
+                      class="workspace-checklist"
+                    ></div>
+                  </div>
+                  <div class="workspace-section">
+                    <div class="workspace-section-heading">
+                      <span class="workspace-section-label">Labels</span>
+                      <span
+                        id="workspace-timezone"
+                        class="workspace-section-meta"
+                      ></span>
+                    </div>
+                    <div id="workspace-labels" class="workspace-labels"></div>
+                  </div>
+                  <div class="workspace-section">
+                    <span class="workspace-section-label">Reminder</span>
+                    <p id="workspace-reminder" class="workspace-reminder">
+                      No reminder set.
+                    </p>
+                  </div>
+                </div>
+              </aside>
+            </div>
           </div>
-        </div>
-      </main>
-    </div>
-
-    <!-- Context Menu for Contacts -->
-    <div id="contact-context-menu" class="context-menu hidden">
-      <button class="context-menu-item" data-action="pin">
-        <svg viewBox="0 0 24 24" width="16" height="16">
-          <path fill="currentColor" d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
-        </svg>
-        <span class="pin-text">Pin conversation</span>
-      </button>
-      <button class="context-menu-item" data-action="settings">
-        <svg viewBox="0 0 24 24" width="16" height="16">
-          <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-        </svg>
-        <span>Settings</span>
-      </button>
-    </div>
-
-    <!-- Conversation Settings Modal -->
-    <div id="settings-modal" class="modal hidden">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content settings-modal-content">
-        <div class="modal-header">
-          <h3>Chat settings</h3>
-          <button class="modal-close" aria-label="Close">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="modal-body settings-modal-body">
-          <section class="settings-section" aria-label="Message notifications">
-            <span class="settings-section-label">Notifications</span>
-            <button type="button" id="conversation-message-tone" class="message-tone-setting">
-              <span>Message ringtone</span><span id="conversation-message-tone-summary">Choose…</span><span aria-hidden="true">›</span>
-            </button>
-          </section>
-          <section class="settings-section" aria-label="Chat display settings">
-            <span class="settings-section-label">Display</span>
-            <div class="form-group">
-              <label for="contact-alias">Nickname</label>
-              <input type="text" id="contact-alias" placeholder="e.g., Madrid Airbnb host">
-              <p class="form-hint">Only changes the name in this app.</p>
-            </div>
-            <div class="form-group">
-              <label for="conversation-timezone">Contact timezone</label>
-              <input type="text" id="conversation-timezone" placeholder="e.g., Europe/Madrid">
-              <p class="form-hint">Used to show their local time.</p>
-            </div>
-          </section>
-          <section class="settings-section" aria-label="Sending settings">
-            <span class="settings-section-label">Sending</span>
-            <label class="checkbox-row" for="reply-only">
-              <input type="checkbox" id="reply-only" aria-describedby="reply-only-description">
-              <span>Reply only</span>
-            </label>
-            <p class="form-hint" id="reply-only-description">Choose an incoming message and tap Reply before sending. Applies on every connected device.</p>
-          </section>
-          <section class="settings-section" aria-label="Translation settings">
-            <span class="settings-section-label">Translation</span>
-            <div class="form-group">
-              <label class="checkbox-row" for="translation-enabled">
-                <input type="checkbox" id="translation-enabled" aria-describedby="translation-enabled-hint">
-                <span>Translate messages</span>
-              </label>
-              <p class="form-hint" id="translation-enabled-hint">Off by default for every person and group.</p>
-            </div>
-            <div class="form-group">
-              <label for="language-override">Translate this chat to</label>
-              <input type="text" id="language-override" placeholder="Default: English">
-              <p class="form-hint">Set a different target language for this chat.</p>
-            </div>
-            <div class="form-group">
-              <label for="translation-style">Translation style</label>
-              <input type="text" id="translation-style" placeholder="e.g., informal, formal, family">
-              <p class="form-hint">Optional tone instruction for translations.</p>
-            </div>
-            <div class="form-group">
-              <label class="checkbox-row" for="send-original-follow-up">
-                <input type="checkbox" id="send-original-follow-up">
-                <span>Send my original message too</span>
-              </label>
-              <p class="form-hint">Sends the translation first, then your original text as a separate follow-up.</p>
-            </div>
-          </section>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-button secondary" id="settings-cancel">Cancel</button>
-          <button class="modal-button primary" id="settings-save">Save</button>
-        </div>
+        </main>
       </div>
-    </div>
 
-    <div id="appearance-modal" class="modal hidden">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content appearance-modal-content">
-        <div class="modal-header">
-          <h3>Global settings</h3>
-          <button class="modal-close" aria-label="Close global settings">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="modal-body">
-          <section class="settings-section" aria-label="Message notifications">
-            <span class="settings-section-label">Notifications</span>
-            <button type="button" id="global-message-tone" class="message-tone-setting">
-              <span>Message ringtone</span><span id="global-message-tone-summary">Choose…</span><span aria-hidden="true">›</span>
+      <!-- Context Menu for Contacts -->
+      <div id="contact-context-menu" class="context-menu hidden">
+        <button class="context-menu-item" data-action="pin">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path
+              fill="currentColor"
+              d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"
+            />
+          </svg>
+          <span class="pin-text">Pin conversation</span>
+        </button>
+        <button class="context-menu-item" data-action="settings">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path
+              fill="currentColor"
+              d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+            />
+          </svg>
+          <span>Settings</span>
+        </button>
+      </div>
+
+      <!-- Conversation Settings Modal -->
+      <div id="settings-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content settings-modal-content">
+          <div class="modal-header">
+            <h3>Chat settings</h3>
+            <button class="modal-close" aria-label="Close">
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path
+                  fill="currentColor"
+                  d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                />
+              </svg>
             </button>
-          </section>
-          <div class="settings-section">
-            <span class="settings-section-label">OpenAI</span>
-            <div class="form-group">
-              <label for="openai-model-select">GPT model</label>
-              <select id="openai-model-select">
-                <option value="">App defaults</option>
-                <option value="gpt-6-astra">GPT-6 Astra</option>
-                <option value="gpt-5.6-sol">GPT-5.6 Sol · most capable</option>
-                <option value="gpt-5.6-terra">GPT-5.6 Terra · balanced</option>
-                <option value="gpt-5.6-luna">GPT-5.6 Luna · fastest value</option>
-              </select>
-              <p class="form-hint">Overrides the model for translation, detection, compose, and AI replies.</p>
-            </div>
-            <div class="form-group">
-              <label for="openai-reasoning-select">Reasoning level</label>
-              <select id="openai-reasoning-select">
-                <option value="">Task default</option><option value="none">None</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Maximum</option>
-              </select>
-              <p class="form-hint">Higher levels can improve difficult replies but take longer and use more output tokens.</p>
-            </div>
           </div>
-          <div class="settings-section" id="chatgpt-section" hidden>
-            <span class="settings-section-label">ChatGPT account</span>
-            <p class="form-hint" id="chatgpt-status" role="status"></p>
-            <button type="button" class="modal-button" id="chatgpt-sign-in">Sign in with ChatGPT</button>
-            <div id="chatgpt-callback-step" class="form-group" hidden>
-              <label for="chatgpt-callback-url">Finish sign-in</label>
-              <p class="form-hint">After you approve in the new tab, it opens an address starting with http://127.0.0.1 that won’t load. Copy that whole address and paste it here.</p>
-              <input type="url" id="chatgpt-callback-url" placeholder="http://127.0.0.1:1455/auth/callback?code=…" autocomplete="off" spellcheck="false">
-              <button type="button" class="modal-button" id="chatgpt-finish">Finish sign-in</button>
-            </div>
-            <div id="chatgpt-signed-in" hidden>
+          <div class="modal-body settings-modal-body">
+            <section
+              class="settings-section"
+              aria-label="Message notifications"
+            >
+              <span class="settings-section-label">Notifications</span>
+              <button
+                type="button"
+                id="conversation-message-tone"
+                class="message-tone-setting"
+              >
+                <span>Message ringtone</span
+                ><span id="conversation-message-tone-summary">Choose…</span
+                ><span aria-hidden="true">›</span>
+              </button>
+            </section>
+            <section
+              class="settings-section"
+              aria-label="Chat display settings"
+            >
+              <span class="settings-section-label">Display</span>
               <div class="form-group">
-                <label for="chatgpt-model-select">ChatGPT model</label>
-                <select id="chatgpt-model-select"></select>
-                <p class="form-hint">Used instead of the GPT model above while you’re signed in. Usage counts toward your ChatGPT plan limits.</p>
+                <label for="contact-alias">Nickname</label>
+                <input
+                  type="text"
+                  id="contact-alias"
+                  placeholder="e.g., Madrid Airbnb host"
+                />
+                <p class="form-hint">Only changes the name in this app.</p>
               </div>
-              <button type="button" class="modal-button secondary" id="chatgpt-sign-out">Sign out of ChatGPT</button>
-            </div>
-            <p class="form-hint" id="chatgpt-error" role="alert" hidden></p>
+              <div class="form-group">
+                <label for="conversation-timezone">Contact timezone</label>
+                <input
+                  type="text"
+                  id="conversation-timezone"
+                  placeholder="e.g., Europe/Madrid"
+                />
+                <p class="form-hint">Used to show their local time.</p>
+              </div>
+            </section>
+            <section class="settings-section" aria-label="Sending settings">
+              <span class="settings-section-label">Sending</span>
+              <label class="checkbox-row" for="reply-only">
+                <input
+                  type="checkbox"
+                  id="reply-only"
+                  aria-describedby="reply-only-description"
+                />
+                <span>Reply only</span>
+              </label>
+              <p class="form-hint" id="reply-only-description">
+                Choose an incoming message and tap Reply before sending. Applies
+                on every connected device.
+              </p>
+            </section>
+            <section class="settings-section" aria-label="Translation settings">
+              <span class="settings-section-label">Translation</span>
+              <div class="form-group">
+                <label class="checkbox-row" for="translation-enabled">
+                  <input
+                    type="checkbox"
+                    id="translation-enabled"
+                    aria-describedby="translation-enabled-hint"
+                  />
+                  <span>Translate messages</span>
+                </label>
+                <p class="form-hint" id="translation-enabled-hint">
+                  Off by default for every person and group.
+                </p>
+              </div>
+              <div class="form-group">
+                <label for="language-override">Translate this chat to</label>
+                <input
+                  type="text"
+                  id="language-override"
+                  placeholder="Default: English"
+                />
+                <p class="form-hint">
+                  Set a different target language for this chat.
+                </p>
+              </div>
+              <div class="form-group">
+                <label for="translation-style">Translation style</label>
+                <input
+                  type="text"
+                  id="translation-style"
+                  placeholder="e.g., informal, formal, family"
+                />
+                <p class="form-hint">
+                  Optional tone instruction for translations.
+                </p>
+              </div>
+              <div class="form-group">
+                <label class="checkbox-row" for="send-original-follow-up">
+                  <input type="checkbox" id="send-original-follow-up" />
+                  <span>Send my original message too</span>
+                </label>
+                <p class="form-hint">
+                  Sends the translation first, then your original text as a
+                  separate follow-up.
+                </p>
+              </div>
+            </section>
           </div>
-          <div class="settings-section">
-            <span class="settings-section-label">Appearance</span>
-          <div class="form-group">
-            <label for="appearance-theme-select">Theme</label>
-            <select id="appearance-theme-select">
-              <option value="whatsapp">WhatsApp</option>
-              <option value="ocean">Ocean</option>
-              <option value="sunset">Sunset</option>
-              <option value="github">GitHub</option>
-              <option value="dracula">Dracula</option>
-              <option value="nord">Nord</option>
-              <option value="linear">Linear</option>
-              <option value="vercel">Vercel</option>
-            </select>
-            <p class="form-hint">Every theme includes both light and dark variants, and each palette is tuned to keep text readable on both the page and elevated surfaces.</p>
-          </div>
-          <div class="form-group">
-            <label for="appearance-mode-select">Mode</label>
-            <select id="appearance-mode-select">
-              <option value="system">Follow system</option>
-              <option value="light">Always light</option>
-              <option value="dark">Always dark</option>
-            </select>
-            <p class="form-hint">Choose whether the app should always stay light, always stay dark, or switch with your device.</p>
-          </div>
-          <div class="appearance-preview-card">
-            <span class="appearance-preview-label">Preview</span>
-            <strong id="appearance-preview-text">WhatsApp · Dark variant (following system)</strong>
-          </div>
-          </div>
-          <div class="workspace-data-section">
-            <span class="workspace-data-label">Workspace data</span>
-            <p class="form-hint">Drafts, stars, notes, labels, reminders, filters, quick replies, recents, and theme. Sign-in stays on this browser.</p>
-            <div class="workspace-data-actions">
-              <button class="modal-button secondary" id="workspace-export-button" type="button">Export workspace</button>
-              <button class="modal-button secondary" id="workspace-import-button" type="button">Import workspace</button>
-              <input id="workspace-import-input" type="file" accept="application/json" hidden>
-            </div>
+          <div class="modal-footer">
+            <button class="modal-button secondary" id="settings-cancel">
+              Cancel
+            </button>
+            <button class="modal-button primary" id="settings-save">
+              Save
+            </button>
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="modal-button secondary" id="appearance-cancel">Cancel</button>
-          <button class="modal-button primary" id="appearance-save">Apply</button>
+      </div>
+
+      <div id="appearance-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content appearance-modal-content">
+          <div class="modal-header">
+            <h3>Global settings</h3>
+            <button class="modal-close" aria-label="Close global settings">
+              <svg viewBox="0 0 24 24" width="20" height="20">
+                <path
+                  fill="currentColor"
+                  d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <section
+              class="settings-section"
+              aria-label="Message notifications"
+            >
+              <span class="settings-section-label">Notifications</span>
+              <button
+                type="button"
+                id="global-message-tone"
+                class="message-tone-setting"
+              >
+                <span>Message ringtone</span
+                ><span id="global-message-tone-summary">Choose…</span
+                ><span aria-hidden="true">›</span>
+              </button>
+            </section>
+            <div class="settings-section">
+              <span class="settings-section-label">OpenAI</span>
+              <div class="form-group">
+                <label for="openai-model-select">GPT model</label>
+                <select id="openai-model-select">
+                  <option value="">App defaults</option>
+                  <option value="gpt-6-astra">GPT-6 Astra</option>
+                  <option value="gpt-5.6-sol">
+                    GPT-5.6 Sol · most capable
+                  </option>
+                  <option value="gpt-5.6-terra">
+                    GPT-5.6 Terra · balanced
+                  </option>
+                  <option value="gpt-5.6-luna">
+                    GPT-5.6 Luna · fastest value
+                  </option>
+                </select>
+                <p class="form-hint">
+                  Overrides the model for translation, detection, compose, and
+                  AI replies.
+                </p>
+              </div>
+              <div class="form-group">
+                <label for="openai-reasoning-select">Reasoning level</label>
+                <select id="openai-reasoning-select">
+                  <option value="">Task default</option>
+                  <option value="none">None</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="xhigh">Extra high</option>
+                  <option value="max">Maximum</option>
+                </select>
+                <p class="form-hint">
+                  Higher levels can improve difficult replies but take longer
+                  and use more output tokens.
+                </p>
+              </div>
+            </div>
+            <div class="settings-section" id="chatgpt-section" hidden>
+              <span class="settings-section-label">ChatGPT account</span>
+              <p class="form-hint" id="chatgpt-status" role="status"></p>
+              <button type="button" class="modal-button" id="chatgpt-sign-in">
+                Sign in with ChatGPT
+              </button>
+              <div id="chatgpt-callback-step" class="form-group" hidden>
+                <label for="chatgpt-callback-url">Finish sign-in</label>
+                <p class="form-hint">
+                  After you approve in the new tab, it opens an address starting
+                  with http://127.0.0.1 that won’t load. Copy that whole address
+                  and paste it here.
+                </p>
+                <input
+                  type="url"
+                  id="chatgpt-callback-url"
+                  placeholder="http://127.0.0.1:1455/auth/callback?code=…"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button type="button" class="modal-button" id="chatgpt-finish">
+                  Finish sign-in
+                </button>
+              </div>
+              <div id="chatgpt-signed-in" hidden>
+                <div class="form-group">
+                  <label for="chatgpt-model-select">ChatGPT model</label>
+                  <select id="chatgpt-model-select"></select>
+                  <p class="form-hint">
+                    Used instead of the GPT model above while you’re signed in.
+                    Usage counts toward your ChatGPT plan limits.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="modal-button secondary"
+                  id="chatgpt-sign-out"
+                >
+                  Sign out of ChatGPT
+                </button>
+              </div>
+              <p class="form-hint" id="chatgpt-error" role="alert" hidden></p>
+            </div>
+            <div class="settings-section">
+              <span class="settings-section-label">Appearance</span>
+              <div class="form-group">
+                <label for="appearance-theme-select">Theme</label>
+                <select id="appearance-theme-select">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="ocean">Ocean</option>
+                  <option value="sunset">Sunset</option>
+                  <option value="github">GitHub</option>
+                  <option value="dracula">Dracula</option>
+                  <option value="nord">Nord</option>
+                  <option value="linear">Linear</option>
+                  <option value="vercel">Vercel</option>
+                </select>
+                <p class="form-hint">
+                  Every theme includes both light and dark variants, and each
+                  palette is tuned to keep text readable on both the page and
+                  elevated surfaces.
+                </p>
+              </div>
+              <div class="form-group">
+                <label for="appearance-mode-select">Mode</label>
+                <select id="appearance-mode-select">
+                  <option value="system">Follow system</option>
+                  <option value="light">Always light</option>
+                  <option value="dark">Always dark</option>
+                </select>
+                <p class="form-hint">
+                  Choose whether the app should always stay light, always stay
+                  dark, or switch with your device.
+                </p>
+              </div>
+              <div class="appearance-preview-card">
+                <span class="appearance-preview-label">Preview</span>
+                <strong id="appearance-preview-text"
+                  >WhatsApp · Dark variant (following system)</strong
+                >
+              </div>
+            </div>
+            <div class="workspace-data-section">
+              <span class="workspace-data-label">Workspace data</span>
+              <p class="form-hint">
+                Drafts, stars, notes, labels, reminders, filters, quick replies,
+                recents, and theme. Sign-in stays on this browser.
+              </p>
+              <div class="workspace-data-actions">
+                <button
+                  class="modal-button secondary"
+                  id="workspace-export-button"
+                  type="button"
+                >
+                  Export workspace
+                </button>
+                <button
+                  class="modal-button secondary"
+                  id="workspace-import-button"
+                  type="button"
+                >
+                  Import workspace
+                </button>
+                <input
+                  id="workspace-import-input"
+                  type="file"
+                  accept="application/json"
+                  hidden
+                />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="modal-button secondary" id="appearance-cancel">
+              Cancel
+            </button>
+            <button class="modal-button primary" id="appearance-save">
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="command-palette" class="command-palette hidden">
+        <div class="command-palette-backdrop"></div>
+        <div
+          class="command-palette-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="command-palette-title"
+        >
+          <div class="command-palette-header">
+            <div>
+              <span class="command-palette-kicker">Jump faster</span>
+              <h3 id="command-palette-title">Open a chat or run an action</h3>
+            </div>
+            <span class="command-palette-esc">Esc</span>
+          </div>
+          <input
+            id="command-palette-input"
+            type="search"
+            placeholder="Search chats, reminders, settings, and shortcuts"
+          />
+          <div
+            id="command-palette-results"
+            class="command-palette-results"
+          ></div>
+          <div class="command-palette-footer">
+            <span>Use ↑ ↓ to move, Enter to open, and Ctrl/Cmd+K anytime.</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <div id="command-palette" class="command-palette hidden">
-      <div class="command-palette-backdrop"></div>
-      <div class="command-palette-panel" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
-        <div class="command-palette-header">
-          <div>
-            <span class="command-palette-kicker">Jump faster</span>
-            <h3 id="command-palette-title">Open a chat or run an action</h3>
-          </div>
-          <span class="command-palette-esc">Esc</span>
-        </div>
-        <input id="command-palette-input" type="search" placeholder="Search chats, reminders, settings, and shortcuts">
-        <div id="command-palette-results" class="command-palette-results"></div>
-        <div class="command-palette-footer">
-          <span>Use ↑ ↓ to move, Enter to open, and Ctrl/Cmd+K anytime.</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="app.js?v=20261026-chatgpt-signin"></script>
-</body>
+    <script type="module" src="app.js?v=20261026-chatgpt-signin"></script>
+  </body>
 </html>

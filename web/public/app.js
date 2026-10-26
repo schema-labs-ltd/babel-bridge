@@ -1,12 +1,19 @@
-import {ViewedMessageTracker, isMessageVisible} from './read-receipts.js';
+import { ViewedMessageTracker, isMessageVisible } from './read-receipts.js';
 import { setupVoiceNotes } from './voice-notes.js';
 import { setupMessageTones } from './message-tones.js';
 import { setupTopics } from './topics.js';
 import { setupChatGptSignIn } from './chatgpt-signin.js';
-import { createReliableFetch, reconnectDelay, mergeMessageUpdate } from './send-recovery.js';
+import {
+  createReliableFetch,
+  reconnectDelay,
+  mergeMessageUpdate,
+} from './send-recovery.js';
 // WhatsApp Translator Web Client
 
-import {ConversationSettingsClient, canSendInConversation} from './conversation-settings.js';
+import {
+  ConversationSettingsClient,
+  canSendInConversation,
+} from './conversation-settings.js';
 import {
   buildConversationBrief,
   buildConversationActionPlan,
@@ -76,7 +83,9 @@ class WhatsAppClient {
     this.typingTimeouts = new Map(); // chatId -> timeoutId (auto-clear after 10s)
     this.replyingTo = null; // { messageId, senderJid, senderName, text, isFromMe }
     this.authToken = localStorage.getItem('wa_auth_token'); // Auth token for API requests
-    this.recentEmojis = JSON.parse(localStorage.getItem('wa_recent_emojis') || '[]');
+    this.recentEmojis = JSON.parse(
+      localStorage.getItem('wa_recent_emojis') || '[]',
+    );
     this.currentEmojiCategory = 'recent';
     this.draftsStorageKey = 'wa_chat_drafts';
     this.starredStorageKey = 'wa_starred_messages';
@@ -103,9 +112,15 @@ class WhatsAppClient {
       systemMode: this.getSystemAppearanceMode(),
     });
     this.systemAppearanceQuery = null;
-    this.handleSystemAppearanceChange = this.handleSystemAppearanceChange.bind(this);
-    const storedInboxPreferences = this.loadStoredJson(this.inboxPreferencesStorageKey);
-    this.sidebarSearchQuery = typeof storedInboxPreferences.searchQuery === 'string' ? storedInboxPreferences.searchQuery : '';
+    this.handleSystemAppearanceChange =
+      this.handleSystemAppearanceChange.bind(this);
+    const storedInboxPreferences = this.loadStoredJson(
+      this.inboxPreferencesStorageKey,
+    );
+    this.sidebarSearchQuery =
+      typeof storedInboxPreferences.searchQuery === 'string'
+        ? storedInboxPreferences.searchQuery
+        : '';
     this.contactFilters = {
       unreadOnly: Boolean(storedInboxPreferences.unreadOnly),
       groupsOnly: Boolean(storedInboxPreferences.groupsOnly),
@@ -128,20 +143,684 @@ class WhatsAppClient {
     this.commandPaletteItems = [];
     this.workspaceExpanded = !this.isMobile();
     this.mobileLayoutActive = this.isMobile();
-    this.handleResponsiveLayoutChange = this.handleResponsiveLayoutChange.bind(this);
-    
+    this.handleResponsiveLayoutChange =
+      this.handleResponsiveLayoutChange.bind(this);
+
     // Emoji data organized by category
     this.emojiData = {
-      smileys: ['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖'],
-      gestures: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👩', '🧓', '👴', '👵'],
-      hearts: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '♥️', '💌', '💋', '👄', '🫂', '👥', '👤'],
-      animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪳', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🐇', '🦝', '🦨', '🦡', '🦫', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔'],
-      food: ['🍕', '🍔', '🍟', '🌭', '🍿', '🧂', '🥓', '🥚', '🍳', '🧇', '🥞', '🧈', '🍞', '🥐', '🥖', '🥨', '🧀', '🥗', '🥙', '🥪', '🌮', '🌯', '🫔', '🥫', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '☕', '🫖', '🍵', '🧃', '🥤', '🧋', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾', '🧊', '🥄', '🍴', '🍽️', '🥣', '🥡', '🥢', '🧆'],
-      travel: ['✈️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '🚂', '🚃', '🚄', '🚅', '🚆', '🚇', '🚈', '🚉', '🚊', '🚝', '🚞', '🚋', '🚌', '🚍', '🚎', '🚐', '🚑', '🚒', '🚓', '🚔', '🚕', '🚖', '🚗', '🚘', '🚙', '🛻', '🚚', '🚛', '🚜', '🏎️', '🏍️', '🛵', '🦽', '🦼', '🛺', '🚲', '🛴', '🛹', '🛼', '🚏', '🛣️', '🛤️', '🛢️', '⛽', '🚨', '🚥', '🚦', '🛑', '🚧', '⚓', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️', '⛺', '🛖', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🕍', '🛕', '🕋', '⛩️'],
-      objects: ['💡', '🔦', '🏮', '🪔', '📱', '📲', '💻', '🖥️', '🖨️', '⌨️', '🖱️', '🖲️', '💽', '💾', '💿', '📀', '🧮', '🎥', '🎞️', '📽️', '🎬', '📺', '📷', '📸', '📹', '📼', '🔍', '🔎', '🕯️', '💵', '💴', '💶', '💷', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒️', '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓️', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️', '🛡️', '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠', '🧫', '🧪'],
-      symbols: ['✨', '⭐', '🌟', '💫', '⚡', '🔥', '💥', '☄️', '🌈', '☀️', '🌤️', '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️', '⛄', '🌬️', '💨', '🌪️', '🌫️', '🌊', '💧', '💦', '☔', '🎵', '🎶', '🎼', '🎤', '🎧', '📻', '🎷', '🪗', '🎸', '🎹', '🎺', '🎻', '🪕', '🥁', '🪘', '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🎯', '🎮', '🕹️', '🎰', '🧩', '♠️', '♥️', '♦️', '♣️', '🃏', '🀄', '🎴', '🎭', '🎨']
+      smileys: [
+        '😀',
+        '😃',
+        '😄',
+        '😁',
+        '😅',
+        '😂',
+        '🤣',
+        '😊',
+        '😇',
+        '🙂',
+        '🙃',
+        '😉',
+        '😌',
+        '😍',
+        '🥰',
+        '😘',
+        '😗',
+        '😙',
+        '😚',
+        '😋',
+        '😛',
+        '😜',
+        '🤪',
+        '😝',
+        '🤑',
+        '🤗',
+        '🤭',
+        '🤫',
+        '🤔',
+        '🤐',
+        '🤨',
+        '😐',
+        '😑',
+        '😶',
+        '😏',
+        '😒',
+        '🙄',
+        '😬',
+        '🤥',
+        '😔',
+        '😪',
+        '🤤',
+        '😴',
+        '😷',
+        '🤒',
+        '🤕',
+        '🤢',
+        '🤮',
+        '🤧',
+        '🥵',
+        '🥶',
+        '🥴',
+        '😵',
+        '🤯',
+        '🤠',
+        '🥳',
+        '😎',
+        '🤓',
+        '🧐',
+        '😕',
+        '😟',
+        '🙁',
+        '☹️',
+        '😮',
+        '😯',
+        '😲',
+        '😳',
+        '🥺',
+        '😦',
+        '😧',
+        '😨',
+        '😰',
+        '😥',
+        '😢',
+        '😭',
+        '😱',
+        '😖',
+        '😣',
+        '😞',
+        '😓',
+        '😩',
+        '😫',
+        '🥱',
+        '😤',
+        '😡',
+        '😠',
+        '🤬',
+        '😈',
+        '👿',
+        '💀',
+        '☠️',
+        '💩',
+        '🤡',
+        '👹',
+        '👺',
+        '👻',
+        '👽',
+        '👾',
+        '🤖',
+      ],
+      gestures: [
+        '👋',
+        '🤚',
+        '🖐️',
+        '✋',
+        '🖖',
+        '👌',
+        '🤌',
+        '🤏',
+        '✌️',
+        '🤞',
+        '🤟',
+        '🤘',
+        '🤙',
+        '👈',
+        '👉',
+        '👆',
+        '🖕',
+        '👇',
+        '☝️',
+        '👍',
+        '👎',
+        '✊',
+        '👊',
+        '🤛',
+        '🤜',
+        '👏',
+        '🙌',
+        '👐',
+        '🤲',
+        '🤝',
+        '🙏',
+        '✍️',
+        '💅',
+        '🤳',
+        '💪',
+        '🦾',
+        '🦿',
+        '🦵',
+        '🦶',
+        '👂',
+        '🦻',
+        '👃',
+        '🧠',
+        '🫀',
+        '🫁',
+        '🦷',
+        '🦴',
+        '👀',
+        '👁️',
+        '👅',
+        '👄',
+        '👶',
+        '🧒',
+        '👦',
+        '👧',
+        '🧑',
+        '👱',
+        '👨',
+        '🧔',
+        '👩',
+        '🧓',
+        '👴',
+        '👵',
+      ],
+      hearts: [
+        '❤️',
+        '🧡',
+        '💛',
+        '💚',
+        '💙',
+        '💜',
+        '🖤',
+        '🤍',
+        '🤎',
+        '💔',
+        '❣️',
+        '💕',
+        '💞',
+        '💓',
+        '💗',
+        '💖',
+        '💘',
+        '💝',
+        '💟',
+        '♥️',
+        '💌',
+        '💋',
+        '👄',
+        '🫂',
+        '👥',
+        '👤',
+      ],
+      animals: [
+        '🐶',
+        '🐱',
+        '🐭',
+        '🐹',
+        '🐰',
+        '🦊',
+        '🐻',
+        '🐼',
+        '🐨',
+        '🐯',
+        '🦁',
+        '🐮',
+        '🐷',
+        '🐸',
+        '🐵',
+        '🙈',
+        '🙉',
+        '🙊',
+        '🐒',
+        '🐔',
+        '🐧',
+        '🐦',
+        '🐤',
+        '🦆',
+        '🦅',
+        '🦉',
+        '🦇',
+        '🐺',
+        '🐗',
+        '🐴',
+        '🦄',
+        '🐝',
+        '🪱',
+        '🐛',
+        '🦋',
+        '🐌',
+        '🐞',
+        '🐜',
+        '🪳',
+        '🦂',
+        '🐢',
+        '🐍',
+        '🦎',
+        '🦖',
+        '🦕',
+        '🐙',
+        '🦑',
+        '🦐',
+        '🦞',
+        '🦀',
+        '🐡',
+        '🐠',
+        '🐟',
+        '🐬',
+        '🐳',
+        '🐋',
+        '🦈',
+        '🐊',
+        '🐅',
+        '🐆',
+        '🦓',
+        '🦍',
+        '🦧',
+        '🐘',
+        '🦛',
+        '🦏',
+        '🐪',
+        '🐫',
+        '🦒',
+        '🦘',
+        '🐃',
+        '🐂',
+        '🐄',
+        '🐎',
+        '🐖',
+        '🐏',
+        '🐑',
+        '🦙',
+        '🐐',
+        '🦌',
+        '🐕',
+        '🐩',
+        '🦮',
+        '🐕‍🦺',
+        '🐈',
+        '🐓',
+        '🦃',
+        '🦚',
+        '🦜',
+        '🦢',
+        '🦩',
+        '🐇',
+        '🦝',
+        '🦨',
+        '🦡',
+        '🦫',
+        '🦦',
+        '🦥',
+        '🐁',
+        '🐀',
+        '🐿️',
+        '🦔',
+      ],
+      food: [
+        '🍕',
+        '🍔',
+        '🍟',
+        '🌭',
+        '🍿',
+        '🧂',
+        '🥓',
+        '🥚',
+        '🍳',
+        '🧇',
+        '🥞',
+        '🧈',
+        '🍞',
+        '🥐',
+        '🥖',
+        '🥨',
+        '🧀',
+        '🥗',
+        '🥙',
+        '🥪',
+        '🌮',
+        '🌯',
+        '🫔',
+        '🥫',
+        '🍝',
+        '🍜',
+        '🍲',
+        '🍛',
+        '🍣',
+        '🍱',
+        '🥟',
+        '🦪',
+        '🍤',
+        '🍙',
+        '🍚',
+        '🍘',
+        '🍥',
+        '🥠',
+        '🥮',
+        '🍢',
+        '🍡',
+        '🍧',
+        '🍨',
+        '🍦',
+        '🥧',
+        '🧁',
+        '🍰',
+        '🎂',
+        '🍮',
+        '🍭',
+        '🍬',
+        '🍫',
+        '🍩',
+        '🍪',
+        '🌰',
+        '🥜',
+        '🍯',
+        '🥛',
+        '🍼',
+        '☕',
+        '🫖',
+        '🍵',
+        '🧃',
+        '🥤',
+        '🧋',
+        '🍶',
+        '🍺',
+        '🍻',
+        '🥂',
+        '🍷',
+        '🥃',
+        '🍸',
+        '🍹',
+        '🧉',
+        '🍾',
+        '🧊',
+        '🥄',
+        '🍴',
+        '🍽️',
+        '🥣',
+        '🥡',
+        '🥢',
+        '🧆',
+      ],
+      travel: [
+        '✈️',
+        '🚀',
+        '🛸',
+        '🚁',
+        '🛶',
+        '⛵',
+        '🚤',
+        '🛥️',
+        '🛳️',
+        '⛴️',
+        '🚢',
+        '🚂',
+        '🚃',
+        '🚄',
+        '🚅',
+        '🚆',
+        '🚇',
+        '🚈',
+        '🚉',
+        '🚊',
+        '🚝',
+        '🚞',
+        '🚋',
+        '🚌',
+        '🚍',
+        '🚎',
+        '🚐',
+        '🚑',
+        '🚒',
+        '🚓',
+        '🚔',
+        '🚕',
+        '🚖',
+        '🚗',
+        '🚘',
+        '🚙',
+        '🛻',
+        '🚚',
+        '🚛',
+        '🚜',
+        '🏎️',
+        '🏍️',
+        '🛵',
+        '🦽',
+        '🦼',
+        '🛺',
+        '🚲',
+        '🛴',
+        '🛹',
+        '🛼',
+        '🚏',
+        '🛣️',
+        '🛤️',
+        '🛢️',
+        '⛽',
+        '🚨',
+        '🚥',
+        '🚦',
+        '🛑',
+        '🚧',
+        '⚓',
+        '🗺️',
+        '🗿',
+        '🗽',
+        '🗼',
+        '🏰',
+        '🏯',
+        '🏟️',
+        '🎡',
+        '🎢',
+        '🎠',
+        '⛲',
+        '⛱️',
+        '🏖️',
+        '🏝️',
+        '🏜️',
+        '🌋',
+        '⛰️',
+        '🏔️',
+        '🗻',
+        '🏕️',
+        '⛺',
+        '🛖',
+        '🏠',
+        '🏡',
+        '🏘️',
+        '🏚️',
+        '🏗️',
+        '🏢',
+        '🏬',
+        '🏣',
+        '🏤',
+        '🏥',
+        '🏦',
+        '🏨',
+        '🏪',
+        '🏫',
+        '🏩',
+        '💒',
+        '🏛️',
+        '⛪',
+        '🕌',
+        '🕍',
+        '🛕',
+        '🕋',
+        '⛩️',
+      ],
+      objects: [
+        '💡',
+        '🔦',
+        '🏮',
+        '🪔',
+        '📱',
+        '📲',
+        '💻',
+        '🖥️',
+        '🖨️',
+        '⌨️',
+        '🖱️',
+        '🖲️',
+        '💽',
+        '💾',
+        '💿',
+        '📀',
+        '🧮',
+        '🎥',
+        '🎞️',
+        '📽️',
+        '🎬',
+        '📺',
+        '📷',
+        '📸',
+        '📹',
+        '📼',
+        '🔍',
+        '🔎',
+        '🕯️',
+        '💵',
+        '💴',
+        '💶',
+        '💷',
+        '💰',
+        '💳',
+        '💎',
+        '⚖️',
+        '🪜',
+        '🧰',
+        '🪛',
+        '🔧',
+        '🔨',
+        '⚒️',
+        '🛠️',
+        '⛏️',
+        '🪚',
+        '🔩',
+        '⚙️',
+        '🪤',
+        '🧱',
+        '⛓️',
+        '🧲',
+        '🔫',
+        '💣',
+        '🧨',
+        '🪓',
+        '🔪',
+        '🗡️',
+        '⚔️',
+        '🛡️',
+        '🚬',
+        '⚰️',
+        '🪦',
+        '⚱️',
+        '🏺',
+        '🔮',
+        '📿',
+        '🧿',
+        '💈',
+        '⚗️',
+        '🔭',
+        '🔬',
+        '🕳️',
+        '🩹',
+        '🩺',
+        '💊',
+        '💉',
+        '🩸',
+        '🧬',
+        '🦠',
+        '🧫',
+        '🧪',
+      ],
+      symbols: [
+        '✨',
+        '⭐',
+        '🌟',
+        '💫',
+        '⚡',
+        '🔥',
+        '💥',
+        '☄️',
+        '🌈',
+        '☀️',
+        '🌤️',
+        '⛅',
+        '🌥️',
+        '☁️',
+        '🌦️',
+        '🌧️',
+        '⛈️',
+        '🌩️',
+        '🌨️',
+        '❄️',
+        '☃️',
+        '⛄',
+        '🌬️',
+        '💨',
+        '🌪️',
+        '🌫️',
+        '🌊',
+        '💧',
+        '💦',
+        '☔',
+        '🎵',
+        '🎶',
+        '🎼',
+        '🎤',
+        '🎧',
+        '📻',
+        '🎷',
+        '🪗',
+        '🎸',
+        '🎹',
+        '🎺',
+        '🎻',
+        '🪕',
+        '🥁',
+        '🪘',
+        '⚽',
+        '🏀',
+        '🏈',
+        '⚾',
+        '🥎',
+        '🎾',
+        '🏐',
+        '🏉',
+        '🥏',
+        '🎱',
+        '🪀',
+        '🏓',
+        '🏸',
+        '🏒',
+        '🏑',
+        '🥍',
+        '🏏',
+        '🪃',
+        '🥅',
+        '⛳',
+        '🪁',
+        '🏹',
+        '🎣',
+        '🤿',
+        '🥊',
+        '🥋',
+        '🎽',
+        '🛷',
+        '⛸️',
+        '🥌',
+        '🎿',
+        '⛷️',
+        '🏂',
+        '🪂',
+        '🏋️',
+        '🎯',
+        '🎮',
+        '🕹️',
+        '🎰',
+        '🧩',
+        '♠️',
+        '♥️',
+        '♦️',
+        '♣️',
+        '🃏',
+        '🀄',
+        '🎴',
+        '🎭',
+        '🎨',
+      ],
     };
-    
+
     this.setupAppearanceSync();
     this.applyAppearanceTheme();
     this.init();
@@ -150,13 +829,13 @@ class WhatsAppClient {
   async init() {
     // Check if authentication is required
     const authRequired = await this.checkAuth();
-    
+
     if (authRequired && !this.authToken) {
       this.showPasswordOverlay();
       this.bindPasswordEvents();
       return;
     }
-    
+
     // If we have a token, verify it's still valid
     if (authRequired && this.authToken) {
       const valid = await this.verifyToken();
@@ -168,7 +847,7 @@ class WhatsAppClient {
         return;
       }
     }
-    
+
     // Auth passed, continue with normal initialization
     this.startApp();
   }
@@ -215,18 +894,28 @@ class WhatsAppClient {
   }
 
   saveStoredArray(key, value) {
-    localStorage.setItem(key, JSON.stringify(Array.isArray(value) ? value : []));
+    localStorage.setItem(
+      key,
+      JSON.stringify(Array.isArray(value) ? value : []),
+    );
   }
 
   getSystemAppearanceMode() {
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
   }
 
   setupAppearanceSync() {
     if (!window.matchMedia) return;
-    this.systemAppearanceQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    this.systemAppearanceQuery = window.matchMedia(
+      '(prefers-color-scheme: dark)',
+    );
     if (typeof this.systemAppearanceQuery.addEventListener === 'function') {
-      this.systemAppearanceQuery.addEventListener('change', this.handleSystemAppearanceChange);
+      this.systemAppearanceQuery.addEventListener(
+        'change',
+        this.handleSystemAppearanceChange,
+      );
     } else if (typeof this.systemAppearanceQuery.addListener === 'function') {
       this.systemAppearanceQuery.addListener(this.handleSystemAppearanceChange);
     }
@@ -255,11 +944,18 @@ class WhatsAppClient {
     const label = previewState.definition.label || 'WhatsApp';
 
     if (themeSelect) {
-      const currentOptions = Array.from(themeSelect.options).map(option => option.value);
-      const expectedOptions = getAppearanceThemeCatalog().map(themeOption => themeOption.id);
+      const currentOptions = Array.from(themeSelect.options).map(
+        (option) => option.value,
+      );
+      const expectedOptions = getAppearanceThemeCatalog().map(
+        (themeOption) => themeOption.id,
+      );
       if (currentOptions.join('|') !== expectedOptions.join('|')) {
         themeSelect.innerHTML = getAppearanceThemeCatalog()
-          .map(themeOption => `<option value="${themeOption.id}">${themeOption.label}</option>`)
+          .map(
+            (themeOption) =>
+              `<option value="${themeOption.id}">${themeOption.label}</option>`,
+          )
           .join('');
       }
       themeSelect.value = theme;
@@ -267,7 +963,8 @@ class WhatsAppClient {
     if (modeSelect) modeSelect.value = mode;
     if (preview) {
       const modeLabel = resolvedMode === 'dark' ? 'Dark' : 'Light';
-      const sourceLabel = mode === 'system' ? 'following system' : `${mode} mode`;
+      const sourceLabel =
+        mode === 'system' ? 'following system' : `${mode} mode`;
       preview.textContent = `${label} · ${modeLabel} variant (${sourceLabel})`;
     }
   }
@@ -285,7 +982,10 @@ class WhatsAppClient {
 
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) {
-      themeMeta.setAttribute('content', this.appearanceState.definition.themeColor);
+      themeMeta.setAttribute(
+        'content',
+        this.appearanceState.definition.themeColor,
+      );
     }
 
     this.syncAppearanceControls();
@@ -300,10 +1000,13 @@ class WhatsAppClient {
     this.chatGpt?.refresh();
     try {
       const response = await this.apiFetch('/api/settings/openai');
-      if (!response.ok) throw new Error(`Settings request failed (${response.status})`);
+      if (!response.ok)
+        throw new Error(`Settings request failed (${response.status})`);
       const settings = await response.json();
-      document.getElementById('openai-model-select').value = settings.model || '';
-      document.getElementById('openai-reasoning-select').value = settings.reasoningEffort || '';
+      document.getElementById('openai-model-select').value =
+        settings.model || '';
+      document.getElementById('openai-reasoning-select').value =
+        settings.reasoningEffort || '';
     } catch (error) {
       console.error('Failed to load OpenAI settings:', error);
     }
@@ -314,8 +1017,10 @@ class WhatsAppClient {
   }
 
   async saveAppearanceSettings() {
-    const theme = document.getElementById('appearance-theme-select')?.value || 'whatsapp';
-    const mode = document.getElementById('appearance-mode-select')?.value || 'system';
+    const theme =
+      document.getElementById('appearance-theme-select')?.value || 'whatsapp';
+    const mode =
+      document.getElementById('appearance-mode-select')?.value || 'system';
     this.appearancePreferences = { theme, mode };
     this.persistAppearancePreferences();
     this.applyAppearanceTheme();
@@ -324,7 +1029,8 @@ class WhatsAppClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: document.getElementById('openai-model-select')?.value || null,
-        reasoningEffort: document.getElementById('openai-reasoning-select')?.value || null,
+        reasoningEffort:
+          document.getElementById('openai-reasoning-select')?.value || null,
       }),
     });
     if (!response.ok) {
@@ -405,7 +1111,9 @@ class WhatsAppClient {
         contactMetadata: this.cloneWorkspaceObject(this.contactMetadata),
         inboxPreferences: this.getInboxPreferencesSnapshot(),
         quickReplies: this.cloneWorkspaceArray(this.quickReplies),
-        appearancePreferences: this.cloneWorkspaceObject(this.appearancePreferences),
+        appearancePreferences: this.cloneWorkspaceObject(
+          this.appearancePreferences,
+        ),
         recentEmojis: this.cloneWorkspaceArray(this.recentEmojis),
       },
     };
@@ -431,7 +1139,11 @@ class WhatsAppClient {
     if (payload.app !== 'whatsapp-translator' || payload.schemaVersion !== 1) {
       throw new Error('Workspace import uses an unsupported schema.');
     }
-    if (!payload.state || typeof payload.state !== 'object' || Array.isArray(payload.state)) {
+    if (
+      !payload.state ||
+      typeof payload.state !== 'object' ||
+      Array.isArray(payload.state)
+    ) {
       throw new Error('Workspace import is missing state.');
     }
 
@@ -442,14 +1154,17 @@ class WhatsAppClient {
     this.starredMessages = this.cloneWorkspaceObject(state.starredMessages);
     this.contactMetadata = this.cloneWorkspaceObject(state.contactMetadata);
     this.quickReplies = this.cloneWorkspaceArray(state.quickReplies);
-    this.appearancePreferences = this.cloneWorkspaceObject(state.appearancePreferences);
+    this.appearancePreferences = this.cloneWorkspaceObject(
+      state.appearancePreferences,
+    );
     this.recentEmojis = this.cloneWorkspaceArray(state.recentEmojis)
-      .filter(emoji => typeof emoji === 'string' && emoji.trim())
+      .filter((emoji) => typeof emoji === 'string' && emoji.trim())
       .slice(0, 32);
 
-    this.sidebarSearchQuery = typeof inboxPreferences.searchQuery === 'string'
-      ? inboxPreferences.searchQuery
-      : '';
+    this.sidebarSearchQuery =
+      typeof inboxPreferences.searchQuery === 'string'
+        ? inboxPreferences.searchQuery
+        : '';
     for (const key of Object.keys(this.contactFilters)) {
       this.contactFilters[key] = Boolean(inboxPreferences[key]);
     }
@@ -472,7 +1187,9 @@ class WhatsAppClient {
     this.updateWorkspaceUI();
     this.renderComposerAssist();
 
-    const currentContact = this.contacts.find(contact => contact.id === this.currentContactId);
+    const currentContact = this.contacts.find(
+      (contact) => contact.id === this.currentContactId,
+    );
     if (currentContact) {
       const displayName = this.getContactDisplayName(currentContact);
       const nameEl = document.getElementById('chat-name');
@@ -501,15 +1218,20 @@ class WhatsAppClient {
   getContactMetadata(contactId) {
     const local = this.contactMetadata?.[contactId] || {};
     const saved = this.conversationSettingsClient?.get(contactId);
-    return {...local, translationEnabled: false, ...saved,
-      ...(saved ? {targetLanguage: saved.languageOverride || ''} : {}),
+    return {
+      ...local,
+      translationEnabled: false,
+      ...saved,
+      ...(saved ? { targetLanguage: saved.languageOverride || '' } : {}),
     };
   }
 
   getContactNotePreview(contactId, maxLength = 64) {
     const notes = String(this.getContactMetadata(contactId).notes || '').trim();
     if (!notes) return '';
-    return notes.length > maxLength ? `${notes.slice(0, maxLength - 1)}…` : notes;
+    return notes.length > maxLength
+      ? `${notes.slice(0, maxLength - 1)}…`
+      : notes;
   }
 
   getContactLabels(contactId) {
@@ -535,12 +1257,14 @@ class WhatsAppClient {
   formatChecklistForTextarea(contactId) {
     const checklist = this.getContactMetadata(contactId).checklist || [];
     return checklist
-      .map(item => `- [${item.done ? 'x' : ' '}] ${item.text}`)
+      .map((item) => `- [${item.done ? 'x' : ' '}] ${item.text}`)
       .join('\n');
   }
 
   getReplyState(contactId, now = Date.now()) {
-    const contact = this.contacts.find(entry => entry.id === contactId) || { id: contactId };
+    const contact = this.contacts.find((entry) => entry.id === contactId) || {
+      id: contactId,
+    };
     return getReplyState({
       contact,
       messages: this.messages.get(contactId) || [],
@@ -568,7 +1292,9 @@ class WhatsAppClient {
     const reminderAt = Number(metadata.reminderAt || 0);
     const when = reminderAt ? this.formatMetadataTime(reminderAt) : 'soon';
     const prefix = status === 'due' ? 'Reminder due' : 'Reminder';
-    return reminderText ? `${prefix}: ${reminderText} · ${when}` : `${prefix} · ${when}`;
+    return reminderText
+      ? `${prefix}: ${reminderText} · ${when}`
+      : `${prefix} · ${when}`;
   }
 
   getSnoozeSummary(contactId, now = Date.now()) {
@@ -578,14 +1304,20 @@ class WhatsAppClient {
   }
 
   getCurrentContact() {
-    return this.contacts.find(contact => contact.id === this.currentContactId) || null;
+    return (
+      this.contacts.find((contact) => contact.id === this.currentContactId) ||
+      null
+    );
   }
 
   getLatestIncomingMessage(contactId = this.currentContactId) {
     const messages = this.messages.get(contactId) || [];
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
-      if (!message?.isFromMe && getMessageSnippet(message, 96) !== '[Message]') {
+      if (
+        !message?.isFromMe &&
+        getMessageSnippet(message, 96) !== '[Message]'
+      ) {
         return message;
       }
     }
@@ -596,7 +1328,8 @@ class WhatsAppClient {
     const input = document.getElementById('message-input');
     const contact = this.getCurrentContact() || { id: this.currentContactId };
     return getComposerAssistState({
-      draftText: input?.value || getDraftText(this.drafts, this.currentContactId),
+      draftText:
+        input?.value || getDraftText(this.drafts, this.currentContactId),
       metadata: this.getContactMetadata(this.currentContactId),
       contact,
       latestIncomingMessage: this.getLatestIncomingMessage(),
@@ -606,14 +1339,26 @@ class WhatsAppClient {
   }
 
   replyOnlyBlocked() {
-    return !canSendInConversation(this.conversationSettingsClient.get(this.currentContactId), this.replyingTo);
+    return !canSendInConversation(
+      this.conversationSettingsClient.get(this.currentContactId),
+      this.replyingTo,
+    );
   }
 
   updateReplyOnlyControls() {
     const blocked = this.replyOnlyBlocked();
-    for (const id of ['message-input', 'send-button', 'attach-button', 'voice-record-button']) {
+    for (const id of [
+      'message-input',
+      'send-button',
+      'attach-button',
+      'voice-record-button',
+    ]) {
       const control = document.getElementById(id);
-      if (control) control.disabled = blocked || (id === 'send-button' && !document.getElementById('message-input')?.value.trim());
+      if (control)
+        control.disabled =
+          blocked ||
+          (id === 'send-button' &&
+            !document.getElementById('message-input')?.value.trim());
     }
     const hint = document.getElementById('reply-only-hint');
     if (hint) hint.hidden = !blocked;
@@ -636,20 +1381,27 @@ class WhatsAppClient {
     const suggestionButton = document.getElementById('composer-use-suggestion');
     const profilePresets = document.getElementById('composer-profile-presets');
     const smartReplies = document.getElementById('composer-smart-replies');
-    const reminderPresets = document.getElementById('composer-reminder-presets');
+    const reminderPresets = document.getElementById(
+      'composer-reminder-presets',
+    );
     const readiness = document.getElementById('composer-readiness');
 
     if (kicker) kicker.textContent = state.previewLabel;
-    if (title) title.textContent = state.translationEnabled ? `${state.targetLanguage} · ${state.styleSummary}` : 'Translation off';
+    if (title)
+      title.textContent = state.translationEnabled
+        ? `${state.targetLanguage} · ${state.styleSummary}`
+        : 'Translation off';
     if (preview) {
       if (!state.translationEnabled) {
-        preview.textContent = 'Messages send as written. Enable translation in Conversation settings when needed.';
+        preview.textContent =
+          'Messages send as written. Enable translation in Conversation settings when needed.';
       } else if (state.translatedPreview) {
         preview.textContent = state.translatedPreview;
       } else if (state.latestIncomingSnippet) {
         preview.textContent = `Latest incoming: ${state.latestIncomingSnippet}`;
       } else {
-        preview.textContent = 'Set a language profile or type a draft to preview the translation route.';
+        preview.textContent =
+          'Set a language profile or type a draft to preview the translation route.';
       }
     }
     if (suggestionButton) {
@@ -659,29 +1411,42 @@ class WhatsAppClient {
         : 'No incoming message available for a smart reply yet';
     }
     if (profilePresets) {
-      const languageButtons = state.profilePresets.languages.map((preset) => `
+      const languageButtons = state.profilePresets.languages
+        .map(
+          (preset) => `
         <button
           class="composer-preset-chip ${preset.active ? 'active' : ''}"
           type="button"
           data-composer-language="${this.escapeHtml(preset.value)}"
         >${this.escapeHtml(preset.label)}</button>
-      `).join('');
-      const toneButtons = state.profilePresets.tones.map((preset) => `
+      `,
+        )
+        .join('');
+      const toneButtons = state.profilePresets.tones
+        .map(
+          (preset) => `
         <button
           class="composer-preset-chip ${preset.active ? 'active' : ''}"
           type="button"
           data-composer-tone="${this.escapeHtml(preset.value)}"
         >${this.escapeHtml(preset.label)}</button>
-      `).join('');
+      `,
+        )
+        .join('');
       profilePresets.innerHTML = `
         <div class="composer-preset-row"><span>Language</span>${languageButtons}</div>
         <div class="composer-preset-row"><span>Tone</span>${toneButtons}</div>
       `;
-      profilePresets.querySelectorAll('button').forEach(button => { button.disabled = !state.translationEnabled; });
+      profilePresets.querySelectorAll('button').forEach((button) => {
+        button.disabled = !state.translationEnabled;
+      });
     }
     if (smartReplies) {
-      smartReplies.innerHTML = state.smartReplies.length > 0
-        ? state.smartReplies.map((reply) => `
+      smartReplies.innerHTML =
+        state.smartReplies.length > 0
+          ? state.smartReplies
+              .map(
+                (reply) => `
           <button
             class="composer-smart-reply"
             type="button"
@@ -691,26 +1456,39 @@ class WhatsAppClient {
             <span>${this.escapeHtml(reply.label)}</span>
             <small>${this.escapeHtml(reply.text)}</small>
           </button>
-        `).join('')
-        : '';
+        `,
+              )
+              .join('')
+          : '';
     }
     if (reminderPresets) {
-      reminderPresets.innerHTML = state.reminderPresets.map((preset) => `
+      reminderPresets.innerHTML = state.reminderPresets
+        .map(
+          (preset) => `
         <button
           class="composer-reminder-chip"
           type="button"
           data-reminder-preset="${this.escapeHtml(preset.id)}"
           title="${this.escapeHtml(preset.reason || 'Set follow-up reminder')}"
         >${this.escapeHtml(preset.label)}</button>
-      `).join('');
+      `,
+        )
+        .join('');
     }
     if (readiness) {
-      readiness.innerHTML = state.readiness.checks.map((check) => `
+      readiness.innerHTML = state.readiness.checks
+        .map(
+          (check) => `
         <span class="composer-readiness-chip ${this.escapeHtml(check.status)}">
           ${this.escapeHtml(check.label)}
         </span>
-      `).join('');
-      readiness.setAttribute('aria-label', `Composer checks: ${state.readiness.scoreLabel}`);
+      `,
+        )
+        .join('');
+      readiness.setAttribute(
+        'aria-label',
+        `Composer checks: ${state.readiness.scoreLabel}`,
+      );
     }
 
     container.classList.toggle('hidden', !state.showPreview);
@@ -719,7 +1497,9 @@ class WhatsAppClient {
   useComposerSuggestedReply(replyId = 'confirm') {
     if (!this.currentContactId) return;
     const state = this.getCurrentComposerAssistState();
-    const selectedReply = state.smartReplies.find(reply => reply.id === replyId) || state.smartReplies[0];
+    const selectedReply =
+      state.smartReplies.find((reply) => reply.id === replyId) ||
+      state.smartReplies[0];
     const replyText = selectedReply?.text || state.suggestedReply;
     if (!replyText) return;
 
@@ -750,12 +1530,15 @@ class WhatsAppClient {
     try {
       const saved = await this.conversationSettingsClient.load(contactId);
       if (!saved.translationEnabled) return;
-      await this.conversationSettingsClient.save(contactId, {...saved, ...nextUpdates});
+      await this.conversationSettingsClient.save(contactId, {
+        ...saved,
+        ...nextUpdates,
+      });
     } catch (error) {
       alert(error.message);
       return;
     }
-    const contact = this.contacts.find(item => item.id === contactId);
+    const contact = this.contacts.find((item) => item.id === contactId);
     if (contact) {
       Object.assign(contact, nextUpdates);
     }
@@ -772,15 +1555,19 @@ class WhatsAppClient {
     const input = document.getElementById('message-input');
     const draft = String(input?.value || '').trim();
     const latestIncoming = this.getLatestIncomingMessage();
-    const reminderSource = draft || (latestIncoming ? getMessageSnippet(latestIncoming, 72) : '');
+    const reminderSource =
+      draft || (latestIncoming ? getMessageSnippet(latestIncoming, 72) : '');
     const displayName = this.getContactDisplayName(contact);
     const state = this.getCurrentComposerAssistState();
     const fallbackPresets = getComposerReminderPresets();
-    const preset = state.reminderPresets.find(entry => entry.id === presetId)
-      || fallbackPresets.find(entry => entry.id === 'tomorrow');
+    const preset =
+      state.reminderPresets.find((entry) => entry.id === presetId) ||
+      fallbackPresets.find((entry) => entry.id === 'tomorrow');
 
     this.updateContactMetadata(this.currentContactId, {
-      reminderText: reminderSource ? `Follow up: ${reminderSource}` : `Follow up with ${displayName}`,
+      reminderText: reminderSource
+        ? `Follow up: ${reminderSource}`
+        : `Follow up with ${displayName}`,
       reminderAt: preset?.reminderAt || Date.now() + 86_400_000,
     });
     this.renderContacts();
@@ -803,13 +1590,19 @@ class WhatsAppClient {
 
     const pieces = [];
     const metadata = this.getContactMetadata(contactId);
-    const contact = this.contacts.find(item => item.id === contactId);
-    const targetLanguage = metadata.languageOverride || contact?.languageOverride || '';
-    const translationStyle = metadata.translationStyle || contact?.translationStyle || '';
+    const contact = this.contacts.find((item) => item.id === contactId);
+    const targetLanguage =
+      metadata.languageOverride || contact?.languageOverride || '';
+    const translationStyle =
+      metadata.translationStyle || contact?.translationStyle || '';
 
-    pieces.push(metadata.translationEnabled === true
-      ? (targetLanguage ? `Translates to ${targetLanguage}` : 'Auto-translation on')
-      : 'Translation off');
+    pieces.push(
+      metadata.translationEnabled === true
+        ? targetLanguage
+          ? `Translates to ${targetLanguage}`
+          : 'Auto-translation on'
+        : 'Translation off',
+    );
 
     if (translationStyle && metadata.translationEnabled === true) {
       pieces.push(translationStyle);
@@ -827,15 +1620,18 @@ class WhatsAppClient {
     const now = Date.now();
     const nextTransitions = Object.values(this.contactMetadata || {})
       .flatMap((metadata) => [metadata?.reminderAt, metadata?.snoozedUntil])
-      .map(value => Number(value || 0))
-      .filter(value => Number.isFinite(value) && value > now)
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isFinite(value) && value > now)
       .sort((a, b) => a - b);
 
     if (nextTransitions.length === 0) {
       return;
     }
 
-    const delay = Math.min(Math.max(nextTransitions[0] - now, 250), 2_147_483_647);
+    const delay = Math.min(
+      Math.max(nextTransitions[0] - now, 250),
+      2_147_483_647,
+    );
     this.metadataRefreshTimer = window.setTimeout(() => {
       this.metadataRefreshTimer = null;
       this.renderContacts();
@@ -879,9 +1675,12 @@ class WhatsAppClient {
 
   syncInboxControls() {
     const controlsAvailable = this.inboxFilterControlsAvailable();
-    const normalizedFilters = normalizeInboxFilters(this.contactFilters, { controlsAvailable });
-    const filtersChanged = Object.keys(this.contactFilters)
-      .some(key => this.contactFilters[key] !== normalizedFilters[key]);
+    const normalizedFilters = normalizeInboxFilters(this.contactFilters, {
+      controlsAvailable,
+    });
+    const filtersChanged = Object.keys(this.contactFilters).some(
+      (key) => this.contactFilters[key] !== normalizedFilters[key],
+    );
     if (filtersChanged) {
       this.contactFilters = normalizedFilters;
       this.persistInboxPreferences();
@@ -900,7 +1699,9 @@ class WhatsAppClient {
 
   inboxFilterControlsAvailable() {
     const filterRow = document.querySelector('.inbox-filter-row');
-    return Boolean(filterRow && window.getComputedStyle(filterRow).display !== 'none');
+    return Boolean(
+      filterRow && window.getComputedStyle(filterRow).display !== 'none',
+    );
   }
 
   setInboxSearchQuery(value) {
@@ -967,7 +1768,8 @@ class WhatsAppClient {
 
       const aPriority = this.getPriorityInfo(a.id);
       const bPriority = this.getPriorityInfo(b.id);
-      if (aPriority.rank !== bPriority.rank) return aPriority.rank - bPriority.rank;
+      if (aPriority.rank !== bPriority.rank)
+        return aPriority.rank - bPriority.rank;
 
       const aChecklist = this.getChecklistSummary(a.id);
       const bChecklist = this.getChecklistSummary(b.id);
@@ -981,7 +1783,13 @@ class WhatsAppClient {
       if (aReminder === 'upcoming' && bReminder === 'none') return -1;
       if (aReminder === 'none' && bReminder === 'upcoming') return 1;
 
-      const replyRank = { drafting: 0, 'needs-reply': 1, waiting: 2, idle: 3, snoozed: 4 };
+      const replyRank = {
+        drafting: 0,
+        'needs-reply': 1,
+        waiting: 2,
+        idle: 3,
+        snoozed: 4,
+      };
       const aReplyRank = replyRank[this.getReplyState(a.id, now)] ?? 99;
       const bReplyRank = replyRank[this.getReplyState(b.id, now)] ?? 99;
       if (aReplyRank !== bReplyRank) return aReplyRank - bReplyRank;
@@ -996,7 +1804,9 @@ class WhatsAppClient {
   }
 
   getContactActionSnapshot(contactId, now = Date.now()) {
-    const contact = this.contacts.find(entry => entry.id === contactId) || { id: contactId };
+    const contact = this.contacts.find((entry) => entry.id === contactId) || {
+      id: contactId,
+    };
     return getContactActionSnapshot({
       contact,
       drafts: this.drafts,
@@ -1059,11 +1869,14 @@ class WhatsAppClient {
       this.ws = null;
     }
 
-    this.contacts = demo.contacts.map(contact => ({ ...contact }));
+    this.contacts = demo.contacts.map((contact) => ({ ...contact }));
     this.messages = new Map(
       Object.entries(demo.messagesByContact).map(([contactId, messages]) => [
         contactId,
-        messages.map(message => ({ ...message, content: { ...(message.content || {}) } })),
+        messages.map((message) => ({
+          ...message,
+          content: { ...(message.content || {}) },
+        })),
       ]),
     );
     this.contactMetadata = {
@@ -1074,7 +1887,8 @@ class WhatsAppClient {
       ...demo.drafts,
       ...this.drafts,
     };
-    this.quickReplies = this.quickReplies.length > 0 ? this.quickReplies : demo.quickReplies;
+    this.quickReplies =
+      this.quickReplies.length > 0 ? this.quickReplies : demo.quickReplies;
     this.globalUsage = demo.globalUsage;
     this.currentContactId = null;
 
@@ -1179,7 +1993,9 @@ class WhatsAppClient {
         {
           id: 'action-workspace',
           kind: 'action',
-          title: this.workspaceExpanded ? 'Collapse workspace panel' : 'Expand workspace panel',
+          title: this.workspaceExpanded
+            ? 'Collapse workspace panel'
+            : 'Expand workspace panel',
           subtitle: 'Show or hide the conversation context card',
           keywords: 'workspace panel context notes checklist',
           run: () => {
@@ -1195,7 +2011,11 @@ class WhatsAppClient {
           keywords: 'search messages current chat',
           run: () => {
             this.closeCommandPalette();
-            if (document.getElementById('chat-search-bar')?.classList.contains('hidden')) {
+            if (
+              document
+                .getElementById('chat-search-bar')
+                ?.classList.contains('hidden')
+            ) {
               this.toggleChatSearch();
             } else {
               document.getElementById('chat-search-input')?.focus();
@@ -1207,7 +2027,8 @@ class WhatsAppClient {
           id: 'action-copy-brief',
           kind: 'action',
           title: 'Copy current conversation brief',
-          subtitle: 'Copy next action, context, tasks, draft, and recent messages',
+          subtitle:
+            'Copy next action, context, tasks, draft, and recent messages',
           keywords: 'copy brief handoff summary context',
           run: () => {
             this.closeCommandPalette();
@@ -1218,7 +2039,8 @@ class WhatsAppClient {
           id: 'action-translate-all',
           kind: 'action',
           title: 'Translate incoming messages',
-          subtitle: 'Translate every untranslated incoming message in this chat',
+          subtitle:
+            'Translate every untranslated incoming message in this chat',
           keywords: 'translate incoming unread messages batch',
           run: () => {
             this.closeCommandPalette();
@@ -1230,7 +2052,8 @@ class WhatsAppClient {
           kind: 'action',
           title: 'Edit current conversation settings',
           subtitle: 'Open nickname, timezone, and translation settings',
-          keywords: 'settings edit nickname timezone translation language style',
+          keywords:
+            'settings edit nickname timezone translation language style',
           run: () => {
             this.closeCommandPalette();
             this.openSettingsModal();
@@ -1243,17 +2066,21 @@ class WhatsAppClient {
   }
 
   getCommandPaletteItems(query = '') {
-    const normalizedQuery = String(query || '').trim().toLowerCase();
+    const normalizedQuery = String(query || '')
+      .trim()
+      .toLowerCase();
     const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
     const matchesTokens = (value) => {
       if (!tokens.length) return true;
       const haystack = String(value || '').toLowerCase();
-      return tokens.every(token => haystack.includes(token));
+      return tokens.every((token) => haystack.includes(token));
     };
 
     const actions = this.getCommandPaletteActions()
-      .filter(action => matchesTokens(`${action.title} ${action.subtitle} ${action.keywords}`))
-      .map(action => ({ ...action }));
+      .filter((action) =>
+        matchesTokens(`${action.title} ${action.subtitle} ${action.keywords}`),
+      )
+      .map((action) => ({ ...action }));
 
     const contacts = (this.contacts || [])
       .map((contact) => {
@@ -1271,12 +2098,14 @@ class WhatsAppClient {
         const matches = matchesTokens(searchText);
         if (!matches) return null;
 
-        let rank = snapshot.attentionScore + Math.min(20, Math.max(0, Number(contact.unreadCount || 0) * 2));
+        let rank =
+          snapshot.attentionScore +
+          Math.min(20, Math.max(0, Number(contact.unreadCount || 0) * 2));
         if (!tokens.length) {
           rank += 8;
         } else {
           const displayName = this.getContactDisplayName(contact).toLowerCase();
-          if (tokens.some(token => displayName.startsWith(token))) {
+          if (tokens.some((token) => displayName.startsWith(token))) {
             rank += 20;
           }
         }
@@ -1298,7 +2127,10 @@ class WhatsAppClient {
       .filter(Boolean)
       .sort((a, b) => {
         if (b.rank !== a.rank) return b.rank - a.rank;
-        return (b.snapshot?.lastMessageTime || 0) - (a.snapshot?.lastMessageTime || 0);
+        return (
+          (b.snapshot?.lastMessageTime || 0) -
+          (a.snapshot?.lastMessageTime || 0)
+        );
       })
       .slice(0, tokens.length ? 8 : 6);
 
@@ -1311,7 +2143,9 @@ class WhatsAppClient {
     if (!container || !input) return;
 
     input.value = this.commandPaletteQuery;
-    this.commandPaletteItems = this.getCommandPaletteItems(this.commandPaletteQuery);
+    this.commandPaletteItems = this.getCommandPaletteItems(
+      this.commandPaletteQuery,
+    );
     if (this.commandPaletteItems.length === 0) {
       this.commandPaletteSelectionIndex = 0;
       container.innerHTML = `
@@ -1328,16 +2162,19 @@ class WhatsAppClient {
       this.commandPaletteItems.length - 1,
     );
 
-    container.innerHTML = this.commandPaletteItems.map((item, index) => {
-      const snapshot = item.snapshot;
-      const badge = item.kind === 'contact' && snapshot?.headline
-        ? `<span class="command-palette-item-badge">${this.escapeHtml(snapshot.headline)}</span>`
-        : `<span class="command-palette-item-badge action">Action</span>`;
-      const meta = item.kind === 'contact'
-        ? `<span class="command-palette-item-meta">${this.escapeHtml(snapshot?.lastMessageTime ? this.formatTime(snapshot.lastMessageTime) : 'No messages yet')}</span>`
-        : '<span class="command-palette-item-meta">Shortcut</span>';
+    container.innerHTML = this.commandPaletteItems
+      .map((item, index) => {
+        const snapshot = item.snapshot;
+        const badge =
+          item.kind === 'contact' && snapshot?.headline
+            ? `<span class="command-palette-item-badge">${this.escapeHtml(snapshot.headline)}</span>`
+            : `<span class="command-palette-item-badge action">Action</span>`;
+        const meta =
+          item.kind === 'contact'
+            ? `<span class="command-palette-item-meta">${this.escapeHtml(snapshot?.lastMessageTime ? this.formatTime(snapshot.lastMessageTime) : 'No messages yet')}</span>`
+            : '<span class="command-palette-item-meta">Shortcut</span>';
 
-      return `
+        return `
         <button
           class="command-palette-item ${index === this.commandPaletteSelectionIndex ? 'active' : ''}"
           type="button"
@@ -1353,9 +2190,12 @@ class WhatsAppClient {
           </div>
         </button>
       `;
-    }).join('');
+      })
+      .join('');
 
-    container.querySelector('.command-palette-item.active')?.scrollIntoView({ block: 'nearest' });
+    container
+      .querySelector('.command-palette-item.active')
+      ?.scrollIntoView({ block: 'nearest' });
   }
 
   openCommandPalette(initialQuery = '') {
@@ -1381,9 +2221,11 @@ class WhatsAppClient {
   }
 
   moveCommandPaletteSelection(direction = 1) {
-    if (!this.commandPaletteOpen || this.commandPaletteItems.length === 0) return;
+    if (!this.commandPaletteOpen || this.commandPaletteItems.length === 0)
+      return;
     const maxIndex = this.commandPaletteItems.length - 1;
-    this.commandPaletteSelectionIndex = this.commandPaletteSelectionIndex + direction;
+    this.commandPaletteSelectionIndex =
+      this.commandPaletteSelectionIndex + direction;
     if (this.commandPaletteSelectionIndex < 0) {
       this.commandPaletteSelectionIndex = maxIndex;
     } else if (this.commandPaletteSelectionIndex > maxIndex) {
@@ -1399,7 +2241,8 @@ class WhatsAppClient {
   }
 
   toggleWorkspacePanel(force) {
-    this.workspaceExpanded = typeof force === 'boolean' ? force : !this.workspaceExpanded;
+    this.workspaceExpanded =
+      typeof force === 'boolean' ? force : !this.workspaceExpanded;
     this.updateWorkspaceUI();
   }
 
@@ -1408,21 +2251,35 @@ class WhatsAppClient {
     const toggleButton = document.getElementById('chat-workspace-toggle');
     const backdrop = document.getElementById('workspace-backdrop');
     const chatView = document.getElementById('chat-view');
-    const showWorkspaceOverlay = this.isMobile() && this.workspaceExpanded && Boolean(this.currentContactId);
+    const showWorkspaceOverlay =
+      this.isMobile() &&
+      this.workspaceExpanded &&
+      Boolean(this.currentContactId);
     if (workspace) {
       workspace.classList.toggle('collapsed', !this.workspaceExpanded);
     }
     if (toggleButton) {
       toggleButton.classList.toggle('active', this.workspaceExpanded);
-      toggleButton.setAttribute('aria-expanded', String(this.workspaceExpanded));
+      toggleButton.setAttribute(
+        'aria-expanded',
+        String(this.workspaceExpanded),
+      );
       toggleButton.title = this.workspaceExpanded
-        ? (this.isMobile() ? 'Hide conversation context' : 'Hide workspace')
-        : (this.isMobile() ? 'Show conversation context' : 'Show workspace');
+        ? this.isMobile()
+          ? 'Hide conversation context'
+          : 'Hide workspace'
+        : this.isMobile()
+          ? 'Show conversation context'
+          : 'Show workspace';
       toggleButton.setAttribute(
         'aria-label',
         this.workspaceExpanded
-          ? (this.isMobile() ? 'Hide conversation context' : 'Hide workspace')
-          : (this.isMobile() ? 'Show conversation context' : 'Show workspace')
+          ? this.isMobile()
+            ? 'Hide conversation context'
+            : 'Hide workspace'
+          : this.isMobile()
+            ? 'Show conversation context'
+            : 'Show workspace',
       );
     }
     if (backdrop) {
@@ -1439,16 +2296,31 @@ class WhatsAppClient {
     const statusEl = document.getElementById('workspace-primary-status');
     const notesEl = document.getElementById('workspace-notes');
     const checklistEl = document.getElementById('workspace-checklist');
-    const checklistSummaryEl = document.getElementById('workspace-checklist-summary');
+    const checklistSummaryEl = document.getElementById(
+      'workspace-checklist-summary',
+    );
     const labelsEl = document.getElementById('workspace-labels');
     const reminderEl = document.getElementById('workspace-reminder');
     const timezoneEl = document.getElementById('workspace-timezone');
     const briefEl = document.getElementById('workspace-brief');
     const actionPlanEl = document.getElementById('workspace-action-plan');
     const copyBriefButton = document.getElementById('workspace-copy-brief');
-    const translateAllButton = document.getElementById('workspace-translate-all');
+    const translateAllButton = document.getElementById(
+      'workspace-translate-all',
+    );
     const workspace = document.getElementById('conversation-workspace');
-    if (!summaryEl || !statusEl || !notesEl || !checklistEl || !labelsEl || !reminderEl || !timezoneEl || !briefEl || !actionPlanEl || !workspace) {
+    if (
+      !summaryEl ||
+      !statusEl ||
+      !notesEl ||
+      !checklistEl ||
+      !labelsEl ||
+      !reminderEl ||
+      !timezoneEl ||
+      !briefEl ||
+      !actionPlanEl ||
+      !workspace
+    ) {
       return;
     }
 
@@ -1468,10 +2340,14 @@ class WhatsAppClient {
       return;
     }
 
-    const contact = this.contacts.find(entry => entry.id === this.currentContactId) || { id: this.currentContactId };
+    const contact = this.contacts.find(
+      (entry) => entry.id === this.currentContactId,
+    ) || { id: this.currentContactId };
     const snapshot = this.getContactActionSnapshot(this.currentContactId);
     const metadata = this.getContactMetadata(this.currentContactId);
-    const checklist = Array.isArray(metadata.checklist) ? metadata.checklist : [];
+    const checklist = Array.isArray(metadata.checklist)
+      ? metadata.checklist
+      : [];
     const labels = snapshot.labels;
     const notes = String(metadata.notes || '').trim();
     const brief = buildConversationBrief({
@@ -1487,25 +2363,37 @@ class WhatsAppClient {
       drafts: this.drafts,
     });
 
-    summaryEl.innerHTML = this.buildContactBadgeMarkup(this.currentContactId) || '<span class="workspace-empty-chip">No visitor context yet</span>';
-    statusEl.textContent = snapshot.summary || 'Add notes, labels, reminders, or tasks to keep this conversation organized.';
+    summaryEl.innerHTML =
+      this.buildContactBadgeMarkup(this.currentContactId) ||
+      '<span class="workspace-empty-chip">No visitor context yet</span>';
+    statusEl.textContent =
+      snapshot.summary ||
+      'Add notes, labels, reminders, or tasks to keep this conversation organized.';
     briefEl.innerHTML = `
       <div class="workspace-brief-primary">${this.escapeHtml(brief.nextAction)}</div>
-      ${brief.contextLines.length > 0 ? `
+      ${
+        brief.contextLines.length > 0
+          ? `
         <div class="workspace-brief-lines">
-          ${brief.contextLines.map(line => `<span>${this.escapeHtml(line)}</span>`).join('')}
+          ${brief.contextLines.map((line) => `<span>${this.escapeHtml(line)}</span>`).join('')}
         </div>
-      ` : ''}
+      `
+          : ''
+      }
     `;
     actionPlanEl.innerHTML = `
       <span class="workspace-section-label">Action plan</span>
       <div class="workspace-action-list">
-        ${actionPlan.actions.map(action => `
+        ${actionPlan.actions
+          .map(
+            (action) => `
           <div class="workspace-action-item ${this.escapeHtml(action.priority || 'normal')}">
             <span class="workspace-action-title">${this.escapeHtml(action.label)}</span>
             <span class="workspace-action-detail">${this.escapeHtml(action.detail)}</span>
           </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </div>
     `;
 
@@ -1515,19 +2403,25 @@ class WhatsAppClient {
     }
     if (translateAllButton) {
       translateAllButton.disabled = actionPlan.untranslatedCount === 0;
-      translateAllButton.textContent = actionPlan.untranslatedCount === 0
-        ? 'Translated'
-        : `Translate ${actionPlan.untranslatedCount}`;
+      translateAllButton.textContent =
+        actionPlan.untranslatedCount === 0
+          ? 'Translated'
+          : `Translate ${actionPlan.untranslatedCount}`;
     }
 
-    notesEl.textContent = notes || 'No notes yet. Add private context in conversation settings so you can keep tone, follow-ups, and reminders visible while replying.';
+    notesEl.textContent =
+      notes ||
+      'No notes yet. Add private context in conversation settings so you can keep tone, follow-ups, and reminders visible while replying.';
     notesEl.classList.toggle('empty', !notes);
 
     checklistSummaryEl.textContent = snapshot.checklist.label;
     if (checklist.length === 0) {
-      checklistEl.innerHTML = '<span class="workspace-empty-chip">No checklist items yet</span>';
+      checklistEl.innerHTML =
+        '<span class="workspace-empty-chip">No checklist items yet</span>';
     } else {
-      checklistEl.innerHTML = checklist.map((item) => `
+      checklistEl.innerHTML = checklist
+        .map(
+          (item) => `
         <button
           class="workspace-checklist-item ${item.done ? 'done' : ''}"
           type="button"
@@ -1536,22 +2430,34 @@ class WhatsAppClient {
           <span class="workspace-checklist-mark">${item.done ? '✓' : ''}</span>
           <span class="workspace-checklist-text">${this.escapeHtml(item.text)}</span>
         </button>
-      `).join('');
+      `,
+        )
+        .join('');
     }
 
     if (labels.length === 0) {
-      labelsEl.innerHTML = '<span class="workspace-empty-chip">No labels yet</span>';
+      labelsEl.innerHTML =
+        '<span class="workspace-empty-chip">No labels yet</span>';
     } else {
-      labelsEl.innerHTML = labels.map(label => `<span class="workspace-label-chip">${this.escapeHtml(label)}</span>`).join('');
+      labelsEl.innerHTML = labels
+        .map(
+          (label) =>
+            `<span class="workspace-label-chip">${this.escapeHtml(label)}</span>`,
+        )
+        .join('');
     }
 
-    reminderEl.textContent = this.getReminderSummary(this.currentContactId) || 'No reminder set.';
+    reminderEl.textContent =
+      this.getReminderSummary(this.currentContactId) || 'No reminder set.';
     reminderEl.classList.toggle('due', snapshot.reminderStatus === 'due');
     timezoneEl.textContent = snapshot.timezoneInfo
       ? `${snapshot.timezoneInfo.localTime} · ${snapshot.timezoneInfo.statusLabel}`
       : '';
 
-    workspace.classList.toggle('has-reminder-due', snapshot.reminderStatus === 'due');
+    workspace.classList.toggle(
+      'has-reminder-due',
+      snapshot.reminderStatus === 'due',
+    );
     workspace.classList.toggle('collapsed', !this.workspaceExpanded);
   }
 
@@ -1562,7 +2468,9 @@ class WhatsAppClient {
     const checklist = toggleChecklistItem(metadata.checklist || [], itemId);
     this.updateContactMetadata(this.currentContactId, { checklist });
 
-    const contact = this.contacts.find(entry => entry.id === this.currentContactId);
+    const contact = this.contacts.find(
+      (entry) => entry.id === this.currentContactId,
+    );
     if (contact) {
       contact.checklist = checklist;
     }
@@ -1596,9 +2504,15 @@ class WhatsAppClient {
         if (layout.effectiveHeight === null) {
           root.style.removeProperty('--viewport-height');
         } else {
-          root.style.setProperty('--viewport-height', `${layout.effectiveHeight}px`);
+          root.style.setProperty(
+            '--viewport-height',
+            `${layout.effectiveHeight}px`,
+          );
         }
-        root.style.setProperty('--keyboard-offset', `${layout.keyboardOffset}px`);
+        root.style.setProperty(
+          '--keyboard-offset',
+          `${layout.keyboardOffset}px`,
+        );
         frame = null;
       });
     };
@@ -1630,7 +2544,7 @@ class WhatsAppClient {
     try {
       // Try to make an authenticated request to verify token is valid
       const response = await this.apiFetch('/api/status', {
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
       });
       return response.ok;
     } catch (err) {
@@ -1663,7 +2577,7 @@ class WhatsAppClient {
     const input = document.getElementById('password-input');
     const submit = document.getElementById('password-submit');
     const error = document.getElementById('password-error');
-    
+
     const password = input?.value;
     if (!password) return;
 
@@ -1674,7 +2588,7 @@ class WhatsAppClient {
       const response = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ password }),
       });
 
       const result = await response.json();
@@ -1686,10 +2600,10 @@ class WhatsAppClient {
           this.authToken = result.token;
           localStorage.setItem('wa_auth_token', result.token);
         }
-        
+
         // Clear password input
         if (input) input.value = '';
-        
+
         // Start the app
         this.startApp();
       } else {
@@ -1719,9 +2633,12 @@ class WhatsAppClient {
     this.reliableFetch ||= createReliableFetch();
     const response = await this.reliableFetch(url, {
       ...options,
-      headers: this.getAuthHeaders(options.headers || {})
+      headers: this.getAuthHeaders(options.headers || {}),
     });
-    if (response.status === 401) { this.authExpired = true; this.showPasswordOverlay(); }
+    if (response.status === 401) {
+      this.authExpired = true;
+      this.showPasswordOverlay();
+    }
     return response;
   }
 
@@ -1729,11 +2646,11 @@ class WhatsAppClient {
   async handleLogout() {
     const confirmed = confirm(
       'Are you sure you want to logout?\n\n' +
-      'This will:\n' +
-      '- Disconnect from WhatsApp\n' +
-      '- Delete all messages and contacts\n' +
-      '- Clear the session (require new QR scan)\n\n' +
-      'This action cannot be undone.'
+        'This will:\n' +
+        '- Disconnect from WhatsApp\n' +
+        '- Delete all messages and contacts\n' +
+        '- Clear the session (require new QR scan)\n\n' +
+        'This action cannot be undone.',
     );
 
     if (!confirmed) return;
@@ -1741,7 +2658,7 @@ class WhatsAppClient {
     try {
       const response = await this.apiFetch('/api/logout', {
         method: 'POST',
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
       });
 
       const result = await response.json();
@@ -1772,7 +2689,7 @@ class WhatsAppClient {
 
         // Show connecting overlay - bridge will restart and send new QR
         this.showConnecting();
-        
+
         // The WebSocket will receive the new QR code when bridge restarts
       } else {
         alert('Logout failed: ' + (result.error || 'Unknown error'));
@@ -1814,24 +2731,33 @@ class WhatsAppClient {
   // WebSocket connection
   connectWebSocket() {
     if (this.demoMode || this.authExpired) return;
-    if (this.ws && [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.ws.readyState)) return;
+    if (
+      this.ws &&
+      [WebSocket.OPEN, WebSocket.CONNECTING].includes(this.ws.readyState)
+    )
+      return;
     clearTimeout(this.reconnectTimer);
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const tokenQuery = this.authToken ? `?token=${encodeURIComponent(this.authToken)}` : '';
+    const tokenQuery = this.authToken
+      ? `?token=${encodeURIComponent(this.authToken)}`
+      : '';
     const wsUrl = `${protocol}//${window.location.host}/ws${tokenQuery}`;
-    
+
     const socket = new WebSocket(wsUrl);
     this.ws = socket;
     this.lastLiveMessage = Date.now();
-    
+
     this.ws.onopen = () => {
       clearInterval(this.liveWatchdog);
-      this.liveWatchdog = setInterval(() => { if (this.ws === socket && Date.now() - this.lastLiveMessage > 50000) socket.close(); }, 10000);
+      this.liveWatchdog = setInterval(() => {
+        if (this.ws === socket && Date.now() - this.lastLiveMessage > 50000)
+          socket.close();
+      }, 10000);
       this.setLiveReconnectBanner(false);
       void this.recoverLiveMessages();
     };
-    
+
     this.ws.onmessage = (event) => {
       if (this.ws !== socket) return;
       this.lastLiveMessage = Date.now();
@@ -1839,17 +2765,24 @@ class WhatsAppClient {
       const data = JSON.parse(event.data);
       this.handleMessage(data);
     };
-    
+
     this.ws.onclose = async () => {
       if (this.demoMode || this.ws !== socket) return;
       clearInterval(this.liveWatchdog);
       this.setLiveReconnectBanner(true);
-      try { await this.apiFetch('/api/status'); } catch { /* Network still unavailable. */ }
+      try {
+        await this.apiFetch('/api/status');
+      } catch {
+        /* Network still unavailable. */
+      }
       if (this.authExpired || this.ws !== socket) return;
       this.reconnectAttempt = (this.reconnectAttempt || 0) + 1;
-      this.reconnectTimer = setTimeout(() => this.connectWebSocket(), reconnectDelay(this.reconnectAttempt));
+      this.reconnectTimer = setTimeout(
+        () => this.connectWebSocket(),
+        reconnectDelay(this.reconnectAttempt),
+      );
     };
-    
+
     this.ws.onerror = (err) => {
       console.error('WebSocket error:', err);
     };
@@ -1858,8 +2791,11 @@ class WhatsAppClient {
   setLiveReconnectBanner(reconnecting) {
     let banner = document.getElementById('live-reconnect-banner');
     if (!banner) {
-      banner = document.createElement('div'); banner.id = 'live-reconnect-banner'; banner.setAttribute('role', 'status');
-      banner.textContent = 'Reconnecting live updates… Your messages are saved.';
+      banner = document.createElement('div');
+      banner.id = 'live-reconnect-banner';
+      banner.setAttribute('role', 'status');
+      banner.textContent =
+        'Reconnecting live updates… Your messages are saved.';
       document.getElementById('main-container')?.prepend(banner);
     }
     banner.hidden = !reconnecting;
@@ -1867,21 +2803,33 @@ class WhatsAppClient {
 
   async recoverLiveMessages() {
     if (this.demoMode) return;
-    if (this.liveRecoveryRunning) { this.liveRecoveryPending = true; return; }
+    if (this.liveRecoveryRunning) {
+      this.liveRecoveryPending = true;
+      return;
+    }
     this.liveRecoveryRunning = true;
     try {
       do {
         this.liveRecoveryPending = false;
         await this.loadContacts();
-        if (this.currentContactId) await this.loadMessages(this.currentContactId);
+        if (this.currentContactId)
+          await this.loadMessages(this.currentContactId);
         await this.topics?.load();
       } while (this.liveRecoveryPending && !this.authExpired);
-    } finally { this.liveRecoveryRunning = false; }
+    } finally {
+      this.liveRecoveryRunning = false;
+    }
   }
 
   async refreshAfterBecomingVisible() {
-    if (document.visibilityState !== 'visible' || this.demoMode || this.authExpired) return;
-    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) this.connectWebSocket();
+    if (
+      document.visibilityState !== 'visible' ||
+      this.demoMode ||
+      this.authExpired
+    )
+      return;
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED)
+      this.connectWebSocket();
     // A topic can finish while the page is suspended, even if its socket still
     // appears open. Reload the catalog and selected page independently.
     await this.topics?.load();
@@ -1891,9 +2839,13 @@ class WhatsAppClient {
     if (this.liveRecoveryRunning) this.liveRecoveryPending = true;
     this.prepareMessageForCache(message);
     this.topics?.update(message);
-    this.messages.set(message.contactId, mergeMessageUpdate(this.messages.get(message.contactId) || [], message));
+    this.messages.set(
+      message.contactId,
+      mergeMessageUpdate(this.messages.get(message.contactId) || [], message),
+    );
     this.scheduleRenderContacts();
-    if (this.currentContactId === message.contactId) this.refreshCurrentConversationView();
+    if (this.currentContactId === message.contactId)
+      this.refreshCurrentConversationView();
   }
 
   // Handle incoming WebSocket messages
@@ -1908,21 +2860,23 @@ class WhatsAppClient {
       case 'status':
         void this.handleStatus(data);
         break;
-      
+
       case 'qr':
         this.showQRCode(data.data);
         break;
-      
+
       case 'connected':
         this.handleConnected(data);
         break;
-      
+
       case 'disconnected':
         void this.handleDisconnected();
         break;
-      
+
       case 'voice_ready':
-        window.dispatchEvent(new CustomEvent('voice-ready', {detail:data.message_id}));
+        window.dispatchEvent(
+          new CustomEvent('voice-ready', { detail: data.message_id }),
+        );
         break;
       case 'message_updated':
         this.handleMessageUpdate(data.message);
@@ -1938,21 +2892,24 @@ class WhatsAppClient {
       case 'reaction':
         this.handleReactionMessage(data.message);
         break;
-      
+
       case 'typing':
         this.handleTyping(data);
         break;
-      
+
       case 'messages_viewed': {
-        const contact = this.contacts.find(c => c.id === data.chat_id);
-        if (contact) { contact.unreadCount = data.unread_count; this.scheduleRenderContacts(); }
+        const contact = this.contacts.find((c) => c.id === data.chat_id);
+        if (contact) {
+          contact.unreadCount = data.unread_count;
+          this.scheduleRenderContacts();
+        }
         break;
       }
 
       case 'mark_as_read':
         this.handleMarkAsRead(data.chat_id);
         break;
-      
+
       case 'error':
         console.error('Error:', data.error);
         break;
@@ -1961,7 +2918,7 @@ class WhatsAppClient {
 
   // Handle mark-as-read event from another device
   handleMarkAsRead(chatId) {
-    const contact = this.contacts.find(c => c.id === chatId);
+    const contact = this.contacts.find((c) => c.id === chatId);
     if (contact) {
       contact.unreadCount = 0;
       this.scheduleRenderContacts();
@@ -1970,7 +2927,7 @@ class WhatsAppClient {
 
   // Toggle pin status for a contact
   async togglePin(contactId) {
-    const contact = this.contacts.find(c => c.id === contactId);
+    const contact = this.contacts.find((c) => c.id === contactId);
     if (!contact) return;
 
     const nextPinnedAt = contact.pinnedAt != null ? null : Date.now();
@@ -2040,11 +2997,11 @@ class WhatsAppClient {
     document.getElementById('connecting-overlay').classList.add('hidden');
     document.getElementById('qr-overlay').classList.remove('hidden');
     document.getElementById('main-container').classList.add('hidden');
-    
+
     // Generate QR code
     const container = document.getElementById('qr-container');
     container.innerHTML = '';
-    
+
     // Use QRCode library if available, otherwise show text
     if (typeof QRCode !== 'undefined') {
       new QRCode(container, {
@@ -2053,7 +3010,7 @@ class WhatsAppClient {
         height: 264,
         colorDark: '#000000',
         colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.L
+        correctLevel: QRCode.CorrectLevel.L,
       });
     } else {
       // Fallback: create canvas QR code manually using simple approach
@@ -2072,7 +3029,7 @@ class WhatsAppClient {
         height: 264,
         colorDark: '#000000',
         colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.L
+        correctLevel: QRCode.CorrectLevel.L,
       });
     } else {
       // Fallback: show the QR data as text for manual entry
@@ -2087,11 +3044,11 @@ class WhatsAppClient {
     this.connected = true;
     this.qrData = null;
     this.notificationsReadyAt = Date.now() + 10000;
-    
+
     document.getElementById('qr-overlay').classList.add('hidden');
     document.getElementById('connecting-overlay').classList.add('hidden');
     document.getElementById('main-container').classList.remove('hidden');
-    
+
     // Update user info
     if (data.name) {
       document.getElementById('user-name').textContent = data.name;
@@ -2099,11 +3056,10 @@ class WhatsAppClient {
     if (data.phone) {
       document.getElementById('user-phone').textContent = '+' + data.phone;
     }
-    
-    
+
     // Load contacts
     this.loadContacts();
-    
+
     // Load global usage
     this.fetchGlobalUsage();
   }
@@ -2113,7 +3069,8 @@ class WhatsAppClient {
     if (this.demoMode) return;
 
     this.connected = false;
-    const revision = this.connectionRevision = (this.connectionRevision || 0) + 1;
+    const revision = (this.connectionRevision =
+      (this.connectionRevision || 0) + 1);
     this.qrData = null;
 
     const qrData = await this.fetchCurrentQRCode();
@@ -2159,21 +3116,26 @@ class WhatsAppClient {
   getMessageContentType(message) {
     return String(
       message?.content?.type ||
-      message?.contentType ||
-      message?.content_type ||
-      ''
+        message?.contentType ||
+        message?.content_type ||
+        '',
     ).toLowerCase();
   }
 
   isReactionMessage(message) {
-    const declaredType = String(message?.contentType || message?.content_type || '').toLowerCase();
+    const declaredType = String(
+      message?.contentType || message?.content_type || '',
+    ).toLowerCase();
     const embeddedType = String(message?.content?.type || '').toLowerCase();
     return declaredType === 'reaction' || embeddedType === 'reaction';
   }
 
   isDisplayableMessage(message) {
     const contentType = this.getMessageContentType(message);
-    return Boolean(contentType) && !['reaction', 'protocol', 'unknown'].includes(contentType);
+    return (
+      Boolean(contentType) &&
+      !['reaction', 'protocol', 'unknown'].includes(contentType)
+    );
   }
 
   prepareMessageForCache(message) {
@@ -2206,7 +3168,12 @@ class WhatsAppClient {
     if (isFromMe) {
       return 'me';
     }
-    return reactionMsg?.senderPhone || reactionMsg?.sender_phone || reactionMsg?.senderJid || 'unknown';
+    return (
+      reactionMsg?.senderPhone ||
+      reactionMsg?.sender_phone ||
+      reactionMsg?.senderJid ||
+      'unknown'
+    );
   }
 
   applyReactionToMessage(targetMessage, reactionMsg) {
@@ -2214,18 +3181,33 @@ class WhatsAppClient {
     const emoji = content.emoji || '';
     const reactor = this.getReactionActor(reactionMsg);
 
-    const state = { id: reactionMsg.id || '', timestamp: reactionMsg.timestamp || 0, emoji };
+    const state = {
+      id: reactionMsg.id || '',
+      timestamp: reactionMsg.timestamp || 0,
+      emoji,
+    };
     const previous = targetMessage.reactionStates?.[reactor];
-    if (previous && (previous.timestamp > state.timestamp ||
-        (previous.timestamp === state.timestamp && previous.id >= state.id))) return;
-    targetMessage.reactionStates = { ...targetMessage.reactionStates, [reactor]: state };
+    if (
+      previous &&
+      (previous.timestamp > state.timestamp ||
+        (previous.timestamp === state.timestamp && previous.id >= state.id))
+    )
+      return;
+    targetMessage.reactionStates = {
+      ...targetMessage.reactionStates,
+      [reactor]: state,
+    };
 
     if (!targetMessage.reactions) {
       targetMessage.reactions = {};
     }
 
-    for (const [existingEmoji, reactors] of Object.entries(targetMessage.reactions)) {
-      targetMessage.reactions[existingEmoji] = (reactors || []).filter(entry => entry !== reactor);
+    for (const [existingEmoji, reactors] of Object.entries(
+      targetMessage.reactions,
+    )) {
+      targetMessage.reactions[existingEmoji] = (reactors || []).filter(
+        (entry) => entry !== reactor,
+      );
       if (targetMessage.reactions[existingEmoji].length === 0) {
         delete targetMessage.reactions[existingEmoji];
       }
@@ -2245,20 +3227,32 @@ class WhatsAppClient {
     const targetMessageId = this.getReactionTargetMessageId(reactionMsg);
     if (!targetMessageId) return false;
 
-    const targetMessage = messages.find(message => message.id === targetMessageId);
+    const targetMessage = messages.find(
+      (message) => message.id === targetMessageId,
+    );
     if (!targetMessage) return false;
 
     this.applyReactionToMessage(targetMessage, reactionMsg);
     return true;
   }
 
-  normalizeLoadedMessages(contactId, rawMessages = [], additionalReactionTargets = []) {
+  normalizeLoadedMessages(
+    contactId,
+    rawMessages = [],
+    additionalReactionTargets = [],
+  ) {
     const displayMessages = [];
     const reactionMessages = [];
 
     for (let message of rawMessages || []) {
-      const current = this.messages.get(contactId)?.find(value => value.id === message.id);
-      if ((current?.content?.edited_at_ms || 0) > (message.content?.edited_at_ms || 0)) message = current;
+      const current = this.messages
+        .get(contactId)
+        ?.find((value) => value.id === message.id);
+      if (
+        (current?.content?.edited_at_ms || 0) >
+        (message.content?.edited_at_ms || 0)
+      )
+        message = current;
       this.prepareMessageForCache(message);
       if (this.isReactionMessage(message)) {
         reactionMessages.push(message);
@@ -2269,9 +3263,10 @@ class WhatsAppClient {
       }
     }
 
-    const reactionTargets = additionalReactionTargets.length > 0
-      ? [...displayMessages, ...additionalReactionTargets]
-      : displayMessages;
+    const reactionTargets =
+      additionalReactionTargets.length > 0
+        ? [...displayMessages, ...additionalReactionTargets]
+        : displayMessages;
 
     for (const message of reactionMessages) {
       if (!this.applyReactionToMessages(reactionTargets, message)) {
@@ -2302,31 +3297,34 @@ class WhatsAppClient {
       this.handleReactionMessage(message);
       return;
     }
-    
+
     // Skip protocol and unknown messages - these shouldn't be displayed
     if (!this.isDisplayableMessage(message)) {
-      console.log('Skipping non-displayable message type:', this.getMessageContentType(message));
+      console.log(
+        'Skipping non-displayable message type:',
+        this.getMessageContentType(message),
+      );
       return;
     }
-    
+
     // Add to local cache
     if (!this.messages.has(message.contactId)) {
       this.messages.set(message.contactId, []);
     }
-    
+
     const messages = this.messages.get(message.contactId);
-    if (!messages.some(m => m.id === message.id)) {
+    if (!messages.some((m) => m.id === message.id)) {
       messages.push(message);
       messages.sort((a, b) => a.timestamp - b.timestamp);
     }
 
     this.trimCachedMessages(message.contactId, true);
-    
+
     // Update contact in list
     this.updateContactInList(message);
 
     this.maybeShowNotification(message);
-    
+
     // If this contact is currently selected, show the message
     if (this.currentContactId === message.contactId) {
       this.refreshCurrentConversationView();
@@ -2334,7 +3332,7 @@ class WhatsAppClient {
       this.updateChatHeaderNote();
       this.renderConversationWorkspace();
     }
-    
+
     // Refresh usage stats if this was a translated message
     if (message.isTranslated || message.is_translated) {
       this.fetchGlobalUsage();
@@ -2342,7 +3340,7 @@ class WhatsAppClient {
         this.fetchConversationUsage(message.contactId);
       }
     }
-    
+
     // Clear typing indicator when message arrives from that user
     if (!message.isFromMe && !message.is_from_me) {
       this.clearTypingState(message.contactId);
@@ -2365,7 +3363,10 @@ class WhatsAppClient {
       this.notificationPromptEl = document.createElement('div');
       this.notificationPromptEl.id = 'notification-prompt';
       this.notificationPromptEl.className = 'notification-prompt hidden';
-      host.insertBefore(this.notificationPromptEl, document.getElementById('contacts-list'));
+      host.insertBefore(
+        this.notificationPromptEl,
+        document.getElementById('contacts-list'),
+      );
     }
 
     if (!this.notificationsSupported()) {
@@ -2448,8 +3449,12 @@ class WhatsAppClient {
     if (Date.now() < this.notificationsReadyAt) return false;
     if (message.isFromMe || message.is_from_me) return false;
 
-    const contentType = message.content?.type || message.contentType || message.content_type;
-    if (!contentType || ['reaction', 'protocol', 'unknown'].includes(contentType)) {
+    const contentType =
+      message.content?.type || message.contentType || message.content_type;
+    if (
+      !contentType ||
+      ['reaction', 'protocol', 'unknown'].includes(contentType)
+    ) {
       return false;
     }
 
@@ -2462,7 +3467,7 @@ class WhatsAppClient {
   }
 
   getThreadDisplayName(message) {
-    const contact = this.contacts.find(c => c.id === message.contactId);
+    const contact = this.contacts.find((c) => c.id === message.contactId);
     return (
       contact?.name ||
       message.contactName ||
@@ -2489,7 +3494,9 @@ class WhatsAppClient {
       case 'video':
         return content.caption || '[ Video ]';
       case 'audio':
-        return content.isVoiceNote || content.is_voice_note ? '[ Voice note ]' : '[ Audio ]';
+        return content.isVoiceNote || content.is_voice_note
+          ? '[ Voice note ]'
+          : '[ Audio ]';
       case 'document':
         return content.fileName || content.file_name || '[ Document ]';
       case 'sticker':
@@ -2514,7 +3521,11 @@ class WhatsAppClient {
     let body = this.getNotificationText(message);
 
     const isGroup = (message.chatType || message.chat_type) === 'group';
-    const sender = message.senderName || message.sender_name || message.senderPhone || message.sender_phone;
+    const sender =
+      message.senderName ||
+      message.sender_name ||
+      message.senderPhone ||
+      message.sender_phone;
     if (isGroup && sender) {
       body = `${sender}: ${body}`;
     }
@@ -2523,7 +3534,9 @@ class WhatsAppClient {
       body = 'New message';
     }
 
-    const sound = await this.messageTones?.notificationSound(message.contactId) ?? {silent: false, filename: null};
+    const sound = (await this.messageTones?.notificationSound(
+      message.contactId,
+    )) ?? { silent: false, filename: null };
     if (!this.shouldNotifyForMessage(message)) return;
 
     const notification = new Notification(title, {
@@ -2549,26 +3562,26 @@ class WhatsAppClient {
   handleReactionMessage(reactionMsg) {
     const contactId = reactionMsg.contactId;
     const targetMessageId = this.getReactionTargetMessageId(reactionMsg);
-    
+
     if (!targetMessageId) {
       console.warn('Reaction message missing target_message_id');
       return;
     }
-    
+
     // Find the target message in our cache
     const messages = this.messages.get(contactId);
     if (!messages) return;
-    
+
     if (!this.applyReactionToMessages(messages, reactionMsg)) {
       console.log('Target message not found for reaction');
       return;
     }
-    
+
     // Update display if viewing this chat
     if (this.currentContactId === contactId) {
       this.updateMessageReactions(targetMessageId);
     }
-    
+
     console.log('Reaction updated');
   }
 
@@ -2576,13 +3589,13 @@ class WhatsAppClient {
   handleTyping(data) {
     const { chat_id, user_id, state } = data;
     console.log('Typing event received');
-    
+
     // Clear existing timeout for this chat
     if (this.typingTimeouts.has(chat_id)) {
       clearTimeout(this.typingTimeouts.get(chat_id));
       this.typingTimeouts.delete(chat_id);
     }
-    
+
     if (state === 'paused') {
       // Remove typing state
       this.typingState.delete(chat_id);
@@ -2591,21 +3604,21 @@ class WhatsAppClient {
       this.typingState.set(chat_id, {
         userId: user_id,
         state: state, // 'typing' or 'recording'
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
-      
+
       // Auto-clear after 10 seconds (in case paused event is missed)
       const timeoutId = setTimeout(() => {
         this.clearTypingState(chat_id);
       }, 10000);
       this.typingTimeouts.set(chat_id, timeoutId);
     }
-    
+
     // Update UI if this is the current chat
     if (this.currentContactId === chat_id) {
       this.updateTypingIndicator();
     }
-    
+
     // Also update the contact list preview
     this.updateContactTypingPreview(chat_id);
   }
@@ -2617,7 +3630,7 @@ class WhatsAppClient {
       clearTimeout(this.typingTimeouts.get(chatId));
       this.typingTimeouts.delete(chatId);
     }
-    
+
     if (this.currentContactId === chatId) {
       this.updateTypingIndicator();
     }
@@ -2632,12 +3645,16 @@ class WhatsAppClient {
       console.warn('typing-indicator element not found!');
       return;
     }
-    
+
     const typingInfo = this.typingState.get(this.currentContactId);
-    console.log('typing indicator state', typingInfo ? typingInfo.state : 'idle');
-    
+    console.log(
+      'typing indicator state',
+      typingInfo ? typingInfo.state : 'idle',
+    );
+
     if (typingInfo) {
-      const text = typingInfo.state === 'recording' ? 'recording audio...' : 'typing...';
+      const text =
+        typingInfo.state === 'recording' ? 'recording audio...' : 'typing...';
       indicatorEl.textContent = text;
       indicatorEl.classList.remove('hidden');
       console.log('Showing typing indicator:', text);
@@ -2649,20 +3666,23 @@ class WhatsAppClient {
 
   // Update contact list to show typing preview
   updateContactTypingPreview(chatId) {
-    const contactItem = document.querySelector(`.contact-item[data-contact-id="${chatId}"]`);
+    const contactItem = document.querySelector(
+      `.contact-item[data-contact-id="${chatId}"]`,
+    );
     if (!contactItem) return;
-    
+
     const previewEl = contactItem.querySelector('.preview-text');
     if (!previewEl) return;
-    
+
     const typingInfo = this.typingState.get(chatId);
-    
+
     if (typingInfo) {
-      const text = typingInfo.state === 'recording' ? 'recording audio...' : 'typing...';
+      const text =
+        typingInfo.state === 'recording' ? 'recording audio...' : 'typing...';
       previewEl.innerHTML = `<span class="typing-preview">${text}</span>`;
     } else {
       // Restore the original preview
-      const contact = this.contacts.find(c => c.id === chatId);
+      const contact = this.contacts.find((c) => c.id === chatId);
       if (contact) {
         const messages = this.messages.get(chatId) || [];
         const lastMessage = this.getLastDisplayableMessage(messages);
@@ -2675,8 +3695,8 @@ class WhatsAppClient {
   // Update contact in the list
   updateContactInList(message) {
     // Find or create contact
-    let contact = this.contacts.find(c => c.id === message.contactId);
-    
+    let contact = this.contacts.find((c) => c.id === message.contactId);
+
     if (!contact) {
       // Use contactName (the chat/contact name) not senderName
       contact = {
@@ -2685,23 +3705,30 @@ class WhatsAppClient {
         phone: message.contactPhone,
         type: message.chatType,
         lastMessageTime: message.timestamp,
-        unreadCount: 0
+        unreadCount: 0,
       };
       this.contacts.push(contact);
     } else {
-      contact.lastMessageTime = Math.max(contact.lastMessageTime, message.timestamp);
+      contact.lastMessageTime = Math.max(
+        contact.lastMessageTime,
+        message.timestamp,
+      );
       // Only update name if we have a better one from contactName (not senderName!)
       // contactName is the stable chat name (other person for DMs, group name for groups)
-      if (message.contactName && message.contactName !== message.contactPhone && !contact.name) {
+      if (
+        message.contactName &&
+        message.contactName !== message.contactPhone &&
+        !contact.name
+      ) {
         contact.name = message.contactName;
       }
     }
-    
+
     // Increment unread if not from me and not currently viewing
     if (!message.isFromMe && !message.is_from_me) {
       contact.unreadCount = (contact.unreadCount || 0) + 1;
     }
-    
+
     // Batch contact list updates during reconnect/history sync.
     this.scheduleRenderContacts();
   }
@@ -2710,9 +3737,11 @@ class WhatsAppClient {
   async loadContacts() {
     try {
       const response = await this.apiFetch('/api/contacts', {
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
       });
-      this.contacts = (await response.json()).map(contact => this.applyStoredContactMetadata(contact));
+      this.contacts = (await response.json()).map((contact) =>
+        this.applyStoredContactMetadata(contact),
+      );
       this.syncInboxControls();
       this.renderContacts();
       return true;
@@ -2743,11 +3772,14 @@ class WhatsAppClient {
     this.avatarFetching.add(jid);
 
     try {
-      const response = await this.apiFetch(`/api/avatar/${encodeURIComponent(jid)}`, {
-        headers: this.getAuthHeaders()
-      });
+      const response = await this.apiFetch(
+        `/api/avatar/${encodeURIComponent(jid)}`,
+        {
+          headers: this.getAuthHeaders(),
+        },
+      );
       const data = await response.json();
-      
+
       if (data.url) {
         this.avatarCache.set(jid, data.url);
         // Update any visible avatars for this contact
@@ -2763,9 +3795,11 @@ class WhatsAppClient {
   // Update avatar display for a specific JID
   updateAvatarDisplay(jid, url) {
     const initial = this.getInitial(jid);
-    
+
     // Update in contacts list
-    const contactItem = document.querySelector(`.contact-item[data-contact-id="${jid}"] .avatar`);
+    const contactItem = document.querySelector(
+      `.contact-item[data-contact-id="${jid}"] .avatar`,
+    );
     if (contactItem) {
       contactItem.innerHTML = this.renderAvatarImage(url, initial);
     }
@@ -2781,7 +3815,7 @@ class WhatsAppClient {
 
   // Get initial for a contact by JID
   getInitial(jid) {
-    const contact = this.contacts.find(c => c.id === jid);
+    const contact = this.contacts.find((c) => c.id === jid);
     return (contact?.name || contact?.phone || '?').charAt(0).toUpperCase();
   }
 
@@ -2793,7 +3827,7 @@ class WhatsAppClient {
   renderContacts() {
     const container = document.getElementById('contacts-list');
     this.renderVisitorDashboard();
-    
+
     if (this.contacts.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
@@ -2814,55 +3848,64 @@ class WhatsAppClient {
           <button id="inbox-reset-empty" class="sidebar-reset-button">Reset inbox filters</button>
         </div>
       `;
-      document.getElementById('inbox-reset-empty')?.addEventListener('click', () => this.clearInboxFilters());
+      document
+        .getElementById('inbox-reset-empty')
+        ?.addEventListener('click', () => this.clearInboxFilters());
       return;
     }
 
-    container.innerHTML = sorted.map(contact => {
-      const isGroup = contact.type === 'group';
-      const isPinned = contact.pinnedAt != null;
-      const displayName = this.getContactDisplayName(contact);
-      const initial = (displayName || '?').charAt(0).toUpperCase();
-      const time = this.formatTime(contact.lastMessageTime);
-      const isActive = contact.id === this.currentContactId;
-      const unread = contact.unreadCount > 0 ? 
-        `<span class="unread-badge">${contact.unreadCount}</span>` : '';
-      
-      // Get last message preview - prefer saved drafts, then cached messages, then backend preview
-      const messages = this.messages.get(contact.id) || [];
-      const lastMessage = this.getLastDisplayableMessage(messages);
-      const draftPreview = getDraftPreview(this.drafts, contact.id);
-      let preview = '';
-      let previewClass = draftPreview ? 'preview-text draft-preview' : 'preview-text';
-      
-      if (draftPreview) {
-        preview = draftPreview;
-      } else if (lastMessage) {
-        // Use locally cached message for preview
-        preview = this.getMessagePreview(lastMessage);
-        // For groups, prefix with sender name if not from me
-        if (isGroup && !lastMessage.isFromMe && lastMessage.senderName) {
-          const senderFirst = lastMessage.senderName.split(' ')[0];
-          if (!preview.startsWith('You: ')) {
-            preview = `${senderFirst}: ${preview}`;
+    container.innerHTML = sorted
+      .map((contact) => {
+        const isGroup = contact.type === 'group';
+        const isPinned = contact.pinnedAt != null;
+        const displayName = this.getContactDisplayName(contact);
+        const initial = (displayName || '?').charAt(0).toUpperCase();
+        const time = this.formatTime(contact.lastMessageTime);
+        const isActive = contact.id === this.currentContactId;
+        const unread =
+          contact.unreadCount > 0
+            ? `<span class="unread-badge">${contact.unreadCount}</span>`
+            : '';
+
+        // Get last message preview - prefer saved drafts, then cached messages, then backend preview
+        const messages = this.messages.get(contact.id) || [];
+        const lastMessage = this.getLastDisplayableMessage(messages);
+        const draftPreview = getDraftPreview(this.drafts, contact.id);
+        let preview = '';
+        let previewClass = draftPreview
+          ? 'preview-text draft-preview'
+          : 'preview-text';
+
+        if (draftPreview) {
+          preview = draftPreview;
+        } else if (lastMessage) {
+          // Use locally cached message for preview
+          preview = this.getMessagePreview(lastMessage);
+          // For groups, prefix with sender name if not from me
+          if (isGroup && !lastMessage.isFromMe && lastMessage.senderName) {
+            const senderFirst = lastMessage.senderName.split(' ')[0];
+            if (!preview.startsWith('You: ')) {
+              preview = `${senderFirst}: ${preview}`;
+            }
           }
+        } else if (contact.lastMessagePreview) {
+          // Fall back to server-provided preview (used before messages are loaded)
+          preview = contact.lastMessagePreview;
         }
-      } else if (contact.lastMessagePreview) {
-        // Fall back to server-provided preview (used before messages are loaded)
-        preview = contact.lastMessagePreview;
-      }
-      
-      // Check for cached avatar
-      const avatarUrl = this.avatarCache.get(contact.id);
-      const avatarContent = avatarUrl 
-        ? this.renderAvatarImage(avatarUrl, initial)
-        : `<span>${this.escapeHtml(initial)}</span>`;
-      
-      // Group indicator (fold mark in corner)
-      const groupIndicator = isGroup ? '<div class="group-indicator"></div>' : '';
-      
-      // Pin button (shows on hover, filled when pinned)
-      const pinButton = `
+
+        // Check for cached avatar
+        const avatarUrl = this.avatarCache.get(contact.id);
+        const avatarContent = avatarUrl
+          ? this.renderAvatarImage(avatarUrl, initial)
+          : `<span>${this.escapeHtml(initial)}</span>`;
+
+        // Group indicator (fold mark in corner)
+        const groupIndicator = isGroup
+          ? '<div class="group-indicator"></div>'
+          : '';
+
+        // Pin button (shows on hover, filled when pinned)
+        const pinButton = `
         <button class="pin-button ${isPinned ? 'pinned' : ''}" 
                 type="button"
                 data-contact-action="toggle-pin"
@@ -2873,8 +3916,8 @@ class WhatsAppClient {
           </svg>
         </button>
       `;
-      
-      return `
+
+        return `
         <div class="contact-item ${isActive ? 'active' : ''} ${isGroup ? 'is-group' : ''} ${isPinned ? 'is-pinned' : ''}" data-contact-id="${contact.id}">
           <div class="avatar-container">
             <div class="avatar">
@@ -2897,15 +3940,18 @@ class WhatsAppClient {
           </div>
         </div>
       `;
-    }).join('');
+      })
+      .join('');
 
     // Fetch avatars lazily for just the visible contact rows after the list renders.
-    const visibleContacts = Array.from(container.querySelectorAll('.contact-item[data-contact-id]'))
+    const visibleContacts = Array.from(
+      container.querySelectorAll('.contact-item[data-contact-id]'),
+    )
       .slice(0, 24)
-      .map(el => el.dataset.contactId)
+      .map((el) => el.dataset.contactId)
       .filter(Boolean);
 
-    visibleContacts.forEach(contactId => this.fetchAvatar(contactId));
+    visibleContacts.forEach((contactId) => this.fetchAvatar(contactId));
     this.scheduleMetadataRefresh();
   }
 
@@ -2913,7 +3959,8 @@ class WhatsAppClient {
   getMessagePreview(message) {
     const isFromMe = message.isFromMe || message.is_from_me;
     const isTranslated = message.isTranslated || message.is_translated;
-    const translatedText = message.translatedText || message.translated_text || '';
+    const translatedText =
+      message.translatedText || message.translated_text || '';
     const originalText = message.originalText || message.original_text || '';
     const prefix = isFromMe ? 'You: ' : '';
     const content = message.content || {};
@@ -2927,14 +3974,22 @@ class WhatsAppClient {
       if (isTranslated && !isFromMe && translatedText) return translatedText;
       return content.caption || '';
     };
-    
+
     switch (content.type) {
       case 'text':
         return prefix + bodyText().substring(0, 50);
       case 'image':
-        return prefix + '[ Image ]' + (captionText() ? ' ' + captionText().substring(0, 30) : '');
+        return (
+          prefix +
+          '[ Image ]' +
+          (captionText() ? ' ' + captionText().substring(0, 30) : '')
+        );
       case 'video':
-        return prefix + '[ Video ]' + (captionText() ? ' ' + captionText().substring(0, 30) : '');
+        return (
+          prefix +
+          '[ Video ]' +
+          (captionText() ? ' ' + captionText().substring(0, 30) : '')
+        );
       case 'audio':
         return prefix + (content.isVoiceNote ? '[ Voice Note ]' : '[ Audio ]');
       case 'document':
@@ -2958,7 +4013,9 @@ class WhatsAppClient {
     const isFromMe = message.isFromMe || message.is_from_me;
 
     if (isFromMe) {
-      const myPhone = document.getElementById('user-phone')?.textContent?.replace('+', '') || '';
+      const myPhone =
+        document.getElementById('user-phone')?.textContent?.replace('+', '') ||
+        '';
       return myPhone ? `${myPhone}@s.whatsapp.net` : '';
     }
 
@@ -2967,7 +4024,9 @@ class WhatsAppClient {
 
     const senderPhone = message.senderPhone || message.sender_phone || '';
     if (!senderPhone) return '';
-    return senderPhone.includes('@') ? senderPhone : `${senderPhone}@s.whatsapp.net`;
+    return senderPhone.includes('@')
+      ? senderPhone
+      : `${senderPhone}@s.whatsapp.net`;
   }
 
   getLatestIncomingMessage(contactId) {
@@ -2983,46 +4042,84 @@ class WhatsAppClient {
 
   async markViewedMessages(contactId, messageIds) {
     if (this.demoMode) return;
-    const response = await this.apiFetch(`/api/contacts/${encodeURIComponent(contactId)}/read`, {
-      method: 'POST', headers: {'Content-Type': 'application/json', ...this.getAuthHeaders()},
-      body: JSON.stringify({messageIds}),
-    });
+    const response = await this.apiFetch(
+      `/api/contacts/${encodeURIComponent(contactId)}/read`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getAuthHeaders(),
+        },
+        body: JSON.stringify({ messageIds }),
+      },
+    );
     if (!response.ok) throw new Error('Unable to record viewed messages');
     const result = await response.json();
     if (!result.success) throw new Error('Unable to record viewed messages');
-    const contact = this.contacts.find(c => c.id === contactId);
-    if (contact) { contact.unreadCount = result.unreadCount; this.scheduleRenderContacts(); }
+    const contact = this.contacts.find((c) => c.id === contactId);
+    if (contact) {
+      contact.unreadCount = result.unreadCount;
+      this.scheduleRenderContacts();
+    }
   }
 
   startViewedMessageTracking() {
     const tracker = new ViewedMessageTracker({
       send: (chat, ids) => this.markViewedMessages(chat, ids),
       pending: this.loadStoredJson('wa_pending_viewed_messages_v1'),
-      save: pending => { if (!this.demoMode) localStorage.setItem('wa_pending_viewed_messages_v1', JSON.stringify(pending)); },
+      save: (pending) => {
+        if (!this.demoMode)
+          localStorage.setItem(
+            'wa_pending_viewed_messages_v1',
+            JSON.stringify(pending),
+          );
+      },
     });
     this.viewedMessageTracker = tracker;
     let retryAt = 0;
     this.viewedMessagesTimer = setInterval(() => {
       const root = document.getElementById('messages-list');
       const chatView = document.getElementById('chat-view');
-      const covered = [...document.querySelectorAll('.modal')].some(el => !el.classList.contains('hidden') && el.getBoundingClientRect().height > 0);
-      const active = document.visibilityState === 'visible' && document.hasFocus() && !covered
-        && root && chatView && !chatView.classList.contains('hidden') && !!this.currentContactId;
+      const covered = [...document.querySelectorAll('.modal')].some(
+        (el) =>
+          !el.classList.contains('hidden') &&
+          el.getBoundingClientRect().height > 0,
+      );
+      const active =
+        document.visibilityState === 'visible' &&
+        document.hasFocus() &&
+        !covered &&
+        root &&
+        chatView &&
+        !chatView.classList.contains('hidden') &&
+        !!this.currentContactId;
       const visible = [];
       if (active) {
         const clip = root.getBoundingClientRect();
-        const viewport = {top: Math.max(0, clip.top), bottom: Math.min(window.innerHeight, clip.bottom), left: Math.max(0, clip.left), right: Math.min(window.innerWidth, clip.right)};
-        for (const node of root.querySelectorAll('.message.incoming[data-message-id]')) {
-          if (!isMessageVisible(node.getBoundingClientRect(), viewport)) continue;
-          const message = (this.messages.get(this.currentContactId) || []).find(m => m.id === node.dataset.messageId);
+        const viewport = {
+          top: Math.max(0, clip.top),
+          bottom: Math.min(window.innerHeight, clip.bottom),
+          left: Math.max(0, clip.left),
+          right: Math.min(window.innerWidth, clip.right),
+        };
+        for (const node of root.querySelectorAll(
+          '.message.incoming[data-message-id]',
+        )) {
+          if (!isMessageVisible(node.getBoundingClientRect(), viewport))
+            continue;
+          const message = (this.messages.get(this.currentContactId) || []).find(
+            (m) => m.id === node.dataset.messageId,
+          );
           if (message) visible.push(message);
         }
       }
       const now = Date.now();
-      tracker.sample(visible, {active, now});
+      tracker.sample(visible, { active, now });
       if (!this.demoMode && now >= retryAt) {
         retryAt = now + 1000;
-        tracker.flush().catch(() => { retryAt = Date.now() + 10000; });
+        tracker.flush().catch(() => {
+          retryAt = Date.now() + 10000;
+        });
       }
     }, 200);
   }
@@ -3033,40 +4130,49 @@ class WhatsAppClient {
       this.closeCommandPalette();
       this.currentContactId = contactId;
       this.topics?.selectChat();
-      void this.conversationSettingsClient.load(contactId).catch(error => console.warn(error.message));
+      void this.conversationSettingsClient
+        .load(contactId)
+        .catch((error) => console.warn(error.message));
       this.messageSearchQuery = '';
       this.starredOnly = false;
-      
+
       // Clear any pending reply from previous chat
       this.clearReply();
-      
-      const contact = this.contacts.find(c => c.id === contactId);
-      
+
+      const contact = this.contacts.find((c) => c.id === contactId);
+
       // Update UI
       document.getElementById('no-chat-selected').classList.add('hidden');
       document.getElementById('chat-view').classList.remove('hidden');
-      
+
       // Add chat-open class for mobile view
       document.getElementById('main-container').classList.add('chat-open');
-      
+
       // Push history state for mobile back button
       if (this.isMobile()) {
-        history.pushState({ chat: contactId }, '', `?chat=${encodeURIComponent(contactId)}`);
+        history.pushState(
+          { chat: contactId },
+          '',
+          `?chat=${encodeURIComponent(contactId)}`,
+        );
       }
-      
+
       // Update chat header
       if (contact) {
         const displayName = this.getContactDisplayName(contact);
         document.getElementById('chat-name').textContent = displayName;
-        
+
         const initial = (displayName || '?').charAt(0).toUpperCase();
         // Get avatar container - it's the .avatar element in .chat-header
         const avatarContainer = document.querySelector('.chat-header .avatar');
         const avatarUrl = this.avatarCache.get(contactId);
-        
+
         if (avatarContainer) {
           if (avatarUrl) {
-            avatarContainer.innerHTML = this.renderAvatarImage(avatarUrl, initial);
+            avatarContainer.innerHTML = this.renderAvatarImage(
+              avatarUrl,
+              initial,
+            );
           } else {
             avatarContainer.innerHTML = `<span>${this.escapeHtml(initial)}</span>`;
             // Fetch avatar if not cached
@@ -3080,9 +4186,13 @@ class WhatsAppClient {
 
       const cachedMessages = this.messages.get(contactId);
       if (cachedMessages && cachedMessages.length > 0) {
-        const normalizedMessages = this.normalizeLoadedMessages(contactId, cachedMessages);
+        const normalizedMessages = this.normalizeLoadedMessages(
+          contactId,
+          cachedMessages,
+        );
         this.messages.set(contactId, normalizedMessages);
-        const visibleMessages = this.getRecentVisibleMessages(normalizedMessages);
+        const visibleMessages =
+          this.getRecentVisibleMessages(normalizedMessages);
         if (visibleMessages.length !== normalizedMessages.length) {
           this.messages.set(contactId, visibleMessages);
           this.messagesHasMore.set(contactId, true);
@@ -3094,10 +4204,8 @@ class WhatsAppClient {
         await this.loadMessages(contactId);
       }
 
-
-
       this.scheduleConversationUsageFetch(contactId);
-      
+
       // Re-render contacts to update active state and unread
       this.scheduleRenderContacts();
       this.restoreDraftForCurrentContact();
@@ -3111,7 +4219,7 @@ class WhatsAppClient {
       this.updateChatHeaderNote();
       this.updateWorkspaceUI();
       this.renderComposerAssist();
-      
+
       // Update send button state and focus input (only on desktop)
       this.updateSendButton();
       if (!this.isMobile()) {
@@ -3221,17 +4329,23 @@ class WhatsAppClient {
         return;
       }
 
-      const response = await this.apiFetch(`/api/messages/${encodeURIComponent(contactId)}?limit=${this.initialMessageLimit}`, {
-        headers: this.getAuthHeaders()
-      });
+      const response = await this.apiFetch(
+        `/api/messages/${encodeURIComponent(contactId)}?limit=${this.initialMessageLimit}`,
+        {
+          headers: this.getAuthHeaders(),
+        },
+      );
       const data = await response.json();
-      
+
       // Handle both old format (array) and new format (object with messages/hasMore)
       const messages = Array.isArray(data) ? data : data.messages;
       const hasMore = Array.isArray(data) ? false : data.hasMore;
 
-      const normalizedMessages = this.normalizeLoadedMessages(contactId, messages);
-      
+      const normalizedMessages = this.normalizeLoadedMessages(
+        contactId,
+        messages,
+      );
+
       this.messages.set(contactId, normalizedMessages);
       this.messagesHasMore.set(contactId, hasMore);
       if (hasMore) {
@@ -3242,7 +4356,7 @@ class WhatsAppClient {
       if (contactId === this.currentContactId) {
         this.renderMessages(this.getVisibleMessagesForCurrentConversation());
       }
-      
+
       // Set up scroll handler for infinite scroll
       if (contactId === this.currentContactId) {
         this.setupScrollHandler();
@@ -3261,13 +4375,19 @@ class WhatsAppClient {
 
     try {
       this.messagesLoading.set(contactId, true);
-      const response = await this.apiFetch(`/api/messages/${encodeURIComponent(contactId)}?limit=0`, {
-        headers: this.getAuthHeaders()
-      });
+      const response = await this.apiFetch(
+        `/api/messages/${encodeURIComponent(contactId)}?limit=0`,
+        {
+          headers: this.getAuthHeaders(),
+        },
+      );
       const data = await response.json();
       const messages = Array.isArray(data) ? data : data.messages;
 
-      const normalizedMessages = this.normalizeLoadedMessages(contactId, messages);
+      const normalizedMessages = this.normalizeLoadedMessages(
+        contactId,
+        messages,
+      );
 
       this.messages.set(contactId, normalizedMessages);
       this.messagesHasMore.set(contactId, false);
@@ -3281,42 +4401,49 @@ class WhatsAppClient {
 
   // Load older messages (for infinite scroll)
   async loadOlderMessages(contactId) {
-    if (this.topics?.selectedId) { await this.topics.loadOlder(); return; }
+    if (this.topics?.selectedId) {
+      await this.topics.loadOlder();
+      return;
+    }
     // Don't load if already loading or no more messages
     if (this.messagesLoading.get(contactId)) return;
     if (!this.messagesHasMore.get(contactId)) return;
-    
+
     const existingMessages = this.messages.get(contactId) || [];
     if (existingMessages.length === 0) return;
-    
+
     // Get the oldest message cursor
     const oldestMessage = existingMessages[0];
     const oldestTimestamp = oldestMessage.timestamp;
     const olderParams = new URLSearchParams({
       before: String(oldestTimestamp),
-      limit: '50'
+      limit: '50',
     });
     if (oldestMessage.id) {
       olderParams.set('beforeId', oldestMessage.id);
     }
-    
+
     try {
       this.messagesLoading.set(contactId, true);
       this.showLoadingIndicator();
-      
+
       const response = await this.apiFetch(
         `/api/messages/${encodeURIComponent(contactId)}?${olderParams.toString()}`,
         {
-          headers: this.getAuthHeaders()
-        }
+          headers: this.getAuthHeaders(),
+        },
       );
       const data = await response.json();
-      
+
       const olderMessages = Array.isArray(data) ? data : data.messages;
       const hasMore = Array.isArray(data) ? false : data.hasMore;
 
-      const normalizedOlderMessages = this.normalizeLoadedMessages(contactId, olderMessages, existingMessages);
-      
+      const normalizedOlderMessages = this.normalizeLoadedMessages(
+        contactId,
+        olderMessages,
+        existingMessages,
+      );
+
       if (normalizedOlderMessages.length > 0) {
         // Prepend older messages
         const allMessages = [...normalizedOlderMessages, ...existingMessages];
@@ -3325,7 +4452,7 @@ class WhatsAppClient {
         if (!hasMore) {
           this.fullyLoadedContacts.add(contactId);
         }
-        
+
         // Re-render and maintain scroll position
         if (this.messageSearchQuery || this.starredOnly) {
           this.refreshCurrentConversationView();
@@ -3353,10 +4480,10 @@ class WhatsAppClient {
   setupScrollHandler() {
     const container = document.getElementById('messages-list');
     if (!container) return;
-    
+
     // Remove existing handler if any
     container.removeEventListener('scroll', this.handleMessagesScroll);
-    
+
     // Add scroll handler
     this.handleMessagesScroll = () => {
       // Load more when scrolled near the top (within 200px)
@@ -3365,7 +4492,7 @@ class WhatsAppClient {
       }
       this.scheduleLinkPreviewLoad(container);
     };
-    
+
     container.addEventListener('scroll', this.handleMessagesScroll);
   }
 
@@ -3373,15 +4500,16 @@ class WhatsAppClient {
   showLoadingIndicator() {
     const container = document.getElementById('messages-list');
     if (!container) return;
-    
+
     // Remove existing indicator
     const existing = container.querySelector('.loading-more-indicator');
     if (existing) existing.remove();
-    
+
     // Add new indicator at top
     const indicator = document.createElement('div');
     indicator.className = 'loading-more-indicator';
-    indicator.innerHTML = '<div class="loading-spinner"></div><span>Loading older messages...</span>';
+    indicator.innerHTML =
+      '<div class="loading-spinner"></div><span>Loading older messages...</span>';
     container.insertBefore(indicator, container.firstChild);
   }
 
@@ -3394,17 +4522,19 @@ class WhatsAppClient {
   // Prepend older messages to the list (maintaining scroll position)
   prependMessages(olderMessages) {
     const container = document.getElementById('messages-list');
-    const displayMessages = (olderMessages || []).filter(message => this.isDisplayableMessage(message));
+    const displayMessages = (olderMessages || []).filter((message) =>
+      this.isDisplayableMessage(message),
+    );
     if (!container || displayMessages.length === 0) return;
-    
+
     // Remember scroll position from bottom
     const scrollHeightBefore = container.scrollHeight;
     const scrollTopBefore = container.scrollTop;
-    
+
     // Build HTML for older messages
     let html = '';
     let lastDate = null;
-    
+
     for (const message of displayMessages) {
       const messageDate = new Date(message.timestamp).toDateString();
       if (messageDate !== lastDate) {
@@ -3413,23 +4543,30 @@ class WhatsAppClient {
       }
       html += this.renderMessage(message);
     }
-    
+
     // Remove loading indicator and first date separator if it will be duplicated
     const firstDateSep = container.querySelector('.date-separator');
     if (firstDateSep && displayMessages.length > 0) {
       // Check if dates match (approximately)
-      if (firstDateSep.textContent.includes(this.formatDate(displayMessages[displayMessages.length - 1].timestamp).split(',')[0])) {
+      if (
+        firstDateSep.textContent.includes(
+          this.formatDate(
+            displayMessages[displayMessages.length - 1].timestamp,
+          ).split(',')[0],
+        )
+      ) {
         firstDateSep.remove();
       }
     }
-    
+
     // Insert at the beginning
     container.insertAdjacentHTML('afterbegin', html);
-    
+
     // Restore scroll position (keep viewing the same messages)
     const scrollHeightAfter = container.scrollHeight;
-    container.scrollTop = scrollTopBefore + (scrollHeightAfter - scrollHeightBefore);
-    
+    container.scrollTop =
+      scrollTopBefore + (scrollHeightAfter - scrollHeightBefore);
+
     // Load link previews after the DOM settles
     this.scheduleLinkPreviewLoad(container);
   }
@@ -3437,22 +4574,27 @@ class WhatsAppClient {
   // Render messages
   renderMessages(messages) {
     const container = document.getElementById('messages-list');
-    if (this.topics?.selectedId) messages = this.getVisibleMessagesForCurrentConversation();
-    const displayMessages = (messages || []).filter(message => this.isDisplayableMessage(message));
-    
+    if (this.topics?.selectedId)
+      messages = this.getVisibleMessagesForCurrentConversation();
+    const displayMessages = (messages || []).filter((message) =>
+      this.isDisplayableMessage(message),
+    );
+
     if (displayMessages.length === 0) {
       const emptyMessage = this.messageSearchQuery
         ? 'No messages match your search yet'
-        : (this.starredOnly ? 'No starred messages in this conversation yet' : 'No messages yet');
+        : this.starredOnly
+          ? 'No starred messages in this conversation yet'
+          : 'No messages yet';
       container.innerHTML = `<div class="empty-state"><p>${this.escapeHtml(emptyMessage)}</p></div>`;
       this.updateChatSearchUI();
       this.renderComposerAssist();
       return;
     }
-    
+
     let html = '';
     let lastDate = null;
-    
+
     for (const message of displayMessages) {
       // Add date separator if needed
       const messageDate = new Date(message.timestamp).toDateString();
@@ -3460,13 +4602,13 @@ class WhatsAppClient {
         html += `<div class="date-separator"><span>${this.formatDate(message.timestamp)}</span></div>`;
         lastDate = messageDate;
       }
-      
+
       html += this.renderMessage(message);
     }
-    
+
     container.innerHTML = html;
     this.scrollToBottom();
-    
+
     // Defer previews until after the first paint.
     this.scheduleLinkPreviewLoad(container);
     this.updateChatSearchUI();
@@ -3475,15 +4617,22 @@ class WhatsAppClient {
 
   // Load link previews for messages near the viewport.
   loadVisibleLinkPreviews(root = document) {
-    const containers = root.querySelectorAll('.link-previews-container[data-urls]');
-    containers.forEach(container => {
-      if (container.dataset.previewLoaded === 'true' || container.dataset.previewLoading === 'true') {
+    const containers = root.querySelectorAll(
+      '.link-previews-container[data-urls]',
+    );
+    containers.forEach((container) => {
+      if (
+        container.dataset.previewLoaded === 'true' ||
+        container.dataset.previewLoading === 'true'
+      ) {
         return;
       }
 
       const rect = container.getBoundingClientRect();
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-      const isNearViewport = rect.bottom >= -300 && rect.top <= viewportHeight + 600;
+      const viewportHeight =
+        window.innerHeight || document.documentElement.clientHeight || 0;
+      const isNearViewport =
+        rect.bottom >= -300 && rect.top <= viewportHeight + 600;
       if (!isNearViewport) {
         return;
       }
@@ -3508,30 +4657,35 @@ class WhatsAppClient {
     const isTranslated = message.isTranslated || message.is_translated;
     const time = `${message.content?.edited_at_ms ? 'Edited ' : ''}${this.formatMessageTime(message.timestamp)}`;
     const content = this.renderContent(message);
-    
+
     let forwarded = '';
     if (message.isForwarded || message.is_forwarded) {
       forwarded = '<div class="message-forwarded">Forwarded</div>';
     }
-    
+
     let sender = '';
-    if (!isOutgoing && (message.chatType === 'group' || message.chat_type === 'group')) {
+    if (
+      !isOutgoing &&
+      (message.chatType === 'group' || message.chat_type === 'group')
+    ) {
       sender = `<div class="message-sender">${this.escapeHtml(message.senderName || message.sender_name || message.senderPhone || message.sender_phone)}</div>`;
     }
 
     // Translation indicator
     let translationIndicator = '';
     if (isTranslated) {
-      const sourceLanguage = message.sourceLanguage || message.source_language || 'Unknown';
+      const sourceLanguage =
+        message.sourceLanguage || message.source_language || 'Unknown';
       const showTranslatedPrimary = Boolean(
-        message.content?.showTranslatedPrimary || message.content?.show_translated_primary
+        message.content?.showTranslatedPrimary ||
+        message.content?.show_translated_primary,
       );
-      
+
       // Tooltip shows the "other" version:
       // - Outgoing: show translated_text (what was sent to them in foreign language)
       // - Incoming: show original_text (what they sent in foreign language)
       let tooltipText, tooltipHeader, languageLabel;
-      
+
       if (isOutgoing && showTranslatedPrimary) {
         tooltipText = message.originalText || message.original_text || '';
         tooltipHeader = 'Original draft';
@@ -3547,7 +4701,7 @@ class WhatsAppClient {
         tooltipHeader = 'Original message';
         languageLabel = sourceLanguage;
       }
-      
+
       translationIndicator = `
         <span class="translation-indicator" data-message-action="toggle-translation-tooltip">
           <span class="info-icon">i</span>
@@ -3560,41 +4714,45 @@ class WhatsAppClient {
         </span>
       `;
     }
-    
+
     // Get message metadata for reactions
     const messageId = message.id;
     const senderJid = this.getMessageSenderJid(message);
-    const contactId = message.contactId || message.contact_id || this.currentContactId;
+    const contactId =
+      message.contactId || message.contact_id || this.currentContactId;
     const starred = isMessageStarred(this.starredMessages, messageId);
     const messageIdAttr = this.escapeHtml(messageId);
     const senderJidAttr = this.escapeHtml(senderJid);
     const contactIdAttr = this.escapeHtml(contactId);
-    
+
     // Check if message can be translated (incoming, has text, not already translated)
-    const hasText = message.content && (message.content.body || message.content.caption || message.content.text);
+    const hasText =
+      message.content &&
+      (message.content.body || message.content.caption || message.content.text);
     const canTranslate = !isOutgoing && hasText && !isTranslated;
-    
+
     // Translate button (for untranslated incoming messages)
     const translateButton = `
       <button class="message-action-btn translate-button ${canTranslate ? 'can-translate' : ''}" 
               type="button"
               data-message-action="translate"
               data-message-id="${messageIdAttr}"
-              title="${isTranslated ? 'Already translated' : (canTranslate ? 'Translate' : 'No text to translate')}">
+              title="${isTranslated ? 'Already translated' : canTranslate ? 'Translate' : 'No text to translate'}">
         <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>
       </button>
     `;
-    
+
     // Reply button
     const replyButton = `
       <button class="message-action-btn" type="button" data-message-action="reply" data-message-id="${messageIdAttr}" title="Reply">
         <svg viewBox="0 0 24 24"><path fill="currentColor" d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
       </button>
     `;
-    
+
     // AI Reply button (only for incoming messages with text content)
     const canAIReply = !isOutgoing && hasText;
-    const aiReplyButton = canAIReply ? `
+    const aiReplyButton = canAIReply
+      ? `
       <button class="message-action-btn ai-reply-btn" 
               type="button"
               data-message-action="ai-reply"
@@ -3605,8 +4763,9 @@ class WhatsAppClient {
         </svg>
         <span class="ai-sparkle">✨</span>
       </button>
-    ` : '';
-    
+    `
+      : '';
+
     // Reaction button with quick emoji picker
     const reactionButton = `
       <div class="reaction-button-container">
@@ -3633,7 +4792,7 @@ class WhatsAppClient {
         <svg viewBox="0 0 24 24"><path fill="currentColor" d="m12 17.27 6.18 3.73-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
       </button>
     `;
-    
+
     // Quoted message (reply context)
     let quotedMessage = '';
     if (message.replyContext) {
@@ -3645,11 +4804,13 @@ class WhatsAppClient {
         </div>
       `;
     }
-    
+
     // Reactions display
     const reactionsHtml = this.renderReactions(message.reactions);
-    const starredBadge = starred ? '<span class="message-starred-badge" title="Starred">★</span>' : '';
-    
+    const starredBadge = starred
+      ? '<span class="message-starred-badge" title="Starred">★</span>'
+      : '';
+
     return `
       <div class="message ${isOutgoing ? 'outgoing' : 'incoming'}" data-message-id="${messageIdAttr}">
         ${forwarded}
@@ -3681,9 +4842,9 @@ class WhatsAppClient {
     const isTranslated = message.is_translated || message.isTranslated;
     const isFromMe = message.isFromMe || message.is_from_me;
     const showTranslatedPrimary = Boolean(
-      content?.showTranslatedPrimary || content?.show_translated_primary
+      content?.showTranslatedPrimary || content?.show_translated_primary,
     );
-    
+
     // Display logic - always show MY language (English) in the bubble:
     // - Outgoing translated: show original_text (English - what I typed)
     // - Outgoing non-translated: show content.body (English - what I typed)
@@ -3691,18 +4852,33 @@ class WhatsAppClient {
     // - Incoming non-translated: show content.body/caption (already English)
     let displayText;
     let displayCaption;
-    
+
     if (isTranslated && isFromMe && showTranslatedPrimary) {
-      displayText = message.translated_text || message.translatedText || content.body || content.text || '';
-      displayCaption = content.caption ? (message.translated_text || message.translatedText || content.caption) : null;
+      displayText =
+        message.translated_text ||
+        message.translatedText ||
+        content.body ||
+        content.text ||
+        '';
+      displayCaption = content.caption
+        ? message.translated_text || message.translatedText || content.caption
+        : null;
     } else if (isTranslated && isFromMe) {
       // Outgoing translated: show original_text (English - what I typed)
-      displayText = message.original_text || message.originalText || content.body || content.text || '';
-      displayCaption = content.caption ? (message.original_text || message.originalText || content.caption) : null;
+      displayText =
+        message.original_text ||
+        message.originalText ||
+        content.body ||
+        content.text ||
+        '';
+      displayCaption = content.caption
+        ? message.original_text || message.originalText || content.caption
+        : null;
     } else if (isTranslated && !isFromMe) {
       // Incoming translated: show the English translation
       // translated_text contains the translated body or caption
-      const translatedContent = message.translated_text || message.translatedText || '';
+      const translatedContent =
+        message.translated_text || message.translatedText || '';
       displayText = translatedContent || content.body || content.text || '';
       // For media with captions, the translated_text IS the translated caption
       displayCaption = content.caption ? translatedContent : null;
@@ -3711,29 +4887,33 @@ class WhatsAppClient {
       displayText = content.body || content.text || '';
       displayCaption = content.caption || null;
     }
-    
+
     // Extract URLs for link previews
     const urls = this.extractUrls(displayText);
     const hasUrls = urls.length > 0;
-    
+
     switch (content.type) {
       case 'text':
         // Use single quotes for data-urls attribute since JSON contains double quotes
-        const urlsJson = hasUrls ? JSON.stringify(urls).replace(/'/g, '&#39;') : '';
+        const urlsJson = hasUrls
+          ? JSON.stringify(urls).replace(/'/g, '&#39;')
+          : '';
         return `
           <div class="message-text">${this.linkifyText(displayText)}</div>
           ${hasUrls ? `<div class="link-previews-container" data-urls='${urlsJson}'></div>` : ''}
         `;
-      
+
       case 'image':
         // Check if we have the actual image data or if it needs to be lazy loaded
         const mediaData = content.media_data || content.mediaData;
         const hasMedia = content.has_media || content.hasMedia;
         const messageId = message.id;
         const mimeType = content.mime_type || content.mimeType || 'image/jpeg';
-        
+
         if (mediaData) {
-          const imgSrc = mediaData.startsWith('data:') ? mediaData : `data:${mimeType};base64,${mediaData}`;
+          const imgSrc = mediaData.startsWith('data:')
+            ? mediaData
+            : `data:${mimeType};base64,${mediaData}`;
           return `
             <div class="message-image">
               <img src="${imgSrc}" alt="Image" loading="lazy" data-fullscreen-toggle="true">
@@ -3760,15 +4940,17 @@ class WhatsAppClient {
             ${displayCaption ? `<div class="message-caption">${this.escapeHtml(displayCaption)}</div>` : ''}
           `;
         }
-      
+
       case 'video':
         const videoData = content.media_data || content.mediaData;
         const videoHasMedia = content.has_media || content.hasMedia;
         const videoMsgId = message.id;
         const videoMime = content.mime_type || content.mimeType || 'video/mp4';
-        
+
         if (videoData) {
-          const videoSrc = videoData.startsWith('data:') ? videoData : `data:${videoMime};base64,${videoData}`;
+          const videoSrc = videoData.startsWith('data:')
+            ? videoData
+            : `data:${videoMime};base64,${videoData}`;
           return `
             <div class="message-video">
               <video controls preload="metadata">
@@ -3780,7 +4962,9 @@ class WhatsAppClient {
           `;
         } else if (videoHasMedia) {
           // Media needs to be lazy loaded - show placeholder
-          const durationText = content.duration_seconds ? this.formatDuration(content.duration_seconds) : '';
+          const durationText = content.duration_seconds
+            ? this.formatDuration(content.duration_seconds)
+            : '';
           return `
             <div class="message-video lazy-media" data-message-id="${this.escapeHtml(videoMsgId)}" data-mime-type="${this.escapeHtml(videoMime)}" data-media-type="video">
               <div class="media-placeholder">
@@ -3798,21 +4982,25 @@ class WhatsAppClient {
             ${displayCaption ? `<div class="message-caption">${this.escapeHtml(displayCaption)}</div>` : ''}
           `;
         }
-      
+
       case 'audio':
         const audioData = content.media_data || content.mediaData;
         const audioHasMedia = content.has_media || content.hasMedia;
         const audioMsgId = message.id;
         const audioMime = content.mime_type || content.mimeType || 'audio/ogg';
         const isVoiceNote = content.is_voice_note || content.isVoiceNote;
-        
+
         if (audioData && audioMime === 'audio/mpeg') {
-          const src = audioData.startsWith('data:') ? audioData : `data:audio/mpeg;base64,${audioData}`;
+          const src = audioData.startsWith('data:')
+            ? audioData
+            : `data:audio/mpeg;base64,${audioData}`;
           return `<div class="message-audio ${isVoiceNote ? 'voice-note' : ''}"><audio controls preload="metadata" src="${this.escapeHtml(src)}"></audio></div>`;
         } else if (audioHasMedia || audioData) {
           // Media needs to be lazy loaded - show placeholder
           const audioType = isVoiceNote ? 'voice note' : 'audio';
-          const durationText = content.duration_seconds ? this.formatDuration(content.duration_seconds) : '';
+          const durationText = content.duration_seconds
+            ? this.formatDuration(content.duration_seconds)
+            : '';
           return `
             <div class="message-audio lazy-media ${isVoiceNote ? 'voice-note' : ''}" data-message-id="${this.escapeHtml(audioMsgId)}" data-mime-type="${this.escapeHtml(audioMime)}" data-media-type="audio">
               <div class="media-placeholder">
@@ -3827,16 +5015,19 @@ class WhatsAppClient {
           const audioType = isVoiceNote ? 'Voice Note' : 'Audio';
           return `<div class="message-media audio">[ ${audioType} unavailable ]${content.duration_seconds ? ' - ' + this.formatDuration(content.duration_seconds) : ''}</div>`;
         }
-      
+
       case 'document':
         const docData = content.media_data || content.mediaData;
         const docHasMedia = content.has_media || content.hasMedia;
         const docMsgId = message.id;
         const fileName = content.file_name || content.fileName || 'document';
-        const docMime = content.mime_type || content.mimeType || 'application/octet-stream';
-        
+        const docMime =
+          content.mime_type || content.mimeType || 'application/octet-stream';
+
         if (docData) {
-          const docSrc = docData.startsWith('data:') ? docData : `data:${docMime};base64,${docData}`;
+          const docSrc = docData.startsWith('data:')
+            ? docData
+            : `data:${docMime};base64,${docData}`;
           return `
             <div class="message-document">
               <a href="${docSrc}" download="${this.escapeHtml(fileName)}" class="document-download">
@@ -3853,7 +5044,9 @@ class WhatsAppClient {
           `;
         } else if (docHasMedia) {
           // Media needs to be lazy loaded - show placeholder
-          const sizeText = content.file_size ? this.formatSize(content.file_size) : '';
+          const sizeText = content.file_size
+            ? this.formatSize(content.file_size)
+            : '';
           return `
             <div class="message-document lazy-media" data-message-id="${this.escapeHtml(docMsgId)}" data-mime-type="${this.escapeHtml(docMime)}" data-media-type="document" data-file-name="${this.escapeHtml(fileName)}">
               <div class="media-placeholder document-placeholder">
@@ -3874,16 +5067,19 @@ class WhatsAppClient {
             ${displayCaption ? `<div class="message-caption">${this.escapeHtml(displayCaption)}</div>` : ''}
           `;
         }
-      
+
       case 'sticker':
         const stickerData = content.media_data || content.mediaData;
         const stickerHasMedia = content.has_media || content.hasMedia;
         const stickerMsgId = message.id;
-        const stickerMime = content.mime_type || content.mimeType || 'image/webp';
+        const stickerMime =
+          content.mime_type || content.mimeType || 'image/webp';
         const isAnimated = content.is_animated || content.isAnimated;
-        
+
         if (stickerData) {
-          const stickerSrc = stickerData.startsWith('data:') ? stickerData : `data:${stickerMime};base64,${stickerData}`;
+          const stickerSrc = stickerData.startsWith('data:')
+            ? stickerData
+            : `data:${stickerMime};base64,${stickerData}`;
           return `
             <div class="message-sticker">
               <img src="${stickerSrc}" alt="Sticker" loading="lazy">
@@ -3904,14 +5100,18 @@ class WhatsAppClient {
         } else {
           return `<div class="message-media">[ ${isAnimated ? 'Animated ' : ''}Sticker unavailable ]</div>`;
         }
-      
+
       case 'location':
         const lat = content.latitude;
         const lng = content.longitude;
         const locName = content.name || content.address || 'Shared Location';
-        const locAddress = content.address && content.address !== content.name ? content.address : '';
-        const mapsUrl = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null;
-        
+        const locAddress =
+          content.address && content.address !== content.name
+            ? content.address
+            : '';
+        const mapsUrl =
+          lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+
         if (mapsUrl) {
           return `
             <div class="message-location">
@@ -3937,22 +5137,24 @@ class WhatsAppClient {
         } else {
           return `<div class="message-media">[ Location: ${this.escapeHtml(locName)} ]</div>`;
         }
-      
+
       case 'contact':
         return `<div class="message-media">[ Contact: ${this.escapeHtml(content.name)} ]</div>`;
-      
+
       case 'revoked':
         return `<div class="message-text" style="font-style: italic; opacity: 0.7;">This message was deleted</div>`;
-      
+
       case 'poll':
-        const options = (content.options || []).map(o => `  - ${this.escapeHtml(o)}`).join('\n');
+        const options = (content.options || [])
+          .map((o) => `  - ${this.escapeHtml(o)}`)
+          .join('\n');
         return `
           <div class="message-text">
             <strong>Poll: ${this.escapeHtml(content.question)}</strong>
             <pre style="margin-top: 8px; font-family: inherit;">${options}</pre>
           </div>
         `;
-      
+
       default:
         return `<div class="message-media">[ ${content.rawType || 'Unknown message type'} ]</div>`;
     }
@@ -3963,11 +5165,11 @@ class WhatsAppClient {
     if (!this.isDisplayableMessage(message)) return;
 
     const container = document.getElementById('messages-list');
-    
+
     // Check if we need a date separator
     const messages = this.messages.get(message.contactId) || [];
     const prevMessage = messages[messages.length - 2];
-    
+
     let html = '';
     if (prevMessage) {
       const prevDate = new Date(prevMessage.timestamp).toDateString();
@@ -3976,10 +5178,10 @@ class WhatsAppClient {
         html += `<div class="date-separator"><span>${this.formatDate(message.timestamp)}</span></div>`;
       }
     }
-    
+
     html += this.renderMessage(message);
     container.insertAdjacentHTML('beforeend', html);
-    
+
     const newMessage = container.lastElementChild;
     if (newMessage) {
       this.scheduleLinkPreviewLoad(newMessage);
@@ -4004,7 +5206,11 @@ class WhatsAppClient {
     if (!this.currentContactId) return;
 
     const input = document.getElementById('message-input');
-    this.drafts = upsertDraft(this.drafts, this.currentContactId, input?.value || '');
+    this.drafts = upsertDraft(
+      this.drafts,
+      this.currentContactId,
+      input?.value || '',
+    );
     this.persistDrafts();
     this.renderQuickReplies();
     this.renderComposerAssist();
@@ -4036,43 +5242,63 @@ class WhatsAppClient {
     const searchButton = document.getElementById('chat-search-toggle');
     const starredButton = document.getElementById('chat-starred-toggle');
     const translateAllButton = document.getElementById('chat-translate-all');
-    const searchBarVisible = !document.getElementById('chat-search-bar')?.classList.contains('hidden');
+    const searchBarVisible = !document
+      .getElementById('chat-search-bar')
+      ?.classList.contains('hidden');
 
     if (button && menu) {
-      button.setAttribute('aria-expanded', String(!menu.classList.contains('hidden')));
+      button.setAttribute(
+        'aria-expanded',
+        String(!menu.classList.contains('hidden')),
+      );
       button.classList.toggle('active', !menu.classList.contains('hidden'));
     }
 
     if (searchButton) {
-      searchButton.classList.toggle('active', searchBarVisible || Boolean(this.messageSearchQuery));
-      searchButton.textContent = searchBarVisible ? 'Hide search' : 'Search messages';
+      searchButton.classList.toggle(
+        'active',
+        searchBarVisible || Boolean(this.messageSearchQuery),
+      );
+      searchButton.textContent = searchBarVisible
+        ? 'Hide search'
+        : 'Search messages';
     }
 
     if (starredButton) {
       starredButton.classList.toggle('active', this.starredOnly);
-      starredButton.textContent = this.starredOnly ? 'Show all messages' : 'Show starred messages only';
+      starredButton.textContent = this.starredOnly
+        ? 'Show all messages'
+        : 'Show starred messages only';
     }
 
     if (translateAllButton) {
-      const count = this.getUntranslatedIncomingMessagesForCurrentConversation().length;
+      const count =
+        this.getUntranslatedIncomingMessagesForCurrentConversation().length;
       translateAllButton.disabled = count === 0;
-      translateAllButton.textContent = count === 0
-        ? 'All incoming translated'
-        : `Translate ${count} incoming message${count === 1 ? '' : 's'}`;
+      translateAllButton.textContent =
+        count === 0
+          ? 'All incoming translated'
+          : `Translate ${count} incoming message${count === 1 ? '' : 's'}`;
     }
   }
 
   getUntranslatedIncomingMessagesForCurrentConversation() {
-    return getUntranslatedIncomingMessages(this.messages.get(this.currentContactId) || []);
+    return getUntranslatedIncomingMessages(
+      this.messages.get(this.currentContactId) || [],
+    );
   }
 
   renderQuickReplies() {
     const bar = document.querySelector('.quick-replies-bar');
     const container = document.getElementById('quick-replies-list');
     const saveButton = document.getElementById('quick-reply-save');
-    const draftText = this.currentContactId ? getDraftText(this.drafts, this.currentContactId) : '';
-    const hasReplies = Array.isArray(this.quickReplies) && this.quickReplies.length > 0;
-    const shouldShowBar = Boolean(this.currentContactId) && (hasReplies || Boolean(draftText));
+    const draftText = this.currentContactId
+      ? getDraftText(this.drafts, this.currentContactId)
+      : '';
+    const hasReplies =
+      Array.isArray(this.quickReplies) && this.quickReplies.length > 0;
+    const shouldShowBar =
+      Boolean(this.currentContactId) && (hasReplies || Boolean(draftText));
 
     if (saveButton) {
       saveButton.disabled = !this.currentContactId || !draftText;
@@ -4091,16 +5317,21 @@ class WhatsAppClient {
     }
 
     if (!hasReplies) {
-      container.innerHTML = '<span class="quick-replies-empty">Saved replies will appear here once you keep one.</span>';
+      container.innerHTML =
+        '<span class="quick-replies-empty">Saved replies will appear here once you keep one.</span>';
       return;
     }
 
-    container.innerHTML = this.quickReplies.map((reply) => `
+    container.innerHTML = this.quickReplies
+      .map(
+        (reply) => `
       <button class="quick-reply-chip" type="button" data-quick-reply-id="${reply.id}" title="Insert saved reply">
         <span class="quick-reply-text">${this.escapeHtml(reply.text)}</span>
         <span class="quick-reply-remove" data-quick-reply-remove="${reply.id}" title="Remove saved reply">×</span>
       </button>
-    `).join('');
+    `,
+      )
+      .join('');
   }
 
   saveCurrentDraftAsQuickReply() {
@@ -4114,7 +5345,9 @@ class WhatsAppClient {
   }
 
   applyQuickReply(quickReplyId) {
-    const quickReply = (this.quickReplies || []).find((entry) => entry.id === quickReplyId);
+    const quickReply = (this.quickReplies || []).find(
+      (entry) => entry.id === quickReplyId,
+    );
     if (!quickReply) return;
 
     const input = document.getElementById('message-input');
@@ -4204,7 +5437,9 @@ class WhatsAppClient {
 
     const visibleMessages = this.getVisibleMessagesForCurrentConversation();
     const count = countMatchingMessages(
-      (this.messages.get(this.currentContactId) || []).filter(message => this.isDisplayableMessage(message)),
+      (this.messages.get(this.currentContactId) || []).filter((message) =>
+        this.isDisplayableMessage(message),
+      ),
       this.messageSearchQuery,
       { starredOnly: this.starredOnly, starredLookup: this.starredMessages },
     );
@@ -4223,14 +5458,19 @@ class WhatsAppClient {
   updateStarredToggleUI() {
     const button = document.getElementById('chat-starred-toggle');
     if (button) {
-      button.title = this.starredOnly ? 'Show all messages' : 'Show starred messages only';
+      button.title = this.starredOnly
+        ? 'Show all messages'
+        : 'Show starred messages only';
     }
     this.updateConversationMenuUI();
   }
 
   getVisibleMessagesForCurrentConversation() {
-    const messages = (this.topics?.selectedId ? this.topics.messages : this.messages.get(this.currentContactId) || [])
-      .filter(message => this.isDisplayableMessage(message));
+    const messages = (
+      this.topics?.selectedId
+        ? this.topics.messages
+        : this.messages.get(this.currentContactId) || []
+    ).filter((message) => this.isDisplayableMessage(message));
     return filterMessagesByQuery(messages, this.messageSearchQuery, {
       starredOnly: this.starredOnly,
       starredLookup: this.starredMessages,
@@ -4248,14 +5488,14 @@ class WhatsAppClient {
   async sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
-    
+
     if (!text || !this.currentContactId || this.replyOnlyBlocked()) return;
-    
+
     const contactId = this.currentContactId;
-    const capturedReply = this.replyingTo ? {...this.replyingTo} : null;
+    const capturedReply = this.replyingTo ? { ...this.replyingTo } : null;
     const sendButton = document.getElementById('send-button');
     sendButton.disabled = true;
-    
+
     // Capture reply state before clearing
     const replyTo = capturedReply ? capturedReply.messageId : null;
     const replyToSender = capturedReply ? capturedReply.senderJid : null;
@@ -4264,8 +5504,13 @@ class WhatsAppClient {
       const replyContext = capturedReply ? { ...capturedReply } : null;
       const metadata = this.getContactMetadata(contactId);
       const targetLanguage = metadata.targetLanguage || 'Spanish';
-      const translatedText = metadata.translationEnabled === true ? simulateTranslation(text, targetLanguage) : null;
-      const sendOriginalFollowUp = Boolean(metadata.sendOriginalFollowUp && translatedText);
+      const translatedText =
+        metadata.translationEnabled === true
+          ? simulateTranslation(text, targetLanguage)
+          : null;
+      const sendOriginalFollowUp = Boolean(
+        metadata.sendOriginalFollowUp && translatedText,
+      );
       const localMessage = {
         id: `demo-out-${Date.now()}`,
         timestamp: Date.now(),
@@ -4273,7 +5518,11 @@ class WhatsAppClient {
         isFromMe: true,
         isForwarded: false,
         senderJid: this.getMessageSenderJid({ isFromMe: true }),
-        content: { type: 'text', body: text, showTranslatedPrimary: sendOriginalFollowUp },
+        content: {
+          type: 'text',
+          body: text,
+          showTranslatedPrimary: sendOriginalFollowUp,
+        },
         isTranslated: Boolean(translatedText),
         originalText: text,
         translatedText,
@@ -4313,13 +5562,13 @@ class WhatsAppClient {
       this.updateSendButton();
       return;
     }
-    
+
     try {
       const requestBody = {
         contactId: contactId,
-        text: text
+        text: text,
       };
-      
+
       // Add reply params if replying
       if (replyTo) {
         requestBody.replyTo = replyTo;
@@ -4329,22 +5578,22 @@ class WhatsAppClient {
         requestBody.replyToText = capturedReply?.text || null;
         requestBody.replyToSenderName = capturedReply?.senderName || null;
       }
-      
+
       const response = await this.apiFetch('/api/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
-      
+
       const result = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.error || 'Failed to send message');
       }
-      
+
       // Save reply context before clearing (for local message display)
       const replyContext = capturedReply ? { ...capturedReply } : null;
-      
+
       // Only clear the draft that was actually sent; a different chat or newly typed draft stays intact.
       if (this.currentContactId === contactId && input.value.trim() === text) {
         input.value = '';
@@ -4358,7 +5607,7 @@ class WhatsAppClient {
       this.scheduleRenderContacts();
       this.updateChatHeaderNote();
       this.renderConversationWorkspace();
-      
+
       // Create a local message representation with translation info from response
       const localMessage = {
         id: result.messageId || 'temp-' + Date.now(),
@@ -4370,24 +5619,26 @@ class WhatsAppClient {
         content: {
           type: 'text',
           body: text,
-          showTranslatedPrimary: result.originalFollowUpSent || Boolean(result.originalFollowUpError),
+          showTranslatedPrimary:
+            result.originalFollowUpSent ||
+            Boolean(result.originalFollowUpError),
         },
         // Include translation info if the message was translated
         isTranslated: result.isTranslated || false,
-        originalText: result.isTranslated ? text : null,  // What user typed (English)
-        translatedText: result.translatedText || null,     // What was sent (foreign language)
-        sourceLanguage: result.sourceLanguage || null,     // Target language
+        originalText: result.isTranslated ? text : null, // What user typed (English)
+        translatedText: result.translatedText || null, // What was sent (foreign language)
+        sourceLanguage: result.sourceLanguage || null, // Target language
         // Include reply context if this was a reply
-        replyContext: replyContext
+        replyContext: replyContext,
       };
-      
+
       // Add to local store and display
       if (!this.messages.has(contactId)) {
         this.messages.set(contactId, []);
       }
-      
+
       const messages = this.messages.get(contactId);
-      if (!messages.some(m => m.id === localMessage.id)) {
+      if (!messages.some((m) => m.id === localMessage.id)) {
         messages.push(localMessage);
         if (result.originalFollowUpSent && result.originalMessageId) {
           messages.push({
@@ -4406,10 +5657,10 @@ class WhatsAppClient {
         this.updateChatHeaderNote();
         this.renderConversationWorkspace();
       }
-      
+
       // Update contact list
       this.updateContactInList(localMessage);
-      
+
       // Refresh usage stats if translation occurred
       if (result.isTranslated) {
         this.fetchGlobalUsage();
@@ -4417,9 +5668,10 @@ class WhatsAppClient {
       }
 
       if (result.originalFollowUpError) {
-        alert(`The translation was sent, but the original follow-up failed: ${result.originalFollowUpError}`);
+        alert(
+          `The translation was sent, but the original follow-up failed: ${result.originalFollowUpError}`,
+        );
       }
-      
     } catch (err) {
       console.error('Failed to send message:', err);
       alert('Failed to send message: ' + err.message);
@@ -4440,7 +5692,12 @@ class WhatsAppClient {
     }
 
     // Check file type
-    const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+    const allowedImageTypes = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ]);
     if (!allowedImageTypes.has(String(file.type || '').toLowerCase())) {
       alert('Please select a JPEG, PNG, GIF, or WebP image file.');
       return;
@@ -4448,7 +5705,7 @@ class WhatsAppClient {
 
     const attachButton = document.getElementById('attach-button');
     attachButton.disabled = true;
-    
+
     // Capture reply state before clearing
     const replyTo = this.replyingTo ? this.replyingTo.messageId : null;
     const replyToSender = this.replyingTo ? this.replyingTo.senderJid : null;
@@ -4456,14 +5713,14 @@ class WhatsAppClient {
     try {
       // Read file as base64
       const mediaData = await this.fileToBase64(file);
-      
+
       const requestBody = {
         contactId: this.currentContactId,
         mediaData: mediaData,
         mimeType: file.type,
-        caption: null
+        caption: null,
       };
-      
+
       // Add reply params if replying
       if (replyTo) {
         requestBody.replyTo = replyTo;
@@ -4473,11 +5730,11 @@ class WhatsAppClient {
         requestBody.replyToText = this.replyingTo?.text || null;
         requestBody.replyToSenderName = this.replyingTo?.senderName || null;
       }
-      
+
       const response = await this.apiFetch('/api/send-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
@@ -4488,10 +5745,10 @@ class WhatsAppClient {
 
       // Save reply context before clearing (for local message display)
       const replyContext = this.replyingTo ? { ...this.replyingTo } : null;
-      
+
       // Clear reply state on success
       this.clearReply();
-      
+
       // Create a local message representation
       const localMessage = {
         id: result.messageId || 'temp-img-' + Date.now(),
@@ -4500,13 +5757,13 @@ class WhatsAppClient {
         isFromMe: true,
         isForwarded: false,
         senderJid: this.getMessageSenderJid({ isFromMe: true }),
-        content: { 
-          type: 'image', 
+        content: {
+          type: 'image',
           mime_type: file.type,
-          media_data: mediaData
+          media_data: mediaData,
         },
         // Include reply context if this was a reply
-        replyContext: replyContext
+        replyContext: replyContext,
       };
 
       // Add to local store and display
@@ -4515,7 +5772,7 @@ class WhatsAppClient {
       }
 
       const messages = this.messages.get(this.currentContactId);
-      if (!messages.some(m => m.id === localMessage.id)) {
+      if (!messages.some((m) => m.id === localMessage.id)) {
         messages.push(localMessage);
         this.refreshCurrentConversationView();
         this.scrollToBottom();
@@ -4523,7 +5780,6 @@ class WhatsAppClient {
 
       // Update contact list
       this.updateContactInList(localMessage);
-
     } catch (err) {
       console.error('Failed to send image:', err);
       alert('Failed to send image: ' + err.message);
@@ -4549,8 +5805,10 @@ class WhatsAppClient {
   // Send a reaction to a message
   async sendReaction(messageId, contactId, senderJid, emoji) {
     // Close any open reaction pickers
-    document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
-    
+    document
+      .querySelectorAll('.reaction-picker.show')
+      .forEach((el) => el.classList.remove('show'));
+
     if (!messageId || !contactId) {
       console.error('Missing messageId or contactId for reaction');
       return;
@@ -4564,8 +5822,8 @@ class WhatsAppClient {
           contactId: contactId,
           messageId: messageId,
           senderJid: senderJid || null,
-          emoji: emoji
-        })
+          emoji: emoji,
+        }),
       });
 
       const result = await response.json();
@@ -4574,12 +5832,18 @@ class WhatsAppClient {
         throw new Error(result.error || 'Failed to send reaction');
       }
 
-      if (result.success === false) throw new Error(result.error || 'Failed to send reaction');
-      this.handleReactionMessage(result.reaction || {
-        id: `confirmed-reaction-${crypto.randomUUID()}`, contactId, timestamp: Date.now(),
-        isFromMe: true, contentType: 'Reaction',
-        content: { type: 'reaction', target_message_id: messageId, emoji }
-      });
+      if (result.success === false)
+        throw new Error(result.error || 'Failed to send reaction');
+      this.handleReactionMessage(
+        result.reaction || {
+          id: `confirmed-reaction-${crypto.randomUUID()}`,
+          contactId,
+          timestamp: Date.now(),
+          isFromMe: true,
+          contentType: 'Reaction',
+          content: { type: 'reaction', target_message_id: messageId, emoji },
+        },
+      );
 
       console.log('Reaction sent successfully');
     } catch (err) {
@@ -4591,7 +5855,9 @@ class WhatsAppClient {
   getConversationHandoffBrief() {
     if (!this.currentContactId) return '';
 
-    const contact = this.contacts.find(entry => entry.id === this.currentContactId) || { id: this.currentContactId };
+    const contact = this.contacts.find(
+      (entry) => entry.id === this.currentContactId,
+    ) || { id: this.currentContactId };
     return buildConversationHandoffBrief({
       contact,
       metadata: this.getContactMetadata(this.currentContactId),
@@ -4632,11 +5898,14 @@ class WhatsAppClient {
   async translateUntranslatedIncomingMessages() {
     if (!this.currentContactId) return;
     if (!this.getContactMetadata(this.currentContactId).translationEnabled) {
-      alert('Translation is off for this conversation. Enable Translate messages in Conversation settings first.');
+      alert(
+        'Translation is off for this conversation. Enable Translate messages in Conversation settings first.',
+      );
       return;
     }
 
-    const messages = this.getUntranslatedIncomingMessagesForCurrentConversation();
+    const messages =
+      this.getUntranslatedIncomingMessagesForCurrentConversation();
     if (messages.length === 0) {
       this.updateConversationMenuUI();
       this.renderConversationWorkspace();
@@ -4654,7 +5923,10 @@ class WhatsAppClient {
 
     try {
       for (const message of messages) {
-        await this.translateMessage(message.id, { silent: true, rerender: false });
+        await this.translateMessage(message.id, {
+          silent: true,
+          rerender: false,
+        });
       }
       this.refreshCurrentConversationView();
       this.renderConversationWorkspace();
@@ -4668,16 +5940,28 @@ class WhatsAppClient {
   async translateMessage(messageId, options = {}) {
     const { silent = false, rerender = true } = options;
     if (!this.getContactMetadata(this.currentContactId).translationEnabled) {
-      if (!silent) alert('Translation is off for this conversation. Enable Translate messages in Conversation settings first.');
+      if (!silent)
+        alert(
+          'Translation is off for this conversation. Enable Translate messages in Conversation settings first.',
+        );
       return;
     }
     const messages = this.messages.get(this.currentContactId);
     if (!messages) return;
-    
-    const message = messages.find(m => m.id === messageId);
+
+    const message = messages.find((m) => m.id === messageId);
     if (!message) return;
-    
-    if (['audio', 'voice note'].includes(String(message.content?.type || message.content_type || message.contentType || '').toLowerCase())) {
+
+    if (
+      ['audio', 'voice note'].includes(
+        String(
+          message.content?.type ||
+            message.content_type ||
+            message.contentType ||
+            '',
+        ).toLowerCase(),
+      )
+    ) {
       this.translateVoiceMessage?.(messageId);
       return;
     }
@@ -4687,9 +5971,12 @@ class WhatsAppClient {
       if (!silent) alert('This message has already been translated.');
       return;
     }
-    
+
     // Get the text to translate
-    const text = message.content?.body || message.content?.caption || message.content?.text;
+    const text =
+      message.content?.body ||
+      message.content?.caption ||
+      message.content?.text;
     if (!text) {
       if (!silent) alert('No text to translate in this message.');
       return;
@@ -4697,7 +5984,8 @@ class WhatsAppClient {
 
     if (this.demoMode) {
       const metadata = this.getContactMetadata(this.currentContactId);
-      const targetLanguage = metadata.targetLanguage || message.sourceLanguage || 'English';
+      const targetLanguage =
+        metadata.targetLanguage || message.sourceLanguage || 'English';
       const translatedText = simulateTranslation(text, targetLanguage);
       message.original_text = text;
       message.originalText = text;
@@ -4714,27 +6002,35 @@ class WhatsAppClient {
       }
       return;
     }
-    
+
     try {
       // Call the translation API
       const response = await this.apiFetch('/api/translate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getAuthHeaders(),
+        },
         body: JSON.stringify({
           text: text,
           messageId: messageId,
-          contactId: this.currentContactId
-        })
+          contactId: this.currentContactId,
+        }),
       });
-      
+
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Translation failed');
       }
-      if (result.needsTranslation !== false && (!result.translatedText || !String(result.translatedText).trim())) {
-        throw new Error(result.error || 'Translation did not return translated text');
+      if (
+        result.needsTranslation !== false &&
+        (!result.translatedText || !String(result.translatedText).trim())
+      ) {
+        throw new Error(
+          result.error || 'Translation did not return translated text',
+        );
       }
-      
+
       // Update the local message with translation
       message.translated_text = result.translatedText;
       message.translatedText = result.translatedText;
@@ -4742,7 +6038,7 @@ class WhatsAppClient {
       message.sourceLanguage = result.sourceLanguage;
       message.is_translated = result.needsTranslation !== false;
       message.isTranslated = result.needsTranslation !== false;
-      
+
       // Re-render messages to show translation
       if (rerender) {
         const currentMessages = this.getVisibleMessagesForCurrentConversation();
@@ -4750,7 +6046,6 @@ class WhatsAppClient {
         this.renderConversationWorkspace();
         this.updateConversationMenuUI();
       }
-      
     } catch (err) {
       console.error('Translation failed:', err);
       if (!silent) alert('Translation failed: ' + err.message);
@@ -4759,21 +6054,23 @@ class WhatsAppClient {
 
   // Update reactions display for a specific message
   updateMessageReactions(messageId) {
-    const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+    const messageEl = document.querySelector(
+      `.message[data-message-id="${messageId}"]`,
+    );
     if (!messageEl) return;
-    
+
     const messages = this.messages.get(this.currentContactId);
     if (!messages) return;
-    
-    const message = messages.find(m => m.id === messageId);
+
+    const message = messages.find((m) => m.id === messageId);
     if (!message || !message.reactions) return;
-    
+
     // Remove existing reactions container
     const existingReactions = messageEl.querySelector('.message-reactions');
     if (existingReactions) {
       existingReactions.remove();
     }
-    
+
     // Build reactions HTML
     const reactionsHtml = this.renderReactions(message.reactions);
     if (reactionsHtml) {
@@ -4788,17 +6085,20 @@ class WhatsAppClient {
   // Render reactions for a message
   renderReactions(reactions) {
     if (!reactions || Object.keys(reactions).length === 0) return '';
-    
+
     const reactionItems = Object.entries(reactions)
       .filter(([emoji, reactors]) => reactors.length > 0)
       .map(([emoji, reactors]) => {
-        const count = reactors.length > 1 ? `<span class="reaction-count">${reactors.length}</span>` : '';
+        const count =
+          reactors.length > 1
+            ? `<span class="reaction-count">${reactors.length}</span>`
+            : '';
         return `<span class="reaction-item">${emoji}${count}</span>`;
       })
       .join('');
-    
+
     if (!reactionItems) return '';
-    
+
     return `<div class="message-reactions">${reactionItems}</div>`;
   }
 
@@ -4806,7 +6106,7 @@ class WhatsAppClient {
   setReplyTo(message) {
     const content = message.content;
     const isFromMe = Boolean(message.isFromMe || message.is_from_me);
-    
+
     // Get message preview text for display
     let previewText = '';
     switch (content.type) {
@@ -4831,21 +6131,26 @@ class WhatsAppClient {
       default:
         previewText = '[ Message ]';
     }
-    
+
     // Truncate long messages
     if (previewText.length > 100) {
       previewText = previewText.substring(0, 100) + '...';
     }
-    
+
     // Get sender name
     let senderName = 'You';
     if (!isFromMe) {
-      senderName = message.senderName || message.sender_name || message.senderPhone || message.sender_phone || 'Unknown';
+      senderName =
+        message.senderName ||
+        message.sender_name ||
+        message.senderPhone ||
+        message.sender_phone ||
+        'Unknown';
     }
-    
+
     // Get sender JID for the reply
     const senderJid = this.getMessageSenderJid(message);
-    
+
     // Capture image data if replying to an image (for AI compose)
     let imageData = null;
     let imageType = null;
@@ -4856,7 +6161,7 @@ class WhatsAppClient {
         imageType = content.mime_type || content.mimeType || 'image/jpeg';
       }
     }
-    
+
     this.replyingTo = {
       messageId: message.id,
       senderJid: senderJid,
@@ -4864,11 +6169,11 @@ class WhatsAppClient {
       text: previewText,
       isFromMe: isFromMe,
       imageData: imageData,
-      imageType: imageType
+      imageType: imageType,
     };
-    
+
     this.updateReplyPreview();
-    
+
     // Focus the input
     document.getElementById('message-input').focus();
   }
@@ -4884,14 +6189,14 @@ class WhatsAppClient {
     this.updateReplyOnlyControls();
     const previewContainer = document.getElementById('reply-preview');
     if (!previewContainer) return;
-    
+
     if (this.replyingTo) {
       const senderEl = previewContainer.querySelector('.reply-preview-sender');
       const textEl = previewContainer.querySelector('.reply-preview-text');
-      
+
       if (senderEl) senderEl.textContent = this.replyingTo.senderName;
       if (textEl) textEl.textContent = this.replyingTo.text;
-      
+
       previewContainer.classList.remove('hidden');
     } else {
       previewContainer.classList.add('hidden');
@@ -4901,15 +6206,17 @@ class WhatsAppClient {
   // Handle reply button click
   handleReplyClick(messageId) {
     // Close any open reaction pickers
-    document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
-    
+    document
+      .querySelectorAll('.reaction-picker.show')
+      .forEach((el) => el.classList.remove('show'));
+
     // Find the message in our cache
     if (!this.currentContactId) return;
-    
+
     const messages = this.messages.get(this.currentContactId);
     if (!messages) return;
-    
-    const message = messages.find(m => m.id === messageId);
+
+    const message = messages.find((m) => m.id === messageId);
     if (message) {
       this.setReplyTo(message);
     }
@@ -4920,8 +6227,9 @@ class WhatsAppClient {
     const input = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
     const dropdownToggle = document.getElementById('send-dropdown-toggle');
-    const hasContent = input.value.trim() && this.currentContactId && this.connected;
-    
+    const hasContent =
+      input.value.trim() && this.currentContactId && this.connected;
+
     sendButton.disabled = !hasContent || this.replyOnlyBlocked();
     if (dropdownToggle) {
       dropdownToggle.disabled = !hasContent;
@@ -4932,39 +6240,39 @@ class WhatsAppClient {
   async sendWithAI() {
     const input = document.getElementById('message-input');
     const prompt = input.value.trim();
-    
+
     if (!prompt || !this.currentContactId) return;
-    
+
     // Show AI composing indicator
     this.showAIComposing(true);
-    
+
     try {
       // Build request with optional reply context
       const requestBody = { prompt };
-      
+
       if (this.replyingTo) {
         requestBody.replyToText = this.replyingTo.text;
         requestBody.replyToSender = this.replyingTo.senderName;
-        
+
         // Include image data if replying to an image
         if (this.replyingTo.imageData) {
           requestBody.replyToImage = this.replyingTo.imageData;
           requestBody.replyToImageType = this.replyingTo.imageType;
         }
       }
-      
+
       const response = await this.apiFetch('/api/ai-compose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'AI compose failed');
       }
-      
+
       const aiMessage = String(result.message || '').trim();
       if (!aiMessage) {
         throw new Error('AI compose returned an empty draft');
@@ -4975,12 +6283,11 @@ class WhatsAppClient {
       this.updateSendButton();
       this.handleDraftInput();
       input.focus();
-      
+
       // Log cost if available
       if (result.costUsd) {
         console.log(`AI compose cost: $${result.costUsd.toFixed(6)}`);
       }
-      
     } catch (err) {
       console.error('Failed to compose with AI:', err);
       alert('Failed to compose message with AI: ' + err.message);
@@ -4992,15 +6299,15 @@ class WhatsAppClient {
   // Generate AI reply for a received message (styled to sound like the user)
   async generateAIReply(messageId) {
     if (!this.currentContactId) return;
-    
+
     // Find the message in cache
     const messages = this.messages.get(this.currentContactId);
-    const message = messages?.find(m => m.id === messageId);
+    const message = messages?.find((m) => m.id === messageId);
     if (!message) {
       console.error('Message not found:', messageId);
       return;
     }
-    
+
     // Show loading state on the button
     const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
     const btn = msgEl?.querySelector('.ai-reply-btn');
@@ -5008,10 +6315,12 @@ class WhatsAppClient {
       btn.classList.add('loading');
       btn.disabled = true;
     }
-    
+
     try {
       if (this.demoMode) {
-        const contact = this.contacts.find(entry => entry.id === this.currentContactId) || {};
+        const contact =
+          this.contacts.find((entry) => entry.id === this.currentContactId) ||
+          {};
         const replyText = suggestDemoReply({
           message,
           metadata: this.getContactMetadata(this.currentContactId),
@@ -5032,26 +6341,26 @@ class WhatsAppClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...this.getAuthHeaders()
+          ...this.getAuthHeaders(),
         },
         body: JSON.stringify({
           contactId: this.currentContactId,
-          messageId: messageId
-        })
+          messageId: messageId,
+        }),
       });
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'AI reply generation failed');
       }
       if (!result.replyText || !result.replyText.trim()) {
         throw new Error('AI reply was empty');
       }
-      
+
       // Set reply context to this message (reuses existing setReplyTo)
       this.setReplyTo(message);
-      
+
       // Populate input with AI-generated reply (user can edit before sending)
       const input = document.getElementById('message-input');
       input.value = result.replyText;
@@ -5059,12 +6368,11 @@ class WhatsAppClient {
       this.updateSendButton();
       this.handleDraftInput();
       input.focus();
-      
+
       // Log cost for debugging
       if (result.costUsd) {
         console.log(`AI reply generated, cost: $${result.costUsd.toFixed(6)}`);
       }
-      
     } catch (err) {
       console.error('Failed to generate AI reply:', err);
       alert('Failed to generate AI reply: ' + err.message);
@@ -5079,7 +6387,7 @@ class WhatsAppClient {
   // Show/hide AI composing indicator
   showAIComposing(show) {
     let indicator = document.getElementById('ai-composing-indicator');
-    
+
     if (show) {
       if (!indicator) {
         indicator = document.createElement('div');
@@ -5089,7 +6397,7 @@ class WhatsAppClient {
           <div class="ai-composing-spinner"></div>
           <span>AI is composing your message...</span>
         `;
-        
+
         const inputArea = document.querySelector('.message-input-area');
         const inputContainer = document.querySelector('.input-container');
         if (inputArea && inputContainer) {
@@ -5097,7 +6405,7 @@ class WhatsAppClient {
         }
       }
       indicator.style.display = 'flex';
-      
+
       // Disable input while composing
       document.getElementById('message-input').disabled = true;
       document.getElementById('send-button').disabled = true;
@@ -5125,42 +6433,56 @@ class WhatsAppClient {
       this.handleLogout();
     });
 
-    document.getElementById('inbox-search-input')?.addEventListener('input', (event) => {
-      this.setInboxSearchQuery(event.target.value);
-    });
+    document
+      .getElementById('inbox-search-input')
+      ?.addEventListener('input', (event) => {
+        this.setInboxSearchQuery(event.target.value);
+      });
 
-    document.getElementById('inbox-clear-button')?.addEventListener('click', () => {
-      this.clearInboxFilters();
-    });
+    document
+      .getElementById('inbox-clear-button')
+      ?.addEventListener('click', () => {
+        this.clearInboxFilters();
+      });
 
     document.querySelectorAll('[data-inbox-filter]').forEach((button) => {
-      button.addEventListener('click', () => this.toggleInboxFilter(button.dataset.inboxFilter));
+      button.addEventListener('click', () =>
+        this.toggleInboxFilter(button.dataset.inboxFilter),
+      );
     });
 
-    document.getElementById('command-palette-button')?.addEventListener('click', () => {
-      this.openCommandPalette();
-    });
+    document
+      .getElementById('command-palette-button')
+      ?.addEventListener('click', () => {
+        this.openCommandPalette();
+      });
 
-    document.getElementById('demo-mode-button')?.addEventListener('click', () => {
-      this.startDemoWorkspace();
-    });
+    document
+      .getElementById('demo-mode-button')
+      ?.addEventListener('click', () => {
+        this.startDemoWorkspace();
+      });
 
-    document.getElementById('visitor-dashboard-open-palette')?.addEventListener('click', () => {
-      this.openCommandPalette();
-    });
+    document
+      .getElementById('visitor-dashboard-open-palette')
+      ?.addEventListener('click', () => {
+        this.openCommandPalette();
+      });
 
-    document.getElementById('visitor-dashboard')?.addEventListener('click', (event) => {
-      const presetTarget = event.target.closest('[data-dashboard-preset]');
-      if (presetTarget) {
-        this.applyInboxPreset(presetTarget.dataset.dashboardPreset);
-        return;
-      }
+    document
+      .getElementById('visitor-dashboard')
+      ?.addEventListener('click', (event) => {
+        const presetTarget = event.target.closest('[data-dashboard-preset]');
+        if (presetTarget) {
+          this.applyInboxPreset(presetTarget.dataset.dashboardPreset);
+          return;
+        }
 
-      const contactTarget = event.target.closest('[data-dashboard-contact]');
-      if (contactTarget) {
-        this.selectContact(contactTarget.dataset.dashboardContact);
-      }
-    });
+        const contactTarget = event.target.closest('[data-dashboard-contact]');
+        if (contactTarget) {
+          this.selectContact(contactTarget.dataset.dashboardContact);
+        }
+      });
 
     // Contact click
     document.getElementById('contacts-list').addEventListener('click', (e) => {
@@ -5197,7 +6519,10 @@ class WhatsAppClient {
     });
 
     window.addEventListener('resize', this.handleResponsiveLayoutChange);
-    window.addEventListener('orientationchange', this.handleResponsiveLayoutChange);
+    window.addEventListener(
+      'orientationchange',
+      this.handleResponsiveLayoutChange,
+    );
     this.handleResponsiveLayoutChange();
 
     // Message input
@@ -5227,53 +6552,71 @@ class WhatsAppClient {
       this.sendMessage();
     });
 
-    document.getElementById('composer-use-suggestion')?.addEventListener('click', () => {
-      this.useComposerSuggestedReply();
-    });
+    document
+      .getElementById('composer-use-suggestion')
+      ?.addEventListener('click', () => {
+        this.useComposerSuggestedReply();
+      });
 
-    document.getElementById('reply-preview-close')?.addEventListener('click', () => {
-      this.clearReply();
-    });
+    document
+      .getElementById('reply-preview-close')
+      ?.addEventListener('click', () => {
+        this.clearReply();
+      });
 
-    document.getElementById('composer-remind-tomorrow')?.addEventListener('click', () => {
-      this.setComposerReminderTomorrow();
-    });
+    document
+      .getElementById('composer-remind-tomorrow')
+      ?.addEventListener('click', () => {
+        this.setComposerReminderTomorrow();
+      });
 
-    document.getElementById('composer-profile-presets')?.addEventListener('click', (event) => {
-      const languageTarget = event.target.closest('[data-composer-language]');
-      if (languageTarget) {
-        this.applyComposerProfilePreset({ language: languageTarget.dataset.composerLanguage });
-        return;
-      }
+    document
+      .getElementById('composer-profile-presets')
+      ?.addEventListener('click', (event) => {
+        const languageTarget = event.target.closest('[data-composer-language]');
+        if (languageTarget) {
+          this.applyComposerProfilePreset({
+            language: languageTarget.dataset.composerLanguage,
+          });
+          return;
+        }
 
-      const toneTarget = event.target.closest('[data-composer-tone]');
-      if (toneTarget) {
-        this.applyComposerProfilePreset({ tone: toneTarget.dataset.composerTone });
-      }
-    });
+        const toneTarget = event.target.closest('[data-composer-tone]');
+        if (toneTarget) {
+          this.applyComposerProfilePreset({
+            tone: toneTarget.dataset.composerTone,
+          });
+        }
+      });
 
-    document.getElementById('composer-smart-replies')?.addEventListener('click', (event) => {
-      const replyTarget = event.target.closest('[data-smart-reply-id]');
-      if (replyTarget) {
-        this.useComposerSuggestedReply(replyTarget.dataset.smartReplyId);
-      }
-    });
+    document
+      .getElementById('composer-smart-replies')
+      ?.addEventListener('click', (event) => {
+        const replyTarget = event.target.closest('[data-smart-reply-id]');
+        if (replyTarget) {
+          this.useComposerSuggestedReply(replyTarget.dataset.smartReplyId);
+        }
+      });
 
-    document.getElementById('composer-reminder-presets')?.addEventListener('click', (event) => {
-      const presetTarget = event.target.closest('[data-reminder-preset]');
-      if (presetTarget) {
-        this.setComposerReminderPreset(presetTarget.dataset.reminderPreset);
-      }
-    });
+    document
+      .getElementById('composer-reminder-presets')
+      ?.addEventListener('click', (event) => {
+        const presetTarget = event.target.closest('[data-reminder-preset]');
+        if (presetTarget) {
+          this.setComposerReminderPreset(presetTarget.dataset.reminderPreset);
+        }
+      });
 
-    document.getElementById('composer-edit-profile')?.addEventListener('click', () => {
-      this.openSettingsModal();
-    });
+    document
+      .getElementById('composer-edit-profile')
+      ?.addEventListener('click', () => {
+        this.openSettingsModal();
+      });
 
     // Image attach button
     const attachButton = document.getElementById('attach-button');
     const imageInput = document.getElementById('image-input');
-    
+
     attachButton.addEventListener('click', () => {
       if (this.currentContactId) {
         imageInput.click();
@@ -5310,50 +6653,63 @@ class WhatsAppClient {
         return;
       }
 
-      if ((e.key === 'Enter' || e.key === ' ') && target.closest('.reaction-emoji')) {
+      if (
+        (e.key === 'Enter' || e.key === ' ') &&
+        target.closest('.reaction-emoji')
+      ) {
         e.preventDefault();
         this.handleMessagesListClick(e);
       }
     });
 
-    messagesList.addEventListener('touchstart', (e) => {
-      if (messagesList.scrollTop === 0) {
-        messagesList.scrollTop = 1;
-      }
-    }, { passive: true });
-
-    document.addEventListener('error', (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLImageElement)) {
-        return;
-      }
-
-      if (target.dataset.avatarFallback !== undefined) {
-        const fallback = document.createElement('span');
-        fallback.textContent = target.dataset.avatarFallback || '?';
-        target.parentElement?.replaceChildren(fallback);
-        return;
-      }
-
-      if (target.dataset.hideOnError !== undefined) {
-        if (target.parentElement) {
-          target.parentElement.style.display = 'none';
+    messagesList.addEventListener(
+      'touchstart',
+      (e) => {
+        if (messagesList.scrollTop === 0) {
+          messagesList.scrollTop = 1;
         }
-        return;
-      }
+      },
+      { passive: true },
+    );
 
-      if (target.dataset.showNextOnError !== undefined) {
-        target.style.display = 'none';
-        if (target.nextElementSibling instanceof HTMLElement) {
-          target.nextElementSibling.style.display = 'flex';
+    document.addEventListener(
+      'error',
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLImageElement)) {
+          return;
         }
-      }
-    }, true);
+
+        if (target.dataset.avatarFallback !== undefined) {
+          const fallback = document.createElement('span');
+          fallback.textContent = target.dataset.avatarFallback || '?';
+          target.parentElement?.replaceChildren(fallback);
+          return;
+        }
+
+        if (target.dataset.hideOnError !== undefined) {
+          if (target.parentElement) {
+            target.parentElement.style.display = 'none';
+          }
+          return;
+        }
+
+        if (target.dataset.showNextOnError !== undefined) {
+          target.style.display = 'none';
+          if (target.nextElementSibling instanceof HTMLElement) {
+            target.nextElementSibling.style.display = 'flex';
+          }
+        }
+      },
+      true,
+    );
 
     // Close reaction pickers and emoji picker when clicking outside
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.reaction-button-container')) {
-        document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
+        document
+          .querySelectorAll('.reaction-picker.show')
+          .forEach((el) => el.classList.remove('show'));
       }
       // Close send dropdown when clicking outside
       if (!e.target.closest('.send-button-group')) {
@@ -5372,7 +6728,7 @@ class WhatsAppClient {
     // Emoji picker button
     const emojiButton = document.getElementById('emoji-button');
     const emojiPicker = document.getElementById('emoji-picker');
-    
+
     emojiButton?.addEventListener('click', (e) => {
       e.stopPropagation();
       emojiPicker?.classList.toggle('hidden');
@@ -5382,31 +6738,35 @@ class WhatsAppClient {
     });
 
     // Emoji tab clicks
-    document.querySelectorAll('.emoji-tab').forEach(tab => {
+    document.querySelectorAll('.emoji-tab').forEach((tab) => {
       tab.addEventListener('click', (e) => {
         e.stopPropagation();
         const category = tab.dataset.category;
         this.currentEmojiCategory = category;
-        document.querySelectorAll('.emoji-tab').forEach(t => t.classList.remove('active'));
+        document
+          .querySelectorAll('.emoji-tab')
+          .forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
         this.renderEmojiCategory(category);
       });
     });
 
     // Emoji selection (delegated)
-    document.getElementById('emoji-picker-content')?.addEventListener('click', (e) => {
-      const emojiSpan = e.target.closest('.emoji-item');
-      if (emojiSpan) {
-        const emoji = emojiSpan.textContent;
-        this.insertEmoji(emoji);
-        this.addRecentEmoji(emoji);
-      }
-    });
+    document
+      .getElementById('emoji-picker-content')
+      ?.addEventListener('click', (e) => {
+        const emojiSpan = e.target.closest('.emoji-item');
+        if (emojiSpan) {
+          const emoji = emojiSpan.textContent;
+          this.insertEmoji(emoji);
+          this.addRecentEmoji(emoji);
+        }
+      });
 
     // Send dropdown toggle
     const dropdownToggle = document.getElementById('send-dropdown-toggle');
     const sendDropdown = document.getElementById('send-dropdown');
-    
+
     dropdownToggle?.addEventListener('click', (e) => {
       e.stopPropagation();
       sendDropdown?.classList.toggle('hidden');
@@ -5419,115 +6779,151 @@ class WhatsAppClient {
       this.sendWithAI();
     });
 
-    document.getElementById('quick-reply-save')?.addEventListener('click', () => {
-      this.saveCurrentDraftAsQuickReply();
-    });
+    document
+      .getElementById('quick-reply-save')
+      ?.addEventListener('click', () => {
+        this.saveCurrentDraftAsQuickReply();
+      });
 
-    document.getElementById('quick-replies-list')?.addEventListener('click', (event) => {
-      const removeTarget = event.target.closest('[data-quick-reply-remove]');
-      if (removeTarget) {
+    document
+      .getElementById('quick-replies-list')
+      ?.addEventListener('click', (event) => {
+        const removeTarget = event.target.closest('[data-quick-reply-remove]');
+        if (removeTarget) {
+          event.stopPropagation();
+          this.deleteQuickReply(removeTarget.dataset.quickReplyRemove);
+          return;
+        }
+
+        const quickReplyButton = event.target.closest('[data-quick-reply-id]');
+        if (quickReplyButton) {
+          this.applyQuickReply(quickReplyButton.dataset.quickReplyId);
+        }
+      });
+
+    document
+      .getElementById('app-appearance-button')
+      ?.addEventListener('click', () => {
+        this.openAppearanceModal();
+      });
+
+    document
+      .getElementById('chat-menu-button')
+      ?.addEventListener('click', (event) => {
         event.stopPropagation();
-        this.deleteQuickReply(removeTarget.dataset.quickReplyRemove);
-        return;
-      }
+        this.toggleConversationMenu();
+      });
 
-      const quickReplyButton = event.target.closest('[data-quick-reply-id]');
-      if (quickReplyButton) {
-        this.applyQuickReply(quickReplyButton.dataset.quickReplyId);
-      }
-    });
+    document
+      .getElementById('chat-search-toggle')
+      ?.addEventListener('click', () => {
+        this.toggleChatSearch();
+        this.closeConversationMenu();
+      });
 
-    document.getElementById('app-appearance-button')?.addEventListener('click', () => {
-      this.openAppearanceModal();
-    });
+    document
+      .getElementById('chat-search-clear')
+      ?.addEventListener('click', () => {
+        this.clearChatSearch();
+      });
 
-    document.getElementById('chat-menu-button')?.addEventListener('click', (event) => {
-      event.stopPropagation();
-      this.toggleConversationMenu();
-    });
+    document
+      .getElementById('chat-search-input')
+      ?.addEventListener('input', (event) => {
+        this.setChatSearchQuery(event.target.value);
+      });
 
-    document.getElementById('chat-search-toggle')?.addEventListener('click', () => {
-      this.toggleChatSearch();
-      this.closeConversationMenu();
-    });
+    document
+      .getElementById('chat-starred-toggle')
+      ?.addEventListener('click', () => {
+        this.toggleStarredOnly();
+        this.closeConversationMenu();
+      });
 
-    document.getElementById('chat-search-clear')?.addEventListener('click', () => {
-      this.clearChatSearch();
-    });
-
-    document.getElementById('chat-search-input')?.addEventListener('input', (event) => {
-      this.setChatSearchQuery(event.target.value);
-    });
-
-    document.getElementById('chat-starred-toggle')?.addEventListener('click', () => {
-      this.toggleStarredOnly();
-      this.closeConversationMenu();
-    });
-
-    document.getElementById('chat-translate-all')?.addEventListener('click', () => {
-      this.translateUntranslatedIncomingMessages();
-      this.closeConversationMenu();
-    });
+    document
+      .getElementById('chat-translate-all')
+      ?.addEventListener('click', () => {
+        this.translateUntranslatedIncomingMessages();
+        this.closeConversationMenu();
+      });
 
     // Chat settings button in header
-    document.getElementById('chat-settings-button')?.addEventListener('click', () => {
-      this.openSettingsModal();
-      this.closeConversationMenu();
-    });
+    document
+      .getElementById('chat-settings-button')
+      ?.addEventListener('click', () => {
+        this.openSettingsModal();
+        this.closeConversationMenu();
+      });
 
-    document.getElementById('chat-workspace-toggle')?.addEventListener('click', () => {
-      this.toggleWorkspacePanel();
-    });
+    document
+      .getElementById('chat-workspace-toggle')
+      ?.addEventListener('click', () => {
+        this.toggleWorkspacePanel();
+      });
 
-    document.getElementById('workspace-backdrop')?.addEventListener('click', () => {
-      this.toggleWorkspacePanel(false);
-    });
+    document
+      .getElementById('workspace-backdrop')
+      ?.addEventListener('click', () => {
+        this.toggleWorkspacePanel(false);
+      });
 
-    document.getElementById('workspace-settings-button')?.addEventListener('click', () => {
-      this.openSettingsModal();
-    });
+    document
+      .getElementById('workspace-settings-button')
+      ?.addEventListener('click', () => {
+        this.openSettingsModal();
+      });
 
-    document.getElementById('workspace-copy-brief')?.addEventListener('click', () => {
-      this.copyConversationBrief();
-    });
+    document
+      .getElementById('workspace-copy-brief')
+      ?.addEventListener('click', () => {
+        this.copyConversationBrief();
+      });
 
-    document.getElementById('workspace-translate-all')?.addEventListener('click', () => {
-      this.translateUntranslatedIncomingMessages();
-    });
+    document
+      .getElementById('workspace-translate-all')
+      ?.addEventListener('click', () => {
+        this.translateUntranslatedIncomingMessages();
+      });
 
-    document.getElementById('workspace-checklist')?.addEventListener('click', (event) => {
-      const item = event.target.closest('[data-workspace-checklist]');
-      if (item) {
-        this.toggleWorkspaceChecklistItem(item.dataset.workspaceChecklist);
-      }
-    });
+    document
+      .getElementById('workspace-checklist')
+      ?.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-workspace-checklist]');
+        if (item) {
+          this.toggleWorkspaceChecklistItem(item.dataset.workspaceChecklist);
+        }
+      });
 
     // Context menu for contacts (right-click)
-    document.getElementById('contacts-list').addEventListener('contextmenu', (e) => {
-      const contactItem = e.target.closest('.contact-item');
-      if (contactItem) {
-        e.preventDefault();
-        const contactId = contactItem.dataset.contactId;
-        this.showContactContextMenu(e, contactId);
-      }
-    });
+    document
+      .getElementById('contacts-list')
+      .addEventListener('contextmenu', (e) => {
+        const contactItem = e.target.closest('.contact-item');
+        if (contactItem) {
+          e.preventDefault();
+          const contactId = contactItem.dataset.contactId;
+          this.showContactContextMenu(e, contactId);
+        }
+      });
 
     // Context menu items
-    document.getElementById('contact-context-menu')?.addEventListener('click', (e) => {
-      const item = e.target.closest('.context-menu-item');
-      if (!item) return;
+    document
+      .getElementById('contact-context-menu')
+      ?.addEventListener('click', (e) => {
+        const item = e.target.closest('.context-menu-item');
+        if (!item) return;
 
-      const action = item.dataset.action;
-      const contactId = this.contextMenuContactId;
+        const action = item.dataset.action;
+        const contactId = this.contextMenuContactId;
 
-      if (action === 'pin') {
-        this.togglePin(contactId);
-      } else if (action === 'settings') {
-        this.openSettingsModal(contactId);
-      }
+        if (action === 'pin') {
+          this.togglePin(contactId);
+        } else if (action === 'settings') {
+          this.openSettingsModal(contactId);
+        }
 
-      this.hideContactContextMenu();
-    });
+        this.hideContactContextMenu();
+      });
 
     // Close context menu when clicking outside
     document.addEventListener('click', (e) => {
@@ -5537,88 +6933,126 @@ class WhatsAppClient {
     });
 
     // Settings modal events
-    document.querySelector('#settings-modal .modal-close')?.addEventListener('click', () => {
-      this.closeSettingsModal();
-    });
-
-    document.querySelector('#settings-modal .modal-backdrop')?.addEventListener('click', () => {
-      this.closeSettingsModal();
-    });
-
-    document.querySelector('#appearance-modal .modal-close')?.addEventListener('click', () => {
-      this.closeAppearanceModal();
-    });
-
-    document.querySelector('#appearance-modal .modal-backdrop')?.addEventListener('click', () => {
-      this.closeAppearanceModal();
-    });
-
-    document.getElementById('appearance-cancel')?.addEventListener('click', () => {
-      this.closeAppearanceModal();
-    });
-
-    document.getElementById('appearance-save')?.addEventListener('click', () => {
-      this.saveAppearanceSettings();
-    });
-
-    document.getElementById('workspace-export-button')?.addEventListener('click', () => {
-      this.downloadWorkspaceStateExport();
-    });
-
-    document.getElementById('workspace-import-button')?.addEventListener('click', () => {
-      document.getElementById('workspace-import-input')?.click();
-    });
-
-    document.getElementById('workspace-import-input')?.addEventListener('change', async (event) => {
-      const file = event.target.files?.[0];
-      await this.importWorkspaceStateFromFile(file);
-      event.target.value = '';
-    });
-
-    document.getElementById('appearance-theme-select')?.addEventListener('change', () => {
-      this.syncAppearanceControls({
-        theme: document.getElementById('appearance-theme-select')?.value,
-        mode: document.getElementById('appearance-mode-select')?.value,
+    document
+      .querySelector('#settings-modal .modal-close')
+      ?.addEventListener('click', () => {
+        this.closeSettingsModal();
       });
-    });
 
-    document.getElementById('appearance-mode-select')?.addEventListener('change', () => {
-      this.syncAppearanceControls({
-        theme: document.getElementById('appearance-theme-select')?.value,
-        mode: document.getElementById('appearance-mode-select')?.value,
+    document
+      .querySelector('#settings-modal .modal-backdrop')
+      ?.addEventListener('click', () => {
+        this.closeSettingsModal();
       });
-    });
 
-    document.getElementById('settings-cancel')?.addEventListener('click', () => {
-      this.closeSettingsModal();
-    });
+    document
+      .querySelector('#appearance-modal .modal-close')
+      ?.addEventListener('click', () => {
+        this.closeAppearanceModal();
+      });
+
+    document
+      .querySelector('#appearance-modal .modal-backdrop')
+      ?.addEventListener('click', () => {
+        this.closeAppearanceModal();
+      });
+
+    document
+      .getElementById('appearance-cancel')
+      ?.addEventListener('click', () => {
+        this.closeAppearanceModal();
+      });
+
+    document
+      .getElementById('appearance-save')
+      ?.addEventListener('click', () => {
+        this.saveAppearanceSettings();
+      });
+
+    document
+      .getElementById('workspace-export-button')
+      ?.addEventListener('click', () => {
+        this.downloadWorkspaceStateExport();
+      });
+
+    document
+      .getElementById('workspace-import-button')
+      ?.addEventListener('click', () => {
+        document.getElementById('workspace-import-input')?.click();
+      });
+
+    document
+      .getElementById('workspace-import-input')
+      ?.addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        await this.importWorkspaceStateFromFile(file);
+        event.target.value = '';
+      });
+
+    document
+      .getElementById('appearance-theme-select')
+      ?.addEventListener('change', () => {
+        this.syncAppearanceControls({
+          theme: document.getElementById('appearance-theme-select')?.value,
+          mode: document.getElementById('appearance-mode-select')?.value,
+        });
+      });
+
+    document
+      .getElementById('appearance-mode-select')
+      ?.addEventListener('change', () => {
+        this.syncAppearanceControls({
+          theme: document.getElementById('appearance-theme-select')?.value,
+          mode: document.getElementById('appearance-mode-select')?.value,
+        });
+      });
+
+    document
+      .getElementById('settings-cancel')
+      ?.addEventListener('click', () => {
+        this.closeSettingsModal();
+      });
 
     document.getElementById('settings-save')?.addEventListener('click', () => {
       this.saveConversationSettings();
     });
-    document.getElementById('translation-enabled')?.addEventListener('change', () => this.updateTranslationSettingsControls());
+    document
+      .getElementById('translation-enabled')
+      ?.addEventListener('change', () =>
+        this.updateTranslationSettingsControls(),
+      );
 
-    document.getElementById('command-palette-input')?.addEventListener('input', (event) => {
-      this.commandPaletteQuery = event.target.value || '';
-      this.commandPaletteSelectionIndex = 0;
-      this.renderCommandPalette();
-    });
+    document
+      .getElementById('command-palette-input')
+      ?.addEventListener('input', (event) => {
+        this.commandPaletteQuery = event.target.value || '';
+        this.commandPaletteSelectionIndex = 0;
+        this.renderCommandPalette();
+      });
 
-    document.getElementById('command-palette-results')?.addEventListener('click', (event) => {
-      const item = event.target.closest('[data-command-index]');
-      if (!item) return;
-      this.commandPaletteSelectionIndex = Number(item.dataset.commandIndex || 0);
-      this.activateCommandPaletteSelection();
-    });
+    document
+      .getElementById('command-palette-results')
+      ?.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-command-index]');
+        if (!item) return;
+        this.commandPaletteSelectionIndex = Number(
+          item.dataset.commandIndex || 0,
+        );
+        this.activateCommandPaletteSelection();
+      });
 
-    document.querySelector('#command-palette .command-palette-backdrop')?.addEventListener('click', () => {
-      this.closeCommandPalette();
-    });
+    document
+      .querySelector('#command-palette .command-palette-backdrop')
+      ?.addEventListener('click', () => {
+        this.closeCommandPalette();
+      });
 
     document.addEventListener('keydown', (e) => {
       const target = e.target;
-      const isEditable = target instanceof HTMLElement
-        && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+      const isEditable =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -5647,7 +7081,13 @@ class WhatsAppClient {
         return;
       }
 
-      if (!isEditable && e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (
+        !isEditable &&
+        e.key === '/' &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
         e.preventDefault();
         document.getElementById('inbox-search-input')?.focus();
         document.getElementById('inbox-search-input')?.select();
@@ -5670,7 +7110,11 @@ class WhatsAppClient {
         this.closeSettingsModal();
         this.closeAppearanceModal();
         this.hideContactContextMenu();
-        if (!document.getElementById('chat-search-bar')?.classList.contains('hidden')) {
+        if (
+          !document
+            .getElementById('chat-search-bar')
+            ?.classList.contains('hidden')
+        ) {
           this.toggleChatSearch();
         }
       }
@@ -5688,7 +7132,10 @@ class WhatsAppClient {
     this.messageSearchQuery = '';
     this.starredOnly = false;
     this.clearReply();
-    document.getElementById('chat-view').querySelector('#chat-search-bar')?.classList.add('hidden');
+    document
+      .getElementById('chat-view')
+      .querySelector('#chat-search-bar')
+      ?.classList.add('hidden');
     const chatSearchInput = document.getElementById('chat-search-input');
     if (chatSearchInput) chatSearchInput.value = '';
     document.getElementById('main-container').classList.remove('chat-open');
@@ -5704,7 +7151,7 @@ class WhatsAppClient {
     this.updateChatHeaderNote();
     this.updateWorkspaceUI();
     this.renderContacts();
-    
+
     // Update URL without chat parameter
     if (this.isMobile()) {
       history.replaceState({}, '', window.location.pathname);
@@ -5724,24 +7171,27 @@ class WhatsAppClient {
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now - date;
-    
+
     // Today
     if (date.toDateString() === now.toDateString()) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
     }
-    
+
     // Yesterday
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday';
     }
-    
+
     // This week
     if (diff < 7 * 24 * 60 * 60 * 1000) {
       return date.toLocaleDateString([], { weekday: 'short' });
     }
-    
+
     // Older
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
@@ -5764,7 +7214,11 @@ class WhatsAppClient {
     }
 
     if (absDiff < 7 * 24 * 60 * 60 * 1000) {
-      return date.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+      return date.toLocaleString([], {
+        weekday: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
     }
 
     return date.toLocaleString([], {
@@ -5792,29 +7246,29 @@ class WhatsAppClient {
   formatDate(timestamp) {
     const date = new Date(timestamp);
     const now = new Date();
-    
+
     if (date.toDateString() === now.toDateString()) {
       return 'Today';
     }
-    
+
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday';
     }
-    
-    return date.toLocaleDateString([], { 
-      weekday: 'long', 
-      month: 'long', 
+
+    return date.toLocaleDateString([], {
+      weekday: 'long',
+      month: 'long',
       day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
     });
   }
 
   formatMessageTime(timestamp) {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   }
 
@@ -5867,7 +7321,9 @@ class WhatsAppClient {
   async fetchConversationUsage(contactId) {
     if (this.demoMode) {
       const messages = this.messages.get(contactId) || [];
-      const translatedCount = messages.filter(message => message.isTranslated || message.is_translated).length;
+      const translatedCount = messages.filter(
+        (message) => message.isTranslated || message.is_translated,
+      ).length;
       const usage = { costUsd: translatedCount * 0.004 };
       this.conversationUsageCache.set(contactId, usage);
       if (contactId === this.currentContactId) {
@@ -5877,9 +7333,12 @@ class WhatsAppClient {
     }
 
     try {
-      const response = await this.apiFetch(`/api/usage/${encodeURIComponent(contactId)}`, {
-        headers: this.getAuthHeaders()
-      });
+      const response = await this.apiFetch(
+        `/api/usage/${encodeURIComponent(contactId)}`,
+        {
+          headers: this.getAuthHeaders(),
+        },
+      );
       const usage = await response.json();
       this.conversationUsageCache.set(contactId, usage);
       if (contactId === this.currentContactId) {
@@ -5902,9 +7361,9 @@ class WhatsAppClient {
     if (!text) return [];
     const urlRegex = /https?:\/\/[^\s<>\[\](){}|\\^`\x00-\x1f\x7f]+/gi;
     const matches = text.match(urlRegex) || [];
-    
+
     // Clean trailing punctuation
-    return matches.map(url => {
+    return matches.map((url) => {
       while (url.match(/[.,!?)\]};:'"]+$/)) {
         url = url.slice(0, -1);
       }
@@ -5927,12 +7386,14 @@ class WhatsAppClient {
     this.linkPreviewFetching.add(url);
 
     try {
-      const response = await this.apiFetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+      const response = await this.apiFetch(
+        `/api/link-preview?url=${encodeURIComponent(url)}`,
+      );
       const preview = await response.json();
-      
+
       // Cache the result
       this.linkPreviewCache.set(url, preview);
-      
+
       return preview;
     } catch (err) {
       console.error('Failed to fetch link preview:', err);
@@ -5948,18 +7409,23 @@ class WhatsAppClient {
       return ''; // Don't show card for errors
     }
 
-    const hasImage = preview.imageUrl && !preview.imageUrl.includes('undefined');
+    const hasImage =
+      preview.imageUrl && !preview.imageUrl.includes('undefined');
     const title = preview.title || this.getDomainFromUrl(url);
     const description = preview.description || '';
     const siteName = preview.siteName || this.getDomainFromUrl(url);
 
     return `
       <a href="${this.escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="link-preview-card">
-        ${hasImage ? `
+        ${
+          hasImage
+            ? `
           <div class="link-preview-image">
             <img src="${this.escapeHtml(preview.imageUrl)}" alt="" loading="lazy" data-hide-on-error="true">
           </div>
-        ` : ''}
+        `
+            : ''
+        }
         <div class="link-preview-content">
           <div class="link-preview-site">${this.escapeHtml(siteName)}</div>
           <div class="link-preview-title">${this.escapeHtml(title)}</div>
@@ -5985,10 +7451,14 @@ class WhatsAppClient {
       return;
     }
 
-    const tooltipClose = target.closest('[data-message-action="close-translation-tooltip"]');
+    const tooltipClose = target.closest(
+      '[data-message-action="close-translation-tooltip"]',
+    );
     if (tooltipClose) {
       event.stopPropagation();
-      tooltipClose.closest('.translation-indicator')?.classList.remove('show-tooltip');
+      tooltipClose
+        .closest('.translation-indicator')
+        ?.classList.remove('show-tooltip');
       return;
     }
 
@@ -6010,7 +7480,9 @@ class WhatsAppClient {
     if (mediaPlaceholder) {
       event.stopPropagation();
       const mediaContainer = mediaPlaceholder.closest('.lazy-media');
-      const messageId = mediaContainer?.dataset.messageId || mediaPlaceholder.closest('.message')?.dataset.messageId;
+      const messageId =
+        mediaContainer?.dataset.messageId ||
+        mediaPlaceholder.closest('.message')?.dataset.messageId;
       if (messageId) {
         this.loadMedia(messageId, mediaPlaceholder);
       }
@@ -6022,7 +7494,9 @@ class WhatsAppClient {
       return;
     }
 
-    const messageId = actionTarget.dataset.messageId || actionTarget.closest('.message')?.dataset.messageId;
+    const messageId =
+      actionTarget.dataset.messageId ||
+      actionTarget.closest('.message')?.dataset.messageId;
 
     switch (actionTarget.dataset.messageAction) {
       case 'translate':
@@ -6043,16 +7517,22 @@ class WhatsAppClient {
         break;
       case 'toggle-reactions':
         event.stopPropagation();
-        actionTarget.parentElement?.querySelector('.reaction-picker')?.classList.toggle('show');
+        actionTarget.parentElement
+          ?.querySelector('.reaction-picker')
+          ?.classList.toggle('show');
         break;
       case 'react':
         event.stopPropagation();
-        if (messageId && actionTarget.dataset.contactId && actionTarget.dataset.senderJid) {
+        if (
+          messageId &&
+          actionTarget.dataset.contactId &&
+          actionTarget.dataset.senderJid
+        ) {
           this.sendReaction(
             messageId,
             actionTarget.dataset.contactId,
             actionTarget.dataset.senderJid,
-            actionTarget.dataset.reaction || ''
+            actionTarget.dataset.reaction || '',
           );
         }
         actionTarget.closest('.reaction-picker')?.classList.remove('show');
@@ -6065,52 +7545,63 @@ class WhatsAppClient {
   // Convert URLs in text to clickable links and apply WhatsApp markdown formatting
   linkifyText(text) {
     if (!text) return '';
-    
+
     const urlRegex = /(https?:\/\/[^\s<>\[\](){}|\\^`\x00-\x1f\x7f]+)/gi;
     const parts = text.split(urlRegex);
-    
-    return parts.map((part, index) => {
-      // Even indices are non-URL text, odd indices are URLs (due to capture group)
-      if (index % 2 === 0) {
-        // Non-URL text - escape it and apply WhatsApp formatting
-        return this.formatWhatsAppMarkdown(this.escapeHtml(part));
-      } else {
-        // URL - clean trailing punctuation and create link
-        let cleanUrl = part;
-        let trailing = '';
-        while (cleanUrl.match(/[.,!?)\]};:'"]+$/)) {
-          trailing = cleanUrl.slice(-1) + trailing;
-          cleanUrl = cleanUrl.slice(0, -1);
+
+    return parts
+      .map((part, index) => {
+        // Even indices are non-URL text, odd indices are URLs (due to capture group)
+        if (index % 2 === 0) {
+          // Non-URL text - escape it and apply WhatsApp formatting
+          return this.formatWhatsAppMarkdown(this.escapeHtml(part));
+        } else {
+          // URL - clean trailing punctuation and create link
+          let cleanUrl = part;
+          let trailing = '';
+          while (cleanUrl.match(/[.,!?)\]};:'"]+$/)) {
+            trailing = cleanUrl.slice(-1) + trailing;
+            cleanUrl = cleanUrl.slice(0, -1);
+          }
+          return `<a href="${this.escapeHtml(cleanUrl)}" target="_blank" rel="noopener noreferrer" class="message-link">${this.escapeHtml(cleanUrl)}</a>${this.escapeHtml(trailing)}`;
         }
-        return `<a href="${this.escapeHtml(cleanUrl)}" target="_blank" rel="noopener noreferrer" class="message-link">${this.escapeHtml(cleanUrl)}</a>${this.escapeHtml(trailing)}`;
-      }
-    }).join('');
+      })
+      .join('');
   }
 
   // Apply WhatsApp-style markdown formatting
   // *bold* _italic_ ~strikethrough~ ```code block``` `inline code`
   formatWhatsAppMarkdown(text) {
     if (!text) return '';
-    
+
     // Process code blocks first (```text```) - these should not have other formatting inside
-    text = text.replace(/```([\s\S]*?)```/g, '<code class="wa-code-block">$1</code>');
-    
+    text = text.replace(
+      /```([\s\S]*?)```/g,
+      '<code class="wa-code-block">$1</code>',
+    );
+
     // Process inline code (`text`)
-    text = text.replace(/`([^`\n]+)`/g, '<code class="wa-code-inline">$1</code>');
-    
+    text = text.replace(
+      /`([^`\n]+)`/g,
+      '<code class="wa-code-inline">$1</code>',
+    );
+
     // Process bold (*text*) - must not be inside a code block
     // Match * followed by non-whitespace, any chars, non-whitespace, then *
     text = text.replace(/\*([^\s*](?:[^*]*[^\s*])?)\*/g, '<strong>$1</strong>');
-    
+
     // Process italic (_text_) - must not be inside a code block
-    text = text.replace(/(?<![a-zA-Z0-9])_([^\s_](?:[^_]*[^\s_])?)_(?![a-zA-Z0-9])/g, '<em>$1</em>');
-    
+    text = text.replace(
+      /(?<![a-zA-Z0-9])_([^\s_](?:[^_]*[^\s_])?)_(?![a-zA-Z0-9])/g,
+      '<em>$1</em>',
+    );
+
     // Process strikethrough (~text~)
     text = text.replace(/~([^\s~](?:[^~]*[^\s~])?)~/g, '<s>$1</s>');
-    
+
     // Convert newlines to <br>
     text = text.replace(/\n/g, '<br>');
-    
+
     return text;
   }
 
@@ -6118,7 +7609,11 @@ class WhatsAppClient {
   async loadLinkPreviews(messageEl, urls) {
     const container = messageEl.querySelector('.link-previews-container');
     if (!container || urls.length === 0) return;
-    if (container.dataset.previewLoaded === 'true' || container.dataset.previewLoading === 'true') return;
+    if (
+      container.dataset.previewLoaded === 'true' ||
+      container.dataset.previewLoading === 'true'
+    )
+      return;
 
     container.dataset.previewLoading = 'true';
 
@@ -6159,32 +7654,34 @@ class WhatsAppClient {
 
     try {
       // Fetch media from the API
-      const response = await this.apiFetch(`/api/media/${encodeURIComponent(messageId)}`);
-      
+      const response = await this.apiFetch(
+        `/api/media/${encodeURIComponent(messageId)}`,
+      );
+
       if (!response.ok) {
         throw new Error('Failed to load media');
       }
 
       const data = await response.json();
-      
+
       if (!data.media_data) {
         throw new Error('No media data received');
       }
 
       // Build the data URL
       const actualMimeType = data.mime_type || mimeType;
-      const mediaSrc = data.media_data.startsWith('data:') 
-        ? data.media_data 
+      const mediaSrc = data.media_data.startsWith('data:')
+        ? data.media_data
         : `data:${actualMimeType};base64,${data.media_data}`;
 
       // Replace placeholder with actual media based on type
       let mediaHtml = '';
-      
+
       switch (mediaType) {
         case 'image':
           mediaHtml = `<img src="${mediaSrc}" alt="Image" loading="lazy" data-fullscreen-toggle="true">`;
           break;
-          
+
         case 'video':
           mediaHtml = `
             <video controls preload="metadata">
@@ -6193,7 +7690,7 @@ class WhatsAppClient {
             </video>
           `;
           break;
-          
+
         case 'audio':
           const isVoiceNote = container.classList.contains('voice-note');
           mediaHtml = `
@@ -6204,7 +7701,7 @@ class WhatsAppClient {
             ${isVoiceNote ? '<span class="voice-note-label">Voice Note</span>' : ''}
           `;
           break;
-          
+
         case 'document':
           const docFileName = fileName || 'document';
           mediaHtml = `
@@ -6219,11 +7716,11 @@ class WhatsAppClient {
             </a>
           `;
           break;
-          
+
         case 'sticker':
           mediaHtml = `<img src="${mediaSrc}" alt="Sticker" loading="lazy">`;
           break;
-          
+
         default:
           mediaHtml = `<img src="${mediaSrc}" alt="Media" loading="lazy">`;
       }
@@ -6232,16 +7729,17 @@ class WhatsAppClient {
       container.classList.remove('lazy-media');
       container.innerHTML = mediaHtml;
       const audioPlayer = container.querySelector('audio');
-      if (audioPlayer) audioPlayer.onerror = () => {
-        const status = document.createElement('p');
-        status.textContent = 'Unable to play this voice note. Reload to retry downloading it.';
-        status.setAttribute('role', 'alert');
-        container.append(status);
-      };
+      if (audioPlayer)
+        audioPlayer.onerror = () => {
+          const status = document.createElement('p');
+          status.textContent =
+            'Unable to play this voice note. Reload to retry downloading it.';
+          status.setAttribute('role', 'alert');
+          container.append(status);
+        };
 
       // Also update the message cache so re-renders show the media
       this.updateMessageMediaCache(messageId, data.media_data, actualMimeType);
-
     } catch (err) {
       console.error('Failed to load media:', err);
       // Show error state
@@ -6260,11 +7758,11 @@ class WhatsAppClient {
   updateMessageMediaCache(messageId, mediaData, mimeType) {
     // Find the message in the current contact's messages
     if (!this.currentContactId) return;
-    
+
     const messages = this.messages.get(this.currentContactId);
     if (!messages) return;
-    
-    const message = messages.find(m => m.id === messageId);
+
+    const message = messages.find((m) => m.id === messageId);
     if (message && message.content) {
       message.content.media_data = mediaData;
       message.content.mediaData = mediaData;
@@ -6283,15 +7781,16 @@ class WhatsAppClient {
 
     let emojis;
     if (category === 'recent') {
-      emojis = this.recentEmojis.length > 0 
-        ? this.recentEmojis 
-        : ['😀', '😊', '😂', '❤️', '👍', '🎉', '🔥', '✨']; // Default if no recent
+      emojis =
+        this.recentEmojis.length > 0
+          ? this.recentEmojis
+          : ['😀', '😊', '😂', '❤️', '👍', '🎉', '🔥', '✨']; // Default if no recent
     } else {
       emojis = this.emojiData[category] || [];
     }
 
     container.innerHTML = emojis
-      .map(emoji => `<span class="emoji-item">${emoji}</span>`)
+      .map((emoji) => `<span class="emoji-item">${emoji}</span>`)
       .join('');
   }
 
@@ -6324,7 +7823,7 @@ class WhatsAppClient {
   // Add emoji to recent list
   addRecentEmoji(emoji) {
     // Remove if already exists
-    this.recentEmojis = this.recentEmojis.filter(e => e !== emoji);
+    this.recentEmojis = this.recentEmojis.filter((e) => e !== emoji);
     // Add to front
     this.recentEmojis.unshift(emoji);
     // Keep only last 32 emojis
@@ -6346,10 +7845,12 @@ class WhatsAppClient {
     this.contextMenuContactId = contactId;
 
     // Update pin button text based on current state
-    const contact = this.contacts.find(c => c.id === contactId);
+    const contact = this.contacts.find((c) => c.id === contactId);
     const pinText = menu.querySelector('.pin-text');
     if (pinText && contact) {
-      pinText.textContent = contact.pinnedAt ? 'Unpin conversation' : 'Pin conversation';
+      pinText.textContent = contact.pinnedAt
+        ? 'Unpin conversation'
+        : 'Pin conversation';
     }
 
     // Position the menu near the cursor
@@ -6388,14 +7889,18 @@ class WhatsAppClient {
 
     this.settingsContactId = contactId;
     let settings;
-    try { settings = await this.conversationSettingsClient.load(contactId); }
-    catch (error) {
-      if (this.settingsContactId === contactId) { this.settingsContactId = null; alert(error.message); }
+    try {
+      settings = await this.conversationSettingsClient.load(contactId);
+    } catch (error) {
+      if (this.settingsContactId === contactId) {
+        this.settingsContactId = null;
+        alert(error.message);
+      }
       return;
     }
     if (this.settingsContactId !== contactId) return;
     const localSettings = this.getContactMetadata(contactId);
-    const contact = this.contacts.find(item => item.id === contactId);
+    const contact = this.contacts.find((item) => item.id === contactId);
     const mergedSettings = {
       ...settings,
       alias: localSettings.alias || contact?.alias || '',
@@ -6407,16 +7912,22 @@ class WhatsAppClient {
       if (field) field.value = value || '';
     };
 
-    document.getElementById('reply-only').checked = mergedSettings.replyOnly === true;
-    document.getElementById('translation-enabled').checked = mergedSettings.translationEnabled === true;
+    document.getElementById('reply-only').checked =
+      mergedSettings.replyOnly === true;
+    document.getElementById('translation-enabled').checked =
+      mergedSettings.translationEnabled === true;
     this.updateTranslationSettingsControls();
     setFieldValue('contact-alias', mergedSettings.alias);
     setFieldValue('conversation-timezone', mergedSettings.timezone);
     setFieldValue('language-override', mergedSettings.languageOverride);
     setFieldValue('translation-style', mergedSettings.translationStyle);
-    const sendOriginalFollowUp = document.getElementById('send-original-follow-up');
+    const sendOriginalFollowUp = document.getElementById(
+      'send-original-follow-up',
+    );
     if (sendOriginalFollowUp) {
-      sendOriginalFollowUp.checked = Boolean(mergedSettings.sendOriginalFollowUp);
+      sendOriginalFollowUp.checked = Boolean(
+        mergedSettings.sendOriginalFollowUp,
+      );
     }
 
     modal.classList.remove('hidden');
@@ -6426,7 +7937,9 @@ class WhatsAppClient {
   updateChatHeaderNote() {
     const noteEl = document.getElementById('chat-note-indicator');
     if (!noteEl) return;
-    const summary = this.currentContactId ? this.buildChatMetadataSummary(this.currentContactId) : '';
+    const summary = this.currentContactId
+      ? this.buildChatMetadataSummary(this.currentContactId)
+      : '';
     if (summary) {
       noteEl.textContent = summary;
       noteEl.classList.remove('hidden');
@@ -6437,15 +7950,22 @@ class WhatsAppClient {
   }
 
   updateTranslationSettingsControls() {
-    const enabled = document.getElementById('translation-enabled')?.checked === true;
-    for (const id of ['language-override', 'translation-style', 'send-original-follow-up']) {
+    const enabled =
+      document.getElementById('translation-enabled')?.checked === true;
+    for (const id of [
+      'language-override',
+      'translation-style',
+      'send-original-follow-up',
+    ]) {
       const field = document.getElementById(id);
-      if (field) field.disabled = !enabled || Boolean(this.savingConversationSettings);
+      if (field)
+        field.disabled = !enabled || Boolean(this.savingConversationSettings);
     }
     const hint = document.getElementById('translation-enabled-hint');
-    if (hint) hint.textContent = enabled
-      ? 'Translates messages, captions and voice notes for this conversation on every connected device, including Messages.'
-      : 'Off by default. Sends messages as written and uses your original voice recording, without waiting for translation.';
+    if (hint)
+      hint.textContent = enabled
+        ? 'Translates messages, captions and voice notes for this conversation on every connected device, including Messages.'
+        : 'Off by default. Sends messages as written and uses your original voice recording, without waiting for translation.';
   }
 
   // Close settings modal
@@ -6464,30 +7984,44 @@ class WhatsAppClient {
     const targetContactId = this.settingsContactId || this.currentContactId;
     if (!targetContactId) return;
 
-    const languageOverride = document.getElementById('language-override')?.value?.trim() || null;
-    const translationStyle = document.getElementById('translation-style')?.value?.trim() || null;
-    const sendOriginalFollowUp = Boolean(document.getElementById('send-original-follow-up')?.checked);
-    const alias = document.getElementById('contact-alias')?.value?.trim() || null;
-    const timezone = document.getElementById('conversation-timezone')?.value?.trim() || null;
+    const languageOverride =
+      document.getElementById('language-override')?.value?.trim() || null;
+    const translationStyle =
+      document.getElementById('translation-style')?.value?.trim() || null;
+    const sendOriginalFollowUp = Boolean(
+      document.getElementById('send-original-follow-up')?.checked,
+    );
+    const alias =
+      document.getElementById('contact-alias')?.value?.trim() || null;
+    const timezone =
+      document.getElementById('conversation-timezone')?.value?.trim() || null;
 
-    const translationEnabled = document.getElementById('translation-enabled')?.checked === true;
+    const translationEnabled =
+      document.getElementById('translation-enabled')?.checked === true;
     const modal = document.getElementById('settings-modal');
     this.savingConversationSettings = true;
-    modal?.querySelectorAll('button, input').forEach(control => { control.disabled = true; });
+    modal?.querySelectorAll('button, input').forEach((control) => {
+      control.disabled = true;
+    });
     try {
       await this.conversationSettingsClient.save(targetContactId, {
         replyOnly: document.getElementById('reply-only')?.checked === true,
-        translationEnabled, languageOverride, translationStyle, sendOriginalFollowUp,
+        translationEnabled,
+        languageOverride,
+        translationStyle,
+        sendOriginalFollowUp,
       });
-      this.updateContactMetadata(targetContactId, {alias, timezone});
-      const contact = this.contacts.find(item => item.id === targetContactId);
-      if (contact) Object.assign(contact, {alias, timezone});
+      this.updateContactMetadata(targetContactId, { alias, timezone });
+      const contact = this.contacts.find((item) => item.id === targetContactId);
+      if (contact) Object.assign(contact, { alias, timezone });
     } catch (error) {
       alert(error.message);
       return;
     } finally {
       this.savingConversationSettings = false;
-      modal?.querySelectorAll('button, input').forEach(control => { control.disabled = false; });
+      modal?.querySelectorAll('button, input').forEach((control) => {
+        control.disabled = false;
+      });
       this.updateTranslationSettingsControls();
     }
 
