@@ -71,6 +71,11 @@ pub struct Args {
     /// Explicitly allow passwordless local development on a loopback bind address
     #[arg(long, env = "WA_ALLOW_LOCAL_NO_AUTH")]
     pub allow_local_no_auth: bool,
+
+    /// Answer text AI requests locally with placeholder output instead of
+    /// calling OpenAI, for local runs and UI checks without a key
+    #[arg(long, env = "WA_FAKE_AI")]
+    pub fake_ai: bool,
 }
 
 impl Args {
@@ -91,6 +96,6 @@ impl Args {
 
     /// Check if translation is enabled
     pub fn translation_enabled(&self) -> bool {
-        self.openai_api_key.is_some()
+        self.openai_api_key.is_some() || self.fake_ai
     }
 }

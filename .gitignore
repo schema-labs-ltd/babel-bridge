@@ -38,3 +38,6 @@ storybook-static
 
 # Xcode Cloud TestFlight notes, generated per build
 ios/TestFlight/
+
+# Local fake-mode data (see .env.example)
+/.data/
