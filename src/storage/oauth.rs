@@ -215,47 +215,6 @@ impl MessageStore {
         }
     }
 
-    /// Get a pending authorization (without removing it)
-    pub fn oauth_get_pending_auth(
-        &self,
-        session_key: &str,
-    ) -> Result<Option<PendingAuthorization>> {
-        let conn = self.conn.lock().unwrap();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-
-        let result = conn.query_row(
-            r#"
-            SELECT session_key, client_id, redirect_uri, code_challenge, code_challenge_method, 
-                   scope, state, created_at, expires_at
-            FROM oauth_pending_auth 
-            WHERE session_key = ? AND expires_at > ?
-            "#,
-            params![session_key, now],
-            |row| {
-                Ok(PendingAuthorization {
-                    session_key: row.get(0)?,
-                    client_id: row.get(1)?,
-                    redirect_uri: row.get(2)?,
-                    code_challenge: row.get(3)?,
-                    code_challenge_method: row.get(4)?,
-                    scope: row.get(5)?,
-                    state: row.get(6)?,
-                    created_at: row.get(7)?,
-                    expires_at: row.get(8)?,
-                })
-            },
-        );
-
-        match result {
-            Ok(pending) => Ok(Some(pending)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
     /// Store an authorization code as a SHA-256 hash.
     pub fn oauth_store_authorization_code(&self, code: &AuthorizationCode) -> Result<()> {
         let conn = self.conn.lock().unwrap();

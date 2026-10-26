@@ -800,13 +800,15 @@ impl MessageStore {
             "#,
         )?;
 
-        let rows: Vec<(
+        // (contact_id, content_json, content_type, is_from_me, translated_text)
+        type PreviewRow = (
             String,
             Option<String>,
             Option<String>,
             Option<bool>,
             Option<String>,
-        )> = stmt
+        );
+        let rows: Vec<PreviewRow> = stmt
             .query_map([], |row| {
                 Ok((
                     row.get(0)?,

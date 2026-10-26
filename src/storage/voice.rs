@@ -97,7 +97,8 @@ impl MessageStore {
         Ok(())
     }
 
-    pub fn voice_note(&self, id: &str) -> Result<Option<(String, String, Option<String>, i64)>> {
+    /// Returns `(payload, status, result, created_at)`.
+    pub fn voice_note(&self, id: &str) -> Result<Option<VoiceNoteRow>> {
         Ok(self
             .conn
             .lock()
