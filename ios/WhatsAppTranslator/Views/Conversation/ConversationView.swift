@@ -9,17 +9,17 @@ struct ConversationView: View {
     let contact: Contact
     @State var draft = ""
     @State var replyTarget: MessageReplyTarget?
-    @State private var focusedReplyMessage: ChatMessage?
+    @State var focusedReplyMessage: ChatMessage?
     @State var showSettings = ProcessInfo.processInfo.arguments.contains("-demoConversationSettings")
     @State var showCost = ProcessInfo.processInfo.arguments.contains("-demoCost")
     @State var showSearch = ProcessInfo.processInfo.arguments.contains("-demoSearch")
     @State var showGallery = false
     @State var messageSearch = ""
     @State var starredOnly = false
-    @State private var selectedTopicID: String?
+    @State var selectedTopicID: String?
     @State var showTopicManagement = false
     @State var usage: UsageSummary?
-    private var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
+    var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
     var conversationTitleButton: some View {

@@ -74,7 +74,7 @@ final class AppSession {
     var messageImages: [String: PlatformImage] = [:]
     var messageMediaURLs: [String: URL] = [:]
     /// Sizes of photos and stickers seen before, for messages the server sent without dimensions.
-    private(set) var rememberedImageSizes: [String: CGSize] = [:]
+    var rememberedImageSizes: [String: CGSize] = [:]
     var mediaLoadingIDs: Set<String> = []
     var mediaErrorIDs: Set<String> = []
     var loadingCompleteHistoryContactIDs: Set<String> = []
@@ -84,7 +84,7 @@ final class AppSession {
     let preferences: AppPreferencesStore
     let appIcons = AppIconController()
     var readReceiptCovers: Set<UUID> = []
-    private(set) var viewedReceiptMessageIDs: Set<String> = []
+    var viewedReceiptMessageIDs: Set<String> = []
     var pendingReadReceipts: [String: Set<String>] = [:]
     var readReceiptTask: Task<Void, Never>?
 
@@ -186,7 +186,7 @@ final class AppSession {
     /// Delays between quiet retries when a refresh hits a dropped or unavailable connection.
     var transientRefreshRetryDelays: [Duration] = [.seconds(1), .seconds(3)]
 
-    private(set) var savedConversationSettings: [String: ConversationSettings] = [:]
+    var savedConversationSettings: [String: ConversationSettings] = [:]
     var conversationSettingsRevision = 0
 
     func presentError(_ title: String, _ error: Error) {

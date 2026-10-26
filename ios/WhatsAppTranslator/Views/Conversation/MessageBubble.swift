@@ -10,7 +10,7 @@ struct MessageBubble: View {
     @Environment(AppSession.self) var session
     @Environment(\.translatorPalette) var palette
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.chatBubbleMaxWidth) private var foldBubbleMaxWidth
+    @Environment(\.chatBubbleMaxWidth) var foldBubbleMaxWidth
     let message: ChatMessage
     let isStarred: Bool
     let isBusy: Bool

@@ -7,9 +7,9 @@ struct UnifiedMessagesView: View {
     @Binding var sending: Bool
     @State var showSettings = false
     @State var settingsContact: Contact?
-    @State private var selectedTopicID: String?
+    @State var selectedTopicID: String?
     @State var showTopicManagement = false
-    private var selectedTopic: ChatTopic? { session.topics().first { $0.id == selectedTopicID } }
+    var selectedTopic: ChatTopic? { session.topics().first { $0.id == selectedTopicID } }
     var displayedMessages: [ChatMessage] {
         if let selectedTopicID { return session.topicPages[selectedTopicID]?.messages ?? [] }
         return session.unifiedMessages

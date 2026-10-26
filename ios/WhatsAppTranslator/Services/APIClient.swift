@@ -2,7 +2,7 @@ import Foundation
 
 actor APIClient {
     let session: URLSession
-    private var configuration: ServerConfiguration?
+    var configuration: ServerConfiguration?
     var token: String?
     var webSocket: URLSessionWebSocketTask?
     var receiveTask: Task<Void, Never>?
@@ -252,7 +252,7 @@ extension JSONEncoder {
     static var backend: JSONEncoder { JSONEncoder() }
 }
 
-private extension String {
+extension String {
     var urlPathEncoded: String {
         addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? self
     }
