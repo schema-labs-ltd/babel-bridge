@@ -763,16 +763,6 @@ enum APIError: LocalizedError, Equatable {
     }
 }
 
-private struct HealthResponse: Decodable, Sendable { let ok: Bool }
-private struct SuccessResponse: Decodable, Sendable { let success: Bool }
-private struct PinResponse: Decodable, Sendable {
-    let success: Bool
-    let pinned: Bool
-}
-private struct ErrorResponse: Decodable, Sendable { let error: String }
-struct ViewedMessagesRequest: Encodable, Sendable { let messageIds: [String] }
-struct ViewedMessagesResponse: Decodable, Sendable { let success: Bool; let unreadCount: Int }
-
 extension JSONDecoder {
     static var backend: JSONDecoder { JSONDecoder() }
 }

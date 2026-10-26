@@ -33,6 +33,20 @@ jobs:
       - name: Check production Rust container build
         run: docker build --target rust-builder --tag whatsapp-translator:rust-build-check .
 
+  api-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The rust job runs the server side of the contract in `cargo test`.
+      # This decodes the same fixtures with the app's APIModels.swift.
+      - name: Decode API fixtures with the app models
+        run: |
+          swiftc --version
+          scripts/check-api-contract.sh
+
   go:
     runs-on: ubuntu-latest
     timeout-minutes: 15
