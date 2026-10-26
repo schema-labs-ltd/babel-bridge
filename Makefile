@@ -1,6 +1,6 @@
 # One entry point for the checks CI runs.
 #
-#   make check        CI's go, rust and web jobs, step for step, in the same order
+#   make check        CI's file-size, go, rust and web jobs, step for step, in the same order
 #   make check-fast   only the parts of `check` that the diff from origin/main touches
 #   make ci           `check` plus the `CI / container-build` job (needs Docker)
 #
@@ -17,10 +17,11 @@ BASE ?= origin/main
 .PHONY: help check check-fast ci test fmt lint \
 	go-fmt-check go-vet go-test fmt-check rust-test clippy web-deps web-test web-lint \
 	extension-lint extension-check extension-browser extension-test \
-	check-go check-rust check-web container-check require-ffmpeg
+	check-go check-rust check-web container-check require-ffmpeg file-size
 
 help:
-	@echo "make check        run every step of the CI go, rust and web jobs, in CI's order"
+	@echo "make check        run every step of the CI file-size, go, rust and web jobs, in CI's order"
+	@echo "make file-size    check files changed since $(BASE) against the 5,000-token limit"
 	@echo "make check-fast   run only the checks for areas changed since $(BASE)"
 	@echo "make ci           check, then the production container build (needs Docker)"
 	@echo "make check-go | check-rust | check-web   one CI job"
@@ -28,8 +29,8 @@ help:
 	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier and extension types"
 	@echo "make fmt          apply gofmt, rustfmt and prettier"
 
-# Same steps, same order as the go, rust and web jobs in .github/workflows/ci.yml.
-check: check-go check-rust check-web
+# Same steps, same order as the file-size, go, rust and web jobs in .github/workflows/ci.yml.
+check: file-size check-go check-rust check-web
 
 check-go: go-fmt-check go-vet go-test
 
@@ -56,6 +57,11 @@ go-vet:
 
 go-test:
 	cd wa-bridge && go test ./...
+
+# CI's file-size job: files the commits since $(BASE) add or edit.
+file-size:
+	@base=$$(git merge-base HEAD $(BASE) 2>/dev/null) || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }; \
+	git diff --name-only --no-renames --diff-filter=ACMR -z "$$base" HEAD | xargs -0 -r scripts/check-file-size.sh
 
 fmt-check:
 	cargo fmt --check
@@ -112,7 +118,7 @@ container-check:
 # CI's order. The Rust tests read web/public and embed the extension's
 # chats.html, so web changes also run them. Anything outside the known areas
 # (Makefile, CI config, Dockerfile) runs the full `check`.
-check-fast:
+check-fast: file-size
 	@base=$$(git merge-base HEAD $(BASE) 2>/dev/null) || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }; \
 	changed=$$(git diff --name-only --no-renames "$$base"); \
 	files=$$( { printf '%s\n' "$$changed"; git ls-files --others --exclude-standard; } | sed '/^$$/d' | sort -u ); \

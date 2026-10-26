@@ -2,7 +2,8 @@
 # Prepares a Claude Code cloud session so `make check` runs without first-use
 # downloads: ffmpeg for the Rust tests, web/ dependencies, Playwright's
 # Chromium, crates, and the Go toolchain and modules that wa-bridge/go.mod
-# pins. Local sessions are left alone.
+# pins. It also installs the file-size pre-commit hook. Local sessions are
+# left alone.
 set -euo pipefail
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
@@ -28,5 +29,15 @@ cargo fetch --locked --quiet
 
 echo "Fetching the Go toolchain and modules"
 (cd wa-bridge && go mod download)
+
+# Lefthook is not installed in the container, so run the same file-size check
+# from a plain git hook. A hook someone already installed is left alone.
+hook="$(git rev-parse --git-path hooks)/pre-commit"
+if [ ! -e "$hook" ]; then
+  echo "Installing the file-size pre-commit hook"
+  mkdir -p "$(dirname "$hook")"
+  printf '#!/bin/sh\nexec scripts/check-file-size.sh\n' > "$hook"
+  chmod +x "$hook"
+fi
 
 echo "Session ready. Run 'make check' before pushing, or 'make check-fast' while iterating."

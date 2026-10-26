@@ -33,6 +33,36 @@ jobs:
       - name: Check production Rust container build
         run: docker build --target rust-builder --tag whatsapp-translator:rust-build-check .
 
+  # The Lefthook pre-commit hook only runs where someone installed it, so CI
+  # checks the same 5,000-token limit on every file the change adds or edits.
+  file-size:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed files against the file-size limit
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          case "$BASE_SHA" in
+            ""|0000000000000000000000000000000000000000)
+              echo "No base revision; checking every tracked file."
+              git ls-files -z | xargs -0 scripts/check-file-size.sh
+              exit 0
+              ;;
+          esac
+          git diff --name-only --no-renames --diff-filter=ACMR -z "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed"
+          if [ ! -s "$RUNNER_TEMP/changed" ]; then
+            echo "No added or edited files."
+            exit 0
+          fi
+          xargs -0 scripts/check-file-size.sh < "$RUNNER_TEMP/changed"
+
   api-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

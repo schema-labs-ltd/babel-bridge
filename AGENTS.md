@@ -11,9 +11,20 @@
 
 ## Checks
 
-- `make check` runs every step of the GitHub Actions `CI` go, rust, and web jobs in the same order (`make check-go`, `check-rust`, and `check-web` run one job each), and is what to run before pushing. `make check-fast` runs only the checks for the areas changed since `origin/main`. `make ci` adds the production container build, which needs Docker. `make help` lists the smaller targets.
+- `make check` runs every step of the GitHub Actions `CI` file-size, go, rust, and web jobs in the same order (`make check-go`, `check-rust`, and `check-web` run one job each), and is what to run before pushing. `make check-fast` runs only the checks for the areas changed since `origin/main`. `make ci` adds the production container build, which needs Docker. `make help` lists the smaller targets.
 - The Rust tests need `ffmpeg` on the path. The Go bridge needs the Go toolchain that `wa-bridge/go.mod` pins, which `go` downloads on first use.
 - The Apple targets are checked only by the `apple / apple` workflow on macOS. The Apple rules below say how to work with it.
+
+## Pull requests and review
+
+- Before opening a pull request, run `make check` (or `make check-fast` plus the jobs it skipped) and a fresh-context review of the diff with `/code-review` or a reviewer subagent, and fix what they find. Fill in the template's Risk and How to revert sections.
+- Codex and Copilot review every pull request. Fix each finding or resolve its thread with a one-line reason; a pull request merges only with every thread resolved.
+- Review must converge. After three rounds of bot findings on one pull request, stop pushing fixes and ask the person how to proceed. Open an issue for a finding marked pre-existing instead of fixing it in the pull request.
+- When the same kind of finding comes up a second time, fix it at the source: a test, a lint rule, or a line in REVIEW.md.
+
+## Review guidelines
+
+Reviewers follow [REVIEW.md](REVIEW.md): what counts as a real problem in this repository, what to leave out, and how to report findings.
 
 ## Regenerating committed outputs
 
@@ -49,6 +60,6 @@ CI fails when these drift from their sources, so regenerate them in the same cha
 ## File size limit
 
 - A Lefthook pre-commit hook (`lefthook.yml`, `scripts/check-file-size.sh`) blocks any commit that stages a hand-written text file over 5,000 tokens, counted as bytes / 4 (20,000 bytes). Install it once per clone with `npx lefthook install` (or `lefthook install`).
-- It checks only staged files, so an existing oversized file blocks the commit only when it is edited. When that happens, split the file as the hook's message describes, in the same commit; do not bypass the hook with `--no-verify` or trim content to fit.
+- The `CI / file-size` job and `make file-size` run the same check on every file a pull request adds or edits, and a cloud session's start-up hook installs it as a plain git pre-commit hook. It checks only staged files, so an existing oversized file blocks the commit only when it is edited. When that happens, split the file as the hook's message describes, in the same commit; do not bypass the hook with `--no-verify` or trim content to fit.
 - Binary files and files marked `linguist-generated` in `.gitattributes` (lockfiles, `web/extensions/dist/`, Xcode project and asset catalog files) are skipped. Mark new generated files there.
 - Run `scripts/check-file-size.sh $(git ls-files)` to list every file currently over the limit.
