@@ -1,0 +1,108 @@
+# Every Monday, summarises the PRs merged in the past seven days: how many
+# by risk label, review rounds per PR, and the ones labelled `regression`
+# (reverts and fix-forwards). It posts the summary as an issue labelled
+# `weekly-report`, closing the previous one, and in the run summary.
+name: weekly report
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Days to look back
+        required: false
+        default: "7"
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Summarise merged PRs
+        uses: actions/github-script@v7
+        env:
+          DAYS: ${{ inputs.days || '7' }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const days = Number(process.env.DAYS) || 7;
+            const since = new Date(Date.now() - days * 86400000);
+            const day = since.toISOString().slice(0, 10);
+
+            const prs = await github.paginate(github.rest.search.issuesAndPullRequests, {
+              q: `repo:${owner}/${repo} is:pr is:merged merged:>=${day}`,
+              per_page: 100,
+            });
+
+            const tiers = { 'risk:low': 0, 'risk:standard': 0, 'risk:high': 0, unlabelled: 0 };
+            const rows = [];
+            const regressions = [];
+            let totalRounds = 0;
+            let overCap = 0;
+            for (const pr of prs) {
+              const labels = pr.labels.map((l) => l.name);
+              const tier = labels.find((l) => l in tiers) || 'unlabelled';
+              tiers[tier] += 1;
+
+              // A review round is a commit that got at least one review.
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner, repo, pull_number: pr.number, per_page: 100,
+              });
+              const rounds = new Set(reviews.map((r) => r.commit_id)).size;
+              const threads = reviews.filter((r) => r.state === 'COMMENTED' || r.state === 'CHANGES_REQUESTED').length;
+              totalRounds += rounds;
+              if (rounds > 3) overCap += 1;
+              rows.push(`| #${pr.number} | ${pr.title.replace(/\|/g, '\\|')} | ${tier} | ${rounds} | ${threads} |`);
+
+              if (labels.includes('regression')) {
+                const reverted = (pr.body || '').match(/Reverts #(\d+)/);
+                regressions.push(`- #${pr.number} ${pr.title}${reverted ? ` (reverts #${reverted[1]})` : ''}`);
+              }
+            }
+
+            const avg = prs.length ? (totalRounds / prs.length).toFixed(1) : '0';
+            const body = [
+              `PRs merged since ${day}: **${prs.length}**`,
+              '',
+              `By risk: low ${tiers['risk:low']}, standard ${tiers['risk:standard']}, high ${tiers['risk:high']}, unlabelled ${tiers.unlabelled}.`,
+              `Review rounds per PR: ${avg} on average; ${overCap} PR(s) needed more than three.`,
+              `Regressions (PRs labelled \`regression\`): **${regressions.length}**`,
+              '',
+              ...(regressions.length ? [...regressions, ''] : []),
+              '<details><summary>Every merged PR</summary>',
+              '',
+              '| PR | Title | Risk | Review rounds | Reviews with comments |',
+              '| --- | --- | --- | --- | --- |',
+              ...rows,
+              '',
+              '</details>',
+            ].join('\n');
+
+            await core.summary.addRaw(body).write();
+
+            try {
+              await github.rest.issues.createLabel({ owner, repo, name: 'weekly-report', color: 'ededed' });
+            } catch (error) {
+              if (error.status !== 422) throw error;
+            }
+            const previous = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, labels: 'weekly-report', state: 'open', per_page: 100,
+            });
+            for (const issue of previous) {
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, state: 'closed', state_reason: 'completed',
+              });
+            }
+            const { data: issue } = await github.rest.issues.create({
+              owner, repo,
+              title: `Merge report: week of ${day}`,
+              body,
+              labels: ['weekly-report'],
+            });
+            core.info(`Posted ${issue.html_url}`);

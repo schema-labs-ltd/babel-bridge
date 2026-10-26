@@ -1,0 +1,145 @@
+# One-step revert: give it a merged PR number and it opens a PR that reverts
+# that PR's merge commit, labelled `risk:low` and `regression`, with
+# auto-merge requested so it lands as soon as the required checks pass.
+#
+# post-deploy-smoke.yml calls it when a deploy goes bad.
+#
+# Set the `REVERT_TOKEN` secret (a fine-grained token with Contents and Pull
+# requests write on this repo) so the revert PR runs CI. Without it the
+# workflow uses GITHUB_TOKEN, and GitHub does not run workflows for PRs that
+# GITHUB_TOKEN opens, so required checks stay pending until someone pushes.
+name: revert
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Number of the merged PR to revert
+        required: true
+        type: number
+      reason:
+        description: Why it is being reverted (goes in the PR body)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: number
+      reason:
+        required: false
+        type: string
+    secrets:
+      REVERT_TOKEN:
+        required: false
+    outputs:
+      revert_pr_url:
+        description: URL of the revert PR
+        value: ${{ jobs.revert.outputs.url }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: revert-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  revert:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      url: ${{ steps.open.outputs.url }}
+    env:
+      GH_TOKEN: ${{ secrets.REVERT_TOKEN || github.token }}
+      PR_NUMBER: ${{ inputs.pr_number }}
+      REASON: ${{ inputs.reason }}
+      BRANCH: revert/pr-${{ inputs.pr_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.REVERT_TOKEN || github.token }}
+
+      - name: Note the token in use
+        env:
+          REVERT_TOKEN_SET: ${{ secrets.REVERT_TOKEN != '' }}
+        run: |
+          if [ "$REVERT_TOKEN_SET" != "true" ]; then
+            echo "::warning::REVERT_TOKEN is not set, so CI will not run on the revert PR until someone pushes to it."
+          fi
+
+      - name: Open the revert PR
+        id: open
+        run: |
+          set -euo pipefail
+
+          existing="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty')"
+          if [ -n "$existing" ]; then
+            echo "A revert PR for #$PR_NUMBER is already open: $existing"
+            echo "url=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr="$(gh pr view "$PR_NUMBER" --json state,title,mergeCommit,author)"
+          if [ "$(jq -r .state <<<"$pr")" != "MERGED" ]; then
+            echo "::error::PR #$PR_NUMBER is not merged, so there is nothing to revert."
+            exit 1
+          fi
+          sha="$(jq -r .mergeCommit.oid <<<"$pr")"
+          title="$(jq -r .title <<<"$pr")"
+          author="$(jq -r '.author.login // empty' <<<"$pr")"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+
+          # Squash and rebase merges have one parent; a merge commit needs -m 1.
+          parents="$(git rev-list --parents -n 1 "$sha" | wc -w)"
+          mainline=()
+          if [ "$parents" -gt 2 ]; then
+            mainline=(-m 1)
+          fi
+          if ! git revert --no-edit "${mainline[@]}" "$sha"; then
+            git status --short
+            echo "::error::Reverting $sha conflicts with later changes on the default branch. Revert #$PR_NUMBER by hand."
+            exit 1
+          fi
+          git push --force-with-lease origin "$BRANCH"
+
+          for label in "risk:low" "regression"; do
+            gh label create "$label" --color ededed >/dev/null 2>&1 || true
+          done
+
+          {
+            echo "Reverts #$PR_NUMBER ($sha)."
+            echo
+            if [ -n "$REASON" ]; then
+              echo "**Why:** $REASON"
+              echo
+            fi
+            echo "Opened by the \`revert\` workflow ([run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID))."
+            echo "To restore the change, revert this PR or reopen the work as a new PR with a fix."
+            if [ -n "$author" ] && [[ "$author" != app/* ]] && [[ "$author" != *"[bot]" ]]; then
+              echo
+              echo "cc @$author"
+            fi
+          } > "$RUNNER_TEMP/body.md"
+
+          url="$(gh pr create \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "$BRANCH" \
+            --title "Revert \"$title\"" \
+            --body-file "$RUNNER_TEMP/body.md" \
+            --label "risk:low" \
+            --label "regression")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Opened $url" >> "$GITHUB_STEP_SUMMARY"
+
+          # Needs "Allow auto-merge" in the repo settings; the PR is open either way.
+          gh pr merge "$url" --auto --squash \
+            || echo "::warning::Could not turn on auto-merge for $url. Merge it once the checks pass."

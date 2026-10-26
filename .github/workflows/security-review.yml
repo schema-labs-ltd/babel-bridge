@@ -1,0 +1,76 @@
+# Claude security review for PRs that touch sign-in, tokens, push, log
+# redaction, the MCP server, the bridge protocol or the build and deploy
+# setup. It comments on the PR with findings.
+#
+# Optional: it needs the ANTHROPIC_API_KEY repository secret and skips
+# cleanly without it. PRs from forks never get the secret, so they skip too.
+name: security review
+
+on:
+  pull_request:
+    paths:
+      - "src/web/auth.rs"
+      - "src/web/oauth.rs"
+      - "src/web/oauth/**"
+      - "src/web/mcp_http.rs"
+      - "src/oauth.rs"
+      - "src/access.rs"
+      - "src/log_privacy.rs"
+      - "src/push.rs"
+      - "src/push/**"
+      - "src/link_preview.rs"
+      - "src/mcp.rs"
+      - "src/mcp/**"
+      - "src/bridge/**"
+      - "src/storage/schema.rs"
+      - "src/storage/schema/**"
+      - "src/storage/oauth.rs"
+      - "src/chatgpt.rs"
+      - "src/chatgpt/**"
+      - "wa-bridge/**/*.go"
+      - "ios/**/*.entitlements"
+      - ".github/workflows/**"
+      - "Dockerfile"
+      - "railway.toml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: security-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  security-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check for the API key
+        id: config
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY is not set, so the security review is skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+
+      - name: Review
+        if: steps.config.outputs.enabled == 'true'
+        # Pinned to a commit of anthropics/claude-code-security-review main.
+        uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda
+        with:
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment-pr: true
+          exclude-directories: fixtures,web/extensions/dist,ios/WhatsAppTranslator.xcodeproj
+          custom-security-scan-instructions: .github/security-review-instructions.txt

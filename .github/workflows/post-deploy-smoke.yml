@@ -1,0 +1,118 @@
+# After each push to main, waits for Railway to deploy that commit, watches
+# it for ten minutes with scripts/post-deploy-smoke.sh, and opens a revert PR
+# (revert.yml) for the merged PR when the deploy goes bad.
+#
+# Needs two repository secrets, and skips cleanly without them:
+#   SMOKE_URL       the server's public base URL
+#   SMOKE_PASSWORD  the server's WEB_PASSWORD, used to sign in to /api/diagnostics
+# Optional repository variables:
+#   SMOKE_IGNORE_ERRORS  extended regex of ERROR lines that are not regressions
+#   SMOKE_AUTO_REVERT    set to "false" to report bad deploys without opening a revert PR
+name: post-deploy smoke
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    # A newer deploy replaces this one, so only the latest push is watched.
+    concurrency:
+      group: post-deploy-smoke
+      cancel-in-progress: true
+    outputs:
+      verdict: ${{ steps.watch.outputs.verdict }}
+    steps:
+      - name: Check configuration
+        id: config
+        env:
+          SMOKE_URL: ${{ secrets.SMOKE_URL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: |
+          if [ -z "$SMOKE_URL" ] || [ -z "$SMOKE_PASSWORD" ]; then
+            echo "SMOKE_URL or SMOKE_PASSWORD is not set, so there is no deploy to check." >> "$GITHUB_STEP_SUMMARY"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: Watch the deploy
+        id: watch
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          SMOKE_URL: ${{ secrets.SMOKE_URL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          EXPECTED_SHA: ${{ github.sha }}
+          IGNORE_ERRORS: ${{ vars.SMOKE_IGNORE_ERRORS }}
+        run: |
+          set +e
+          scripts/post-deploy-smoke.sh 2>&1 | tee "$RUNNER_TEMP/smoke.log"
+          status="${PIPESTATUS[0]}"
+          set -e
+          {
+            echo '```'
+            tail -n 40 "$RUNNER_TEMP/smoke.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$status" in
+            0) echo "verdict=healthy" >> "$GITHUB_OUTPUT" ;;
+            1) echo "verdict=bad" >> "$GITHUB_OUTPUT"
+               echo "::error::The deploy of $EXPECTED_SHA failed its smoke check." ;;
+            *) echo "verdict=unknown" >> "$GITHUB_OUTPUT"
+               echo "::error::The server never reported $EXPECTED_SHA, so the deploy could not be checked." ;;
+          esac
+          exit "$status"
+
+  find-pr:
+    needs: smoke
+    if: ${{ always() && needs.smoke.outputs.verdict == 'bad' && vars.SMOKE_AUTO_REVERT != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      pr: ${{ steps.find.outputs.pr }}
+    steps:
+      - name: Find the PR this commit merged
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" \
+            --jq '[.[] | select(.merged_at != null)][0] | {number, head: .head.ref, labels: [.labels[].name]}')"
+          number="$(jq -r '.number // empty' <<<"$pr")"
+          if [ -z "$number" ]; then
+            echo "::warning::$SHA did not come from a merged PR, so there is nothing to revert automatically."
+            exit 0
+          fi
+          # Never revert a revert: that would bring the bad change back.
+          if jq -e '.head | startswith("revert/")' <<<"$pr" >/dev/null ||
+            jq -e '.labels | index("regression")' <<<"$pr" >/dev/null; then
+            echo "::warning::#$number is itself a revert or fix, so it is left for a person to look at."
+            exit 0
+          fi
+          echo "pr=$number" >> "$GITHUB_OUTPUT"
+
+  revert:
+    needs: find-pr
+    if: ${{ always() && needs.find-pr.outputs.pr != '' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: ./.github/workflows/revert.yml
+    with:
+      pr_number: ${{ fromJSON(needs.find-pr.outputs.pr) }}
+      reason: The post-deploy smoke check failed for ${{ github.sha }} (run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+    secrets:
+      REVERT_TOKEN: ${{ secrets.REVERT_TOKEN }}

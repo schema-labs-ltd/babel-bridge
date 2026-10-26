@@ -1,0 +1,7 @@
+Project-specific things to check in Babel Bridge (a self-hosted WhatsApp client with translation):
+
+- WhatsApp message text, phone numbers, JIDs, contact names, QR codes, push tokens and OAuth or ChatGPT tokens must never reach logs, /api/diagnostics or error responses. Log lines pass through src/log_privacy.rs; flag any path that bypasses it or weakens its redaction.
+- Web sign-in (src/web/auth.rs), OAuth for MCP clients (src/oauth.rs, src/web/oauth/) and MCP permissions (src/mcp*) must fail closed: a missing, expired or malformed token is a 401, and a hosted server never runs without a password (src/access.rs).
+- Link previews (src/link_preview.rs) fetch URLs from incoming messages, so check for requests to private, loopback or metadata addresses.
+- The Go bridge (wa-bridge/) talks to the Rust server over a JSON protocol on stdin and stdout (src/bridge/); treat its input as untrusted.
+- In GitHub workflows, flag untrusted event fields interpolated into run scripts, and secrets exposed to pull_request_target or fork PRs.
