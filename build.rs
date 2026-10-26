@@ -15,7 +15,10 @@ fn main() {
     println!("cargo:rerun-if-changed=wa-bridge/go.mod");
     println!("cargo:rerun-if-changed=wa-bridge/go.sum");
 
-    // Skip Go build if explicitly disabled
+    // Skip Go build if explicitly disabled. Rerun when the variable changes,
+    // so a skipped build (as in `make check` and CI) does not stick to later
+    // `cargo build` runs.
+    println!("cargo:rerun-if-env-changed=SKIP_GO_BUILD");
     if env::var("SKIP_GO_BUILD").is_ok() {
         println!("cargo:warning=Skipping Go bridge build (SKIP_GO_BUILD is set)");
         return;
