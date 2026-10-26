@@ -1203,6 +1203,28 @@ final class AppSession {
         try await api.updateOpenAISettings(settings)
     }
 
+    func chatGPTStatus() async throws -> ChatGPTStatus {
+        if demoMode { return ChatGPTStatus(available: true, signedIn: false, apiKeyConfigured: true) }
+        return try await api.chatGPTStatus()
+    }
+
+    func startChatGPTSignIn(redirectURI: String) async throws -> ChatGPTSignInStart {
+        guard !demoMode else { throw APIError.server("Sign in with ChatGPT isn’t available in the demo.") }
+        return try await api.startChatGPTSignIn(redirectURI: redirectURI)
+    }
+
+    func completeChatGPTSignIn(callbackURL: String) async throws -> ChatGPTStatus {
+        try await api.completeChatGPTSignIn(callbackURL: callbackURL)
+    }
+
+    func setChatGPTModel(_ model: String) async throws -> ChatGPTStatus {
+        try await api.setChatGPTModel(model)
+    }
+
+    func signOutOfChatGPT() async throws -> ChatGPTStatus {
+        try await api.signOutOfChatGPT()
+    }
+
     func forgetServer() {
         applyBackendStatus(BackendStatus(connected: false, phone: nil, name: nil, connectionState: "connecting"))
         #if os(iOS)

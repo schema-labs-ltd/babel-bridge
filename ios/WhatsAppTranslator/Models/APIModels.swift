@@ -797,6 +797,28 @@ struct OpenAISettings: Codable, Equatable, Sendable {
     var available: Bool?
 }
 
+struct ChatGPTModel: Codable, Equatable, Sendable, Identifiable {
+    var slug: String
+    var displayName: String
+    var id: String { slug }
+}
+
+/// Sign in with ChatGPT state on the server. Text AI uses the ChatGPT plan while signed in.
+struct ChatGPTStatus: Codable, Equatable, Sendable {
+    var available: Bool?
+    var signedIn: Bool
+    var email: String?
+    var name: String?
+    var model: String?
+    var models: [ChatGPTModel]?
+    var apiKeyConfigured: Bool?
+    var revocationConfirmed: Bool?
+}
+
+struct ChatGPTSignInStart: Decodable, Sendable {
+    let authorizeUrl: String
+}
+
 struct PushDeviceRegistration: Encodable, Sendable {
     let installationId: String
     let token: String

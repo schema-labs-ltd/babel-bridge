@@ -95,7 +95,9 @@ pub struct AppState {
     pub web_dir: PathBuf,
     pub data_dir: PathBuf,
     pub command_tx: RwLock<Option<mpsc::Sender<BridgeCommand>>>,
-    pub translator: Option<Arc<TranslationService>>,
+    /// The AI service, present even before any credential is configured so
+    /// ChatGPT sign-in can complete at runtime. Use `translator()` for AI work.
+    pub ai_service: Option<Arc<TranslationService>>,
     pub voice_lock: tokio::sync::Mutex<()>,
     pub gallery_thumbnails: crate::gallery::ThumbnailCache,
     pub voice_queue: Arc<tokio::sync::Semaphore>,
@@ -629,6 +631,13 @@ struct UpdateOpenAiSettingsRequest {
 }
 
 impl AppState {
+    /// The AI service when it has a usable credential: API key or ChatGPT.
+    pub fn translator(&self) -> Option<&Arc<TranslationService>> {
+        self.ai_service
+            .as_ref()
+            .filter(|service| service.is_configured())
+    }
+
     pub fn new(
         store: MessageStore,
         web_dir: PathBuf,
@@ -653,7 +662,7 @@ impl AppState {
             web_dir,
             data_dir,
             command_tx: RwLock::new(None),
-            translator,
+            ai_service: translator,
             avatar_cache: RwLock::new(HashMap::new()),
             pending_avatar_requests: RwLock::new(HashMap::new()),
             pending_send_requests: RwLock::new(HashMap::new()),
@@ -1296,6 +1305,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/settings/openai",
             get(get_openai_settings).put(update_openai_settings),
+        )
+        .route("/api/chatgpt", get(crate::chatgpt::routes::status))
+        .route("/api/chatgpt/sign-in", post(crate::chatgpt::routes::start))
+        .route(
+            "/api/chatgpt/callback",
+            post(crate::chatgpt::routes::callback),
+        )
+        .route("/api/chatgpt/model", put(crate::chatgpt::routes::set_model))
+        .route(
+            "/api/chatgpt/models/refresh",
+            post(crate::chatgpt::routes::refresh_models),
+        )
+        .route(
+            "/api/chatgpt/sign-out",
+            post(crate::chatgpt::routes::sign_out),
         )
         .route("/api/contacts", get(get_contacts))
         .route(
@@ -2105,7 +2129,7 @@ async fn get_openai_settings(State(state): State<Arc<AppState>>) -> impl IntoRes
         Ok(settings) => Json(serde_json::json!({
             "model": settings.model,
             "reasoningEffort": settings.reasoning_effort,
-            "available": state.translator.is_some()
+            "available": state.translator().is_some()
         }))
         .into_response(),
         Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response(),
@@ -2145,7 +2169,7 @@ async fn update_openai_settings(
     if let Err(error) = state.store.update_openai_settings(&settings) {
         return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
     }
-    if let Some(translator) = &state.translator {
+    if let Some(translator) = &state.ai_service {
         translator.set_runtime_settings(settings.clone());
     }
     Json(serde_json::json!({ "success": true, "model": settings.model, "reasoningEffort": settings.reasoning_effort })).into_response()
@@ -2204,7 +2228,7 @@ async fn get_unified_messages(
             if has_more {
                 messages.remove(0);
             }
-            if state.translator.is_some() {
+            if state.translator().is_some() {
                 for message in &messages {
                     if !message.is_from_me
                         && !message.is_audio()
@@ -2260,7 +2284,7 @@ async fn get_messages(
             if has_more {
                 messages.remove(0);
             }
-            if state.translator.is_some() {
+            if state.translator().is_some() {
                 for message in &messages {
                     if !message.is_from_me
                         && !message.is_audio()
@@ -2425,7 +2449,7 @@ async fn send_message(
     let (text_to_send, _original_text, was_translated, target_language) = if let Some(conv_lang) =
         target_lang
     {
-        let Some(translator) = &state.translator else {
+        let Some(translator) = state.translator() else {
             error!("Translation to {conv_lang} is needed, but no translator is configured");
             return (
                     StatusCode::SERVICE_UNAVAILABLE,
@@ -2842,8 +2866,7 @@ async fn translate_caption(
         return Ok((Some(text.to_string()), None));
     };
     let translator = state
-        .translator
-        .as_ref()
+        .translator()
         .ok_or_else(|| anyhow::anyhow!("Translation is unavailable; image was not sent"))?;
     let (translated, usage) = translator.translate_outgoing(text, target).await?;
     state
@@ -3749,7 +3772,7 @@ pub(crate) async fn translate_message(
     Json(req): Json<TranslateMessageRequest>,
 ) -> impl IntoResponse {
     // Check if translation service is available
-    let translator = match &state.translator {
+    let translator = match state.translator() {
         Some(t) => t,
         None => {
             return Json(TranslateMessageResponse {
@@ -3867,7 +3890,7 @@ async fn ai_compose(
     Json(req): Json<AiComposeRequest>,
 ) -> impl IntoResponse {
     // Check if translation service is available (it has the API key)
-    let translator = match &state.translator {
+    let translator = match state.translator() {
         Some(t) => t,
         None => {
             return Json(AiComposeResponse {
@@ -3947,7 +3970,7 @@ async fn ai_reply(
     Json(req): Json<AiReplyRequest>,
 ) -> impl IntoResponse {
     // Check if translation service is available (it has the API key)
-    let translator = match &state.translator {
+    let translator = match state.translator() {
         Some(t) => t,
         None => {
             return Json(AiReplyResponse {
@@ -3994,10 +4017,9 @@ async fn ai_reply(
     };
 
     // Create style analyzer
-    let api_key = translator.get_api_key();
     let detection_model = translator.get_detection_model();
     let style_analyzer = crate::style_analyzer::StyleAnalyzer::new(
-        api_key,
+        translator.clone(),
         detection_model,
         translator.get_reasoning_effort(),
     );

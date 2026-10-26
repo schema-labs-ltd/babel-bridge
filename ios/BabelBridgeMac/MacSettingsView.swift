@@ -29,6 +29,9 @@ struct MacSettingsView: View {
                 }
                 connectionSection
                 openAISection
+                SettingsGroup(title: "ChatGPT account", systemImage: "person.crop.circle.badge.checkmark") {
+                    ChatGPTAccountRows()
+                }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
                         VoicePreferenceSection(scope: "outgoing")

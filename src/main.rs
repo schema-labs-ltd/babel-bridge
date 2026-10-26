@@ -5,6 +5,7 @@
 
 mod access;
 mod bridge;
+mod chatgpt;
 mod cli;
 mod display;
 mod gallery;
@@ -90,16 +91,27 @@ async fn main() -> Result<()> {
         verbose: args.verbose,
     };
 
-    // Initialize OpenAI-backed translation service if fully configured
-    let translator = if args.translation_enabled() {
-        info!("AI features enabled (target: {})", args.default_language);
-        Some(Arc::new(TranslationService::new(
-            args.openai_api_key.clone().unwrap(),
+    // The web server always has an AI service, so a ChatGPT sign-in made in the
+    // app takes effect without a restart. Terminal mode needs the API key.
+    let translator = if args.web || args.translation_enabled() {
+        let mut service = TranslationService::new(
+            args.openai_api_key.clone(),
             args.openai_detection_model.clone(),
             args.openai_translation_model.clone(),
             args.openai_high_end_model.clone(),
             args.default_language.clone(),
-        )))
+        );
+        if args.web {
+            let auth = chatgpt::ChatGptAuth::load(&data_dir)
+                .context("Failed to load Sign in with ChatGPT credentials")?;
+            service = service.with_chatgpt(Arc::new(auth));
+        }
+        if service.is_configured() {
+            info!("AI features enabled (target: {})", args.default_language);
+        } else {
+            info!("AI features off until OPENAI_API_KEY is set or someone signs in with ChatGPT");
+        }
+        Some(Arc::new(service))
     } else {
         None
     };
@@ -258,7 +270,7 @@ async fn run_web_mode(
                 event = event_rx.recv() => {
                     match event {
                         Some(event) => {
-                            if let Err(e) = handle_web_event(event, &state, &store, translator.as_ref()).await {
+                            if let Err(e) = handle_web_event(event, &state, &store, state.translator()).await {
                                 error!("Error handling event: {}", e);
                             }
                         }

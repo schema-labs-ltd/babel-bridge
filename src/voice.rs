@@ -83,11 +83,11 @@ pub async fn sample(
         let key = format!("sample-v1-{preference}");
         if let Some((payload,_,_,_)) = state.store.voice_note(&key)? { return Ok(serde_json::from_str(&payload)?); }
         let _guard = state.voice_lock.try_lock().map_err(|_| anyhow::anyhow!("Another recording is processing. Try the preview again shortly."))?;
-        let translator = state.translator.as_ref().context("Voice translation is not configured on this server.")?;
+        let translator = state.translator().context("Voice translation is not configured on this server.")?;
         let epoch = state.voice_epoch.load(std::sync::atomic::Ordering::SeqCst);
         let voice = select_voice(&preference, &[]);
         let response = reqwest::Client::builder().timeout(Duration::from_secs(45)).build()?
-            .post(translator.audio_api_url("speech")).bearer_auth(translator.get_api_key())
+            .post(translator.audio_api_url("speech")).bearer_auth(translator.audio_api_key()?)
             .json(&json!({"model":"gpt-4o-mini-tts","voice":voice,"input":"This is the voice I will use for translated messages.","response_format":"mp3"})).send().await?;
         let bytes = checked_bytes(response, 1024*1024).await?;
         let value = json!({"audioData":B64.encode(bytes),"mimeType":"audio/mpeg"});
@@ -424,8 +424,7 @@ async fn build_note(
         });
     }
     let translator = state
-        .translator
-        .as_ref()
+        .translator()
         .context("Translation is unavailable. Configure the OpenAI API key on the server.")?;
     let target = if incoming {
         translator.default_language().to_string()
@@ -455,7 +454,7 @@ async fn build_note(
         .mime_str("audio/wav")?;
     let response = client
         .post(translator.audio_api_url("transcriptions"))
-        .bearer_auth(translator.get_api_key())
+        .bearer_auth(translator.audio_api_key()?)
         .multipart(
             reqwest::multipart::Form::new()
                 .text("model", "gpt-4o-mini-transcribe")
@@ -487,7 +486,7 @@ async fn build_note(
         &translated.usage,
         "voice_translation",
     )?;
-    let response = client.post(translator.audio_api_url("speech")).bearer_auth(translator.get_api_key())
+    let response = client.post(translator.audio_api_url("speech")).bearer_auth(translator.audio_api_key()?)
         .json(&json!({"model":"gpt-4o-mini-tts", "voice":voice, "input":translation, "response_format":"mp3", "instructions":format!("Speak naturally in {target}. Read the provided text faithfully without additions.")})).send().await?;
     let audio = checked_bytes(response, MAX_BYTES).await?;
     tokio::fs::write(scratch.0.join("translated.mp3"), &audio).await?;
@@ -622,8 +621,7 @@ fn received_key(state: &AppState, message_id: &str) -> Result<String> {
         return Ok(format!("sent-{message_id}"));
     }
     let translator = state
-        .translator
-        .as_ref()
+        .translator()
         .context("Voice translation is not configured on this server.")?;
     let preference = state.store.voice_setting(&message.contact_id)?;
     let settings = state.store.get_conversation_settings(&message.contact_id)?;
@@ -707,7 +705,10 @@ async fn translate_received_inner(state: &AppState, message_id: &str) -> Result<
 
 /// Bound automatic work independently of the bridge event loop. Older notes remain available on demand.
 pub fn queue_incoming(state: Arc<AppState>, message_id: String) {
-    if state.translator.is_none() {
+    if !state
+        .translator()
+        .is_some_and(|translator| translator.has_audio())
+    {
         return;
     }
     let enabled = state
