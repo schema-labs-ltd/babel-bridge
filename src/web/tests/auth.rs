@@ -881,3 +881,42 @@ impl std::io::Write for LogCapture {
         Ok(())
     }
 }
+
+#[tokio::test]
+async fn diagnostics_need_auth_and_leave_out_account_details() {
+    let (state, data_dir) = test_state(Some("secret"));
+    state
+        .set_connected(true, Some("447700900123".into()), Some("Preview".into()))
+        .await;
+    let response = create_router(state.clone())
+        .oneshot(empty_request("/api/diagnostics"))
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let token = generate_token();
+    state
+        .auth_tokens
+        .write()
+        .await
+        .insert(token.clone(), chrono::Utc::now().timestamp() + 60);
+    let request = HttpRequest::builder()
+        .uri("/api/diagnostics")
+        .header(header::AUTHORIZATION, format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("request");
+    let response = create_router(state)
+        .oneshot(request)
+        .await
+        .expect("response");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body bytes");
+    let text = String::from_utf8(body.to_vec()).expect("utf8");
+    let payload: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert_eq!(payload["connected"], true);
+    assert!(payload["recentProblems"].is_array());
+    assert!(!text.contains("447700900123") && !text.contains("Preview"));
+    let _ = std::fs::remove_dir_all(data_dir);
+}

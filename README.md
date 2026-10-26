@@ -221,3 +221,19 @@ bearer credentials for local MCP clients; protect the volume, set `WA_PASSWORD`
 on reachable deployments, and use logout or the protected OAuth client revocation
 API to revoke access. Do not commit those files or any `.env` file with real
 secrets.
+
+## Diagnostics
+
+`GET /api/diagnostics` (behind the same password as the rest of the API) returns
+the server version, the Railway commit when deployed, the WhatsApp connection
+state, whether AI is configured, and the last 200 warning and error log lines.
+Those lines have already been through the log redaction, so they carry no chat
+ids, phone numbers or message text, URLs keep only their host, and the response leaves out the account's
+name, phone and QR code. Agents can use it to look at production errors without
+access to the hosting logs:
+
+```bash
+token=$(curl -s -X POST "$SERVER/api/auth" -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$WA_PASSWORD\"}" | jq -r .token)
+curl -s -H "Authorization: Bearer $token" "$SERVER/api/diagnostics" | jq
+```

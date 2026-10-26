@@ -6,8 +6,10 @@
 //! targets stay off at every verbosity and this process logs only metadata.
 
 use regex::Regex;
+use serde::Serialize;
+use std::collections::VecDeque;
 use std::io::{self, Write};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tracing::info;
 use tracing_subscriber::fmt::MakeWriter;
@@ -124,6 +126,52 @@ fn phone_pattern() -> &'static Regex {
     PATTERN.get_or_init(|| Regex::new(r"\b\d{8,15}\b").expect("phone pattern"))
 }
 
+/// Warnings and errors kept in memory for `/api/diagnostics`, oldest first.
+const RECENT_PROBLEM_LIMIT: usize = 200;
+const RECENT_PROBLEM_MAX_CHARS: usize = 2000;
+
+/// One already-redacted warning or error line.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LoggedProblem {
+    /// Unix seconds when the line was written.
+    pub at: i64,
+    pub line: String,
+}
+
+fn recent_problem_store() -> &'static Mutex<VecDeque<LoggedProblem>> {
+    static STORE: OnceLock<Mutex<VecDeque<LoggedProblem>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(VecDeque::with_capacity(RECENT_PROBLEM_LIMIT)))
+}
+
+/// Keeps a redacted log line if it is a warning or an error.
+fn remember_problem(redacted_line: &str) {
+    let line = redacted_line.trim();
+    if !(line.starts_with("WARN") || line.starts_with("ERROR")) {
+        return;
+    }
+    let line: String = line.chars().take(RECENT_PROBLEM_MAX_CHARS).collect();
+    let mut store = recent_problem_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if store.len() == RECENT_PROBLEM_LIMIT {
+        store.pop_front();
+    }
+    store.push_back(LoggedProblem {
+        at: chrono::Utc::now().timestamp(),
+        line,
+    });
+}
+
+/// The most recent warnings and errors, oldest first, after redaction.
+pub fn recent_problems() -> Vec<LoggedProblem> {
+    recent_problem_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .cloned()
+        .collect()
+}
+
 struct RedactingMakeWriter;
 
 struct RedactingWriter {
@@ -163,6 +211,9 @@ impl RedactingWriter {
         let text = String::from_utf8_lossy(&self.buf);
         let redacted = redact_log_text(&text);
         self.buf.clear();
+        for line in redacted.lines() {
+            remember_problem(line);
+        }
         let mut stderr = io::stderr().lock();
         stderr.write_all(redacted.as_bytes())?;
         if !redacted.ends_with('\n') {
@@ -179,6 +230,32 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tracing::info;
     use tracing_subscriber::fmt;
+
+    #[test]
+    fn warnings_and_errors_are_kept_redacted_for_diagnostics() {
+        let marker = uuid::Uuid::new_v4().to_string();
+        for line in [
+            format!(" INFO kept-out {marker}\n"),
+            format!(" WARN send failed {marker} for 447700900123@s.whatsapp.net\n"),
+            format!("ERROR bridge exited {marker} phone 447700900123\n"),
+        ] {
+            let mut writer = RedactingMakeWriter.make_writer();
+            writer.write_all(line.as_bytes()).unwrap();
+            writer.flush().unwrap();
+        }
+        let kept: Vec<String> = recent_problems()
+            .into_iter()
+            .map(|problem| problem.line)
+            .filter(|line| line.contains(&marker))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                format!("WARN send failed {marker} for [chat]"),
+                format!("ERROR bridge exited {marker} phone [redacted]"),
+            ]
+        );
+    }
 
     const BODY: &str = "zz-unique-body-449d";
     const PHONE: &str = "15550001111";
