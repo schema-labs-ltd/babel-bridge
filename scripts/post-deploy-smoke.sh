@@ -32,6 +32,16 @@ POLL_SECONDS="${POLL_SECONDS:-30}"
 IGNORE_ERRORS="${IGNORE_ERRORS:-}"
 MAX_MISSED_POLLS=3
 
+# An invalid pattern would otherwise hide every error.
+if [ -n "$IGNORE_ERRORS" ]; then
+  status=0
+  grep -Eq -- "$IGNORE_ERRORS" <<<"" || status=$?
+  if [ "$status" -gt 1 ]; then
+    echo "IGNORE_ERRORS is not a valid extended regex: $IGNORE_ERRORS"
+    exit 2
+  fi
+fi
+
 token=""
 diagnostics=""
 
@@ -102,9 +112,12 @@ fi
 log "waiting for $SMOKE_URL to report $EXPECTED_SHA"
 deadline=$((SECONDS + DEPLOY_TIMEOUT))
 while :; do
-  if healthy && fetch_diagnostics &&
-    [ "$(jq -r '.commit // empty' <<<"$diagnostics")" = "$EXPECTED_SHA" ]; then
-    break
+  if healthy && fetch_diagnostics; then
+    if [ "$(jq -r '.commit // empty' <<<"$diagnostics")" = "$EXPECTED_SHA" ]; then
+      break
+    fi
+    # Still the old deploy, so keep its connection state as the baseline.
+    was_connected="$(jq -r '.connected' <<<"$diagnostics")"
   fi
   if [ "$SECONDS" -ge "$deadline" ]; then
     log "the server never reported $EXPECTED_SHA within ${DEPLOY_TIMEOUT}s"

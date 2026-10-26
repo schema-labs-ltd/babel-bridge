@@ -91,6 +91,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
         run: |
+          # A later push may already have fixed this, and has its own smoke run.
+          head="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)"
+          if [ "$head" != "$SHA" ]; then
+            echo "::warning::$GITHUB_REF_NAME has moved on to $head, so $SHA is not reverted automatically."
+            exit 0
+          fi
           pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/pulls" \
             --jq '([.[] | select(.merged_at != null)][0] // {}) | {number, head: .head.ref, labels: [(.labels // [])[].name]}')"
           number="$(jq -r '.number // empty' <<<"$pr")"
