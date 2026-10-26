@@ -105,10 +105,18 @@ fn request_fixture(name: &str) -> Value {
     serde_json::from_str(&text).expect("request fixture is JSON")
 }
 
-/// Replaces a value that differs between runs, such as a token or the current time.
+/// Replaces a value that differs between runs, such as a token or the current
+/// time. The value must already have the replacement's JSON type, so pinning
+/// never hides a type or nullability change.
 fn pin(value: &mut Value, pointer: &str, replacement: Value) {
     let missing = format!("{pointer} is missing from {value}");
-    *value.pointer_mut(pointer).expect(&missing) = replacement;
+    let slot = value.pointer_mut(pointer).expect(&missing);
+    assert_eq!(
+        std::mem::discriminant(slot),
+        std::mem::discriminant(&replacement),
+        "{pointer} is {slot}, not the same JSON type as {replacement}"
+    );
+    *slot = replacement;
 }
 
 fn test_state(password: Option<&str>) -> (Arc<AppState>, PathBuf) {
