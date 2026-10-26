@@ -149,6 +149,9 @@ fn remember_problem(redacted_line: &str) {
     if !(line.starts_with("WARN") || line.starts_with("ERROR")) {
         return;
     }
+    // Diagnostics leave the server, and a URL's path or query can name a
+    // person or carry a token (a failed link preview logs the whole link).
+    let line = strip_url_paths(line);
     let line: String = line.chars().take(RECENT_PROBLEM_MAX_CHARS).collect();
     let mut store = recent_problem_store()
         .lock()
@@ -160,6 +163,21 @@ fn remember_problem(redacted_line: &str) {
         at: chrono::Utc::now().timestamp(),
         line,
     });
+}
+
+/// Keep each URL's scheme and host; drop credentials, path, query and fragment.
+fn strip_url_paths(line: &str) -> String {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    let pattern = PATTERN.get_or_init(|| {
+        Regex::new(r#"(?i)\b([a-z][a-z0-9+.-]*://)(?:[^@/\s]*@)?([^/\s?#)\]"'<>]+)([^\s)\]"'<>]*)"#)
+            .expect("url pattern")
+    });
+    pattern
+        .replace_all(line, |caps: &regex::Captures<'_>| {
+            let rest = if caps[3].is_empty() { "" } else { "/[path]" };
+            format!("{}{}{}", &caps[1], &caps[2], rest)
+        })
+        .into_owned()
 }
 
 /// The most recent warnings and errors, oldest first, after redaction.
@@ -238,6 +256,7 @@ mod tests {
             format!(" INFO kept-out {marker}\n"),
             format!(" WARN send failed {marker} for 447700900123@s.whatsapp.net\n"),
             format!("ERROR bridge exited {marker} phone 447700900123\n"),
+            format!("ERROR Failed to fetch link preview {marker} for https://docs.example.com/d/Ana-Lopez-lease?token=s3cret#p2: error sending request for url (https://user:pw@docs.example.com/d/Ana-Lopez-lease?token=s3cret)\n"),
         ] {
             let mut writer = RedactingMakeWriter.make_writer();
             writer.write_all(line.as_bytes()).unwrap();
@@ -253,6 +272,7 @@ mod tests {
             [
                 format!("WARN send failed {marker} for [chat]"),
                 format!("ERROR bridge exited {marker} phone [redacted]"),
+                format!("ERROR Failed to fetch link preview {marker} for https://docs.example.com/[path] error sending request for url (https://docs.example.com/[path])"),
             ]
         );
     }
