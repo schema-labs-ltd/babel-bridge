@@ -1,0 +1,604 @@
+/* Responsive - Tablet */
+@media (max-width: 900px) {
+  #contacts-panel {
+    width: 320px;
+    min-width: 280px;
+  }
+
+  .message {
+    max-width: 80%;
+  }
+}
+
+/* Responsive - Mobile */
+@media (max-width: 768px) {
+  #contacts-panel {
+    width: 100%;
+    max-width: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+  }
+
+  #messages-panel {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+  }
+
+  #main-container {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+  }
+
+  #main-container.chat-open #contacts-panel {
+    display: none;
+  }
+
+  #main-container.chat-open #messages-panel {
+    display: flex;
+  }
+
+  .back-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chat-header {
+    padding: 10px 12px;
+  }
+
+  .chat-header .avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+
+  .message {
+    max-width: 85%;
+  }
+
+  .message-text {
+    font-size: 15px;
+  }
+
+  .messages-list {
+    padding: 12px;
+  }
+
+  /* Improve touch targets */
+  .contact-item {
+    padding: 14px 16px;
+    min-height: 72px;
+  }
+
+  .contact-item .avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+
+  .contact-name {
+    font-size: 16px;
+  }
+
+  .preview-text {
+    font-size: 14px;
+  }
+
+  /* Message input improvements for mobile */
+  .message-input-area {
+    padding: 8px 12px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .input-container {
+    padding: 6px 10px;
+  }
+
+  #message-input {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    min-height: 40px;
+  }
+
+  .send-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Panel header mobile adjustments */
+  .panel-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .user-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  #user-name {
+    font-size: 16px;
+  }
+
+  /* Translation tooltip adjustments for mobile */
+  .translation-indicator .original-tooltip {
+    position: fixed;
+    bottom: auto;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 280px;
+    max-width: calc(100vw - 40px);
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  /* Empty state mobile */
+  .empty-chat-content h2 {
+    font-size: 20px;
+  }
+
+  .empty-icon svg {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* Small mobile devices */
+@media (max-width: 380px) {
+  .panel-header {
+    padding: 10px 12px;
+  }
+
+  .contact-item {
+    padding: 12px;
+  }
+
+  .contact-item .avatar {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* iOS safe areas */
+@supports (padding: max(0px)) {
+  .panel-header {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .chat-header {
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+
+  .message-input-area {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Landscape mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+  .messages-list {
+    padding: 8px 16px;
+  }
+
+  .message {
+    max-width: 70%;
+  }
+
+  .contact-item {
+    padding: 10px 16px;
+    min-height: 56px;
+  }
+
+  .contact-item .avatar {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Link Preview Cards */
+.link-previews-container {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-preview-card {
+  display: block;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.link-preview-card:hover {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.link-preview-image {
+  width: 100%;
+  max-height: 200px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.link-preview-image img {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.link-preview-content {
+  padding: 10px 12px;
+}
+
+.link-preview-site {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.link-preview-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link-preview-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Links in messages */
+.message-link {
+  color: #8ab4f8;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.message-link:hover {
+  text-decoration: underline;
+}
+
+.message.outgoing .message-link {
+  color: #a5d6a7;
+}
+
+/* Mobile adjustments for link previews */
+@media (max-width: 768px) {
+  .link-preview-image {
+    max-height: 160px;
+  }
+
+  .link-preview-image img {
+    max-height: 160px;
+  }
+
+  .link-preview-content {
+    padding: 8px 10px;
+  }
+
+  .link-preview-title {
+    font-size: 13px;
+  }
+
+  .link-preview-description {
+    font-size: 12px;
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* Loading indicator for infinite scroll */
+.loading-more-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--bg-tertiary);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Lazy loading media styles */
+.lazy-media {
+  position: relative;
+}
+
+.media-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  padding: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.media-placeholder:hover {
+  background: var(--bg-hover);
+}
+
+.media-placeholder svg {
+  opacity: 0.7;
+}
+
+.media-placeholder span {
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Document placeholder - horizontal layout like actual documents */
+.media-placeholder.document-placeholder {
+  flex-direction: row;
+  min-height: auto;
+  padding: 12px 16px;
+  gap: 12px;
+}
+
+.media-placeholder.document-placeholder .document-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.media-placeholder.document-placeholder .document-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.media-placeholder.document-placeholder .document-size {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Sticker placeholder - smaller and square-ish */
+.media-placeholder.sticker-placeholder {
+  min-height: 100px;
+  max-width: 180px;
+  padding: 16px;
+}
+
+/* Loading state */
+.media-placeholder.loading {
+  pointer-events: none;
+}
+
+.media-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--bg-secondary);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Error state */
+.media-placeholder.error {
+  color: #f44336;
+}
+
+.media-placeholder.error svg {
+  opacity: 1;
+}
+
+/* Image placeholder specific styles */
+.message-image.lazy-media .media-placeholder {
+  min-height: 150px;
+  max-width: 330px;
+}
+
+/* Video placeholder specific styles */
+.message-video.lazy-media .media-placeholder {
+  min-height: 150px;
+  max-width: 330px;
+}
+
+/* Audio placeholder - compact horizontal layout */
+.message-audio.lazy-media .media-placeholder {
+  flex-direction: row;
+  min-height: auto;
+  padding: 12px 16px;
+  max-width: 280px;
+}
+
+.message-audio.lazy-media .media-placeholder svg {
+  flex-shrink: 0;
+}
+
+/* Mobile adjustments for lazy media */
+@media (max-width: 768px) {
+  .media-placeholder {
+    min-height: 100px;
+    padding: 16px;
+  }
+
+  .message-image.lazy-media .media-placeholder,
+  .message-video.lazy-media .media-placeholder {
+    min-height: 120px;
+  }
+}
+
+/* Emoji Picker Styles */
+.emoji-button-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.emoji-button {
+  background: transparent;
+  border: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  flex-shrink: 0;
+}
+
+.emoji-button:hover {
+  color: var(--accent-color);
+  background: var(--message-action-hover-bg);
+}
+
+.emoji-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  width: 320px;
+  max-height: 350px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.emoji-picker.hidden {
+  display: none;
+}
+
+.emoji-picker-header {
+  padding: 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.emoji-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.emoji-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.emoji-tab {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.emoji-tab:hover {
+  background: var(--bg-hover);
+}
+
+.emoji-tab.active {
+  background: var(--accent-color);
+}
+
+.emoji-picker-content {
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-content: flex-start;
+}
+
+.emoji-item {
+  font-size: 24px;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition:
+    background-color 0.15s,
+    transform 0.15s;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+}
+
+.emoji-item:hover {
+  background: var(--bg-hover);
+  transform: scale(1.15);
+}
+
+/* Mobile adjustments for emoji picker */
+@media (max-width: 768px) {
+  .emoji-picker {
+    width: calc(100vw - 32px);
+    max-width: 320px;
+    left: -8px;
+  }
+
+  .emoji-item {
+    font-size: 22px;
+    width: 32px;
+    height: 32px;
+  }
+}
