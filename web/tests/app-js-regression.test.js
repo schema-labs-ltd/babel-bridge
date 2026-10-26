@@ -14,10 +14,15 @@ const appJs = [
     .sort()
     .map((name) => readFileSync(join(appModulesDir, name), 'utf8')),
 ].join('\n');
-const indexHtml = readFileSync(
-  join(__dirname, '..', 'public', 'index.html'),
-  'utf8',
-);
+// index.html keeps its larger parts in public/markup/*.js, so read them together.
+const markupDir = join(__dirname, '..', 'public', 'markup');
+const indexHtml = [
+  readFileSync(join(__dirname, '..', 'public', 'index.html'), 'utf8'),
+  ...readdirSync(markupDir)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .map((name) => readFileSync(join(markupDir, name), 'utf8')),
+].join('\n');
 
 function extractMethodBody(source, methodName) {
   const methodPattern = new RegExp(
