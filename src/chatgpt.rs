@@ -805,6 +805,7 @@ pub mod routes {
     use serde_json::json;
     use std::sync::Arc;
 
+    #[allow(clippy::result_large_err)] // Handlers return the error response as-is.
     fn auth(state: &AppState) -> Result<&Arc<ChatGptAuth>, Response> {
         state
             .ai_service
