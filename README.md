@@ -161,16 +161,15 @@ cargo run
 
 ## Tests
 
-CI runs these on every pull request (`.github/workflows/ci.yml`), and the `apple` workflow builds and tests the Apple apps when `ios/` changes:
+CI runs the Go, Rust and web checks on every pull request (`.github/workflows/ci.yml`), and the `apple` workflow builds and tests the Apple apps when `ios/` changes. Run the same steps locally with:
 
 ```bash
-(cd wa-bridge && go test ./...)
-SKIP_GO_BUILD=1 cargo test
-cargo fmt --check && SKIP_GO_BUILD=1 cargo clippy --all-targets
-(cd web && npm ci && npm test)
+make check        # every step of CI's go, rust and web jobs
+make check-fast   # only the checks for what changed since origin/main
+make lint         # formatting, vet and clippy only
 ```
 
-`SKIP_GO_BUILD=1` stops `build.rs` from rebuilding the bridge when only Rust changed.
+`make help` lists the rest. The Rust targets set `SKIP_GO_BUILD=1`, which stops `build.rs` from rebuilding the bridge when only Rust changed.
 
 ## Deploy on Railway
 
