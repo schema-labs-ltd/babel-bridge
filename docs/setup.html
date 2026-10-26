@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Setup · WhatsApp Translator</title>
+  <meta
+    name="description"
+    content="Open source WhatsApp inbox with local history, translation, AI-assisted replies, and MCP access."
+  >
+  <meta name="theme-color" content="#f5f0e9">
+  <meta property="og:title" content="Set up WhatsApp Translator">
+  <meta
+    property="og:description"
+    content="Run a calmer WhatsApp workspace with local history, translation, AI-assisted replies, and a self-hosted web UI."
+  >
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/screenshots/active-conversation.png">
+  <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+    rel="stylesheet"
+  >
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <div class="page-backdrop" aria-hidden="true"></div>
+  <div class="site-shell">
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="WhatsApp Translator home">
+        <img class="brand-mark" src="assets/logo-mark.svg" alt="">
+        <span class="brand-copy">
+          <strong>WhatsApp Translator</strong>
+          <small>Open source, self-hosted, and built for real message work</small>
+        </span>
+      </a>
+
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html#product">Product</a>
+        <a href="index.html#features">Features</a>
+        <a href="setup.html" aria-current="page">Setup</a>
+        <a href="index.html#contribute">Contribute</a>
+      </nav>
+
+      <div class="header-actions">
+        <a
+          class="button button-ghost"
+          href="https://github.com/vultuk/whatsapp-translator"
+          target="_blank"
+          rel="noreferrer"
+        >
+          View on GitHub
+        </a>
+        <a class="button button-primary" href="#setup">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="section section-setup" id="setup">
+        <div class="section-heading" data-reveal>
+          <p class="eyebrow">Setup</p>
+          <h2>Run it locally, host it on Railway, or drop it into a container.</h2>
+          <p>
+            The docs below follow the current repository setup: `WA_WEB=true` enables the web UI,
+            `OPENAI_API_KEY` turns on AI features, and persistent storage keeps your session alive.
+          </p>
+        </div>
+
+        <div class="setup-shell" data-reveal>
+          <div class="tab-list" role="tablist" aria-label="Setup options">
+            <button
+              class="tab-button is-active"
+              type="button"
+              role="tab"
+              id="tab-local"
+              aria-selected="true"
+              aria-controls="panel-local"
+              data-tab="local"
+            >
+              Local
+            </button>
+            <button
+              class="tab-button"
+              type="button"
+              role="tab"
+              id="tab-railway"
+              aria-selected="false"
+              aria-controls="panel-railway"
+              data-tab="railway"
+            >
+              Railway
+            </button>
+            <button
+              class="tab-button"
+              type="button"
+              role="tab"
+              id="tab-docker"
+              aria-selected="false"
+              aria-controls="panel-docker"
+              data-tab="docker"
+            >
+              Docker
+            </button>
+          </div>
+
+          <div class="tab-panels">
+            <section
+              class="tab-panel is-active"
+              id="panel-local"
+              role="tabpanel"
+              aria-labelledby="tab-local"
+              data-panel="local"
+            >
+              <div class="tab-copy">
+                <h3>Run locally with Rust and Go installed</h3>
+                <p>
+                  This path is ideal for development. If `go` is available, Cargo will try to build
+                  `wa-bridge` automatically.
+                </p>
+              </div>
+              <div class="command-block">
+                <div class="command-heading">
+                  <span>Local run</span>
+                  <button
+                    class="copy-button"
+                    type="button"
+                    data-copy-target="local-command"
+                    aria-label="Copy local setup command"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre><code id="local-command">export WA_WEB=true
+export OPENAI_API_KEY=your_key_here
+cargo run --release</code></pre>
+              </div>
+              <p class="tab-note">
+                If Go is not installed, build `wa-bridge` manually and set `WA_BRIDGE_PATH` before
+                starting the app.
+              </p>
+            </section>
+
+            <section
+              class="tab-panel"
+              id="panel-railway"
+              role="tabpanel"
+              aria-labelledby="tab-railway"
+              data-panel="railway"
+              hidden
+            >
+              <div class="tab-copy">
+                <h3>Deploy on Railway for the easiest hosted setup</h3>
+                <p>
+                  Use the repository template, mount a persistent volume at `/data`, and protect the
+                  UI with `WA_PASSWORD` if the deployment is public.
+                </p>
+              </div>
+              <div class="command-block">
+                <div class="command-heading">
+                  <span>Hosted checklist</span>
+                  <button
+                    class="copy-button"
+                    type="button"
+                    data-copy-target="railway-command"
+                    aria-label="Copy Railway checklist"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre><code id="railway-command">1. Click Deploy on Railway
+2. Mount a persistent volume at /data
+3. Set OPENAI_API_KEY for AI features
+4. Set WA_PASSWORD if the UI is public
+5. Deploy and open the generated Railway domain</code></pre>
+              </div>
+              <p class="tab-note">
+                If `WA_PORT` is not set, the app will use Railway's `PORT` automatically.
+              </p>
+            </section>
+
+            <section
+              class="tab-panel"
+              id="panel-docker"
+              role="tabpanel"
+              aria-labelledby="tab-docker"
+              data-panel="docker"
+              hidden
+            >
+              <div class="tab-copy">
+                <h3>Use Docker when you want a single container path</h3>
+                <p>
+                  The repo includes a Dockerfile, so you can build the app image and keep state in a
+                  named volume.
+                </p>
+              </div>
+              <div class="command-block">
+                <div class="command-heading">
+                  <span>Docker run</span>
+                  <button
+                    class="copy-button"
+                    type="button"
+                    data-copy-target="docker-command"
+                    aria-label="Copy Docker command"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre><code id="docker-command">docker build -t whatsapp-translator .
+
+docker run --rm -it \
+  -p 3000:3000 \
+  -v whatsapp-translator-data:/data \
+  -e WA_WEB=true \
+  -e OPENAI_API_KEY=your_key_here \
+  whatsapp-translator</code></pre>
+              </div>
+              <p class="tab-note">
+                After startup, open `http://localhost:3000` in your browser.
+              </p>
+            </section>
+          </div>
+        </div>
+
+        <div class="setup-grid">
+          <article class="setup-panel" data-reveal>
+            <p class="panel-label">Useful environment variables</p>
+            <table class="env-table">
+              <thead>
+                <tr>
+                  <th scope="col">Variable</th>
+                  <th scope="col">Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>WA_WEB</code></td>
+                  <td>Required to serve the web UI and API.</td>
+                </tr>
+                <tr>
+                  <td><code>OPENAI_API_KEY</code></td>
+                  <td>Turns on translation and AI compose features.</td>
+                </tr>
+                <tr>
+                  <td><code>WA_PASSWORD</code></td>
+                  <td>Adds a password gate for hosted deployments.</td>
+                </tr>
+                <tr>
+                  <td><code>WA_DATA_DIR</code></td>
+                  <td>Sets where session and message databases are stored.</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="setup-panel" data-reveal>
+            <p class="panel-label">UI workflow</p>
+            <h3>Iterate against Storybook before touching a live account</h3>
+            <p>
+              The frontend ships with stories and fixtures so component work can be reviewed in
+              isolation. That keeps the contribution loop fast when you are tuning layout, icons, or
+              interaction details.
+            </p>
+            <div class="command-block command-block-compact">
+              <div class="command-heading">
+                <span>Storybook</span>
+                <button
+                  class="copy-button"
+                  type="button"
+                  data-copy-target="storybook-command"
+                  aria-label="Copy Storybook command"
+                >
+                  Copy
+                </button>
+              </div>
+              <pre><code id="storybook-command">npm --prefix web install
+npm --prefix web run storybook -- --host 0.0.0.0 --port 6006</code></pre>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Small WhatsApp Web client with a local web UI, message history, translation, AI replies, and
+        MCP access.
+      </p>
+      <p><span id="footer-year"></span> WhatsApp Translator</p>
+    </footer>
+  </div>
+</body>
+</html>
