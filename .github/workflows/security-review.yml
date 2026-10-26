@@ -73,4 +73,7 @@ jobs:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           comment-pr: true
           exclude-directories: fixtures,web/extensions/dist,ios/WhatsAppTranslator.xcodeproj
-          custom-security-scan-instructions: .github/security-review-instructions.txt
+          # Review each push; the default reviews a PR only once.
+          run-every-commit: true
+          # The action reads this from its own directory, so the path must be absolute.
+          custom-security-scan-instructions: ${{ github.workspace }}/.github/security-review-instructions.txt

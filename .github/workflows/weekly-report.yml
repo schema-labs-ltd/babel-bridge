@@ -36,7 +36,7 @@ jobs:
             const day = since.toISOString().slice(0, 10);
 
             const prs = await github.paginate(github.rest.search.issuesAndPullRequests, {
-              q: `repo:${owner}/${repo} is:pr is:merged merged:>=${day}`,
+              q: `repo:${owner}/${repo} is:pr is:merged merged:>=${since.toISOString().replace(/\.\d+Z$/, 'Z')}`,
               per_page: 100,
             });
 

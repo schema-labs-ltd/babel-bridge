@@ -85,7 +85,7 @@ jobs:
             exit 0
           fi
 
-          pr="$(gh pr view "$PR_NUMBER" --json state,title,mergeCommit,author)"
+          pr="$(gh pr view "$PR_NUMBER" --json state,title,mergeCommit,author,commits)"
           if [ "$(jq -r .state <<<"$pr")" != "MERGED" ]; then
             echo "::error::PR #$PR_NUMBER is not merged, so there is nothing to revert."
             exit 1
@@ -103,6 +103,11 @@ jobs:
           mainline=()
           if [ "$parents" -gt 2 ]; then
             mainline=(-m 1)
+          elif [ "$(jq '.commits | length' <<<"$pr")" -gt 1 ] &&
+            ! git log -1 --format=%s "$sha" | grep -q "(#$PR_NUMBER)\$"; then
+            # A rebase merge lands several commits and $sha is only the last one.
+            echo "::error::#$PR_NUMBER looks rebase-merged, so its merge commit holds only part of it. Revert it by hand."
+            exit 1
           fi
           if ! git revert --no-edit "${mainline[@]}" "$sha"; then
             git status --short

@@ -64,7 +64,7 @@ fetch_diagnostics() {
     [ -z "$token" ] || auth=(-H "Authorization: Bearer $token")
     status="$(curl -sS --max-time 15 -o "$body" -w '%{http_code}' "${auth[@]}" \
       "$SMOKE_URL/api/diagnostics" || echo 000)"
-    if [ "$status" = "200" ] && jq -e '.recent_problems' "$body" >/dev/null 2>&1; then
+    if [ "$status" = "200" ] && jq -e '.recentProblems' "$body" >/dev/null 2>&1; then
       diagnostics="$(cat "$body")"
       rm -f "$body"
       return 0
@@ -85,7 +85,7 @@ healthy() {
 
 error_lines() {
   local lines
-  lines="$(jq -r '.recent_problems[]? | select(.line | startswith("ERROR")) | "\(.at) \(.line)"' <<<"$diagnostics")"
+  lines="$(jq -r '.recentProblems[]? | select(.line | startswith("ERROR")) | "\(.at) \(.line)"' <<<"$diagnostics")"
   if [ -n "$IGNORE_ERRORS" ] && [ -n "$lines" ]; then
     lines="$(grep -Ev -- "$IGNORE_ERRORS" <<<"$lines" || true)"
   fi
