@@ -155,6 +155,8 @@ pub struct TranslationService {
     api_key: Option<String>,
     /// When signed in, text AI uses the ChatGPT plan instead of the API key.
     chatgpt: Option<Arc<crate::chatgpt::ChatGptAuth>>,
+    /// Fields the plan route rejected, left out of later plan requests.
+    chatgpt_dropped_fields: RwLock<std::collections::BTreeSet<&'static str>>,
     detection_model: String,
     translation_model: String,
     high_end_model: String,
@@ -299,6 +301,9 @@ fn chatgpt_request_body(mut body: Value, model: Option<&str>) -> Value {
 struct ChatGptFailure {
     failure: OpenAiApiFailure,
     retryable: bool,
+    code: Option<String>,
+    /// The request field OpenAI named, such as `reasoning.effort`.
+    param: Option<String>,
 }
 
 fn chatgpt_failure(status: u16, code: Option<&str>) -> ChatGptFailure {
@@ -328,38 +333,146 @@ fn chatgpt_failure(status: u16, code: Option<&str>) -> ChatGptFailure {
     ChatGptFailure {
         failure: OpenAiApiFailure { status, reason },
         retryable,
+        code: code.map(str::to_string),
+        param: None,
     }
 }
 
 impl OpenAiApiFailure {
     fn from_chatgpt_response(status: reqwest::StatusCode, body: &str) -> ChatGptFailure {
         let body: Value = serde_json::from_str(body).unwrap_or(Value::Null);
-        chatgpt_failure(status.as_u16(), body["error"]["code"].as_str())
+        let mut failure = chatgpt_failure(status.as_u16(), body["error"]["code"].as_str());
+        failure.param = body["error"]["param"].as_str().map(str::to_string);
+        // These name request fields and policy reasons, never message text.
+        warn!(
+            status = status.as_u16(),
+            code = failure.code.as_deref().unwrap_or("-"),
+            param = failure.param.as_deref().unwrap_or("-"),
+            detail = body["detail"].as_str().unwrap_or("-"),
+            "ChatGPT plan request rejected"
+        );
+        failure
+    }
+}
+
+/// Fields the plan route may reject for some models and that requests work
+/// without. Anything else, such as `model` or `input`, is never dropped.
+const CHATGPT_DROPPABLE_FIELDS: &[&str] = &[
+    "reasoning",
+    "reasoning.effort",
+    "reasoning.summary",
+    "text.verbosity",
+    "text.format",
+    "service_tier",
+    "include",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
+];
+
+/// The droppable field an `error.param` such as `text.format.type` refers to.
+fn droppable_field(param: &str) -> Option<&'static str> {
+    let param = param.strip_prefix("body.").unwrap_or(param);
+    CHATGPT_DROPPABLE_FIELDS
+        .iter()
+        .filter(|field| param == **field || param.starts_with(&format!("{field}.")))
+        .max_by_key(|field| field.len())
+        .copied()
+}
+
+fn remove_field(body: &mut Value, field: &str) {
+    match field.split_once('.') {
+        Some((parent, child)) => {
+            if let Some(object) = body.get_mut(parent).and_then(Value::as_object_mut) {
+                object.remove(child);
+                if object.is_empty() {
+                    body.as_object_mut().map(|body| body.remove(parent));
+                }
+            }
+        }
+        None => {
+            body.as_object_mut().map(|body| body.remove(field));
+        }
     }
 }
 
 /// Read Responses server-sent events until the response finishes. Only
 /// `response.completed` counts as success; `response.incomplete` is returned so
 /// the caller reports why output stopped.
-async fn read_response_stream(response: reqwest::Response) -> Result<Value> {
+async fn read_response_stream(
+    response: reqwest::Response,
+) -> Result<std::result::Result<Value, ChatGptFailure>> {
     use futures::StreamExt;
 
     let mut stream = response.bytes_stream();
     let mut buffer: Vec<u8> = Vec::new();
+    let mut collected = StreamOutput::default();
     loop {
         while let Some(end) = find_event_end(&buffer) {
             let event: Vec<u8> = buffer.drain(..end.0 + end.1).collect();
-            if let Some(result) = parse_stream_event(&event[..end.0])? {
-                return Ok(result);
+            match collected.accept(&event[..end.0]) {
+                Ok(Some(result)) => return Ok(Ok(result)),
+                Ok(None) => {}
+                Err(failure) => return Ok(Err(failure)),
             }
         }
         match stream.next().await {
             Some(chunk) => buffer.extend_from_slice(&chunk.context("ChatGPT stream interrupted")?),
             None => {
-                if let Some(result) = parse_stream_event(&buffer)? {
-                    return Ok(result);
+                return match collected.accept(&buffer) {
+                    Ok(Some(result)) => Ok(Ok(result)),
+                    Ok(None) => Err(OpenAiOutputFailure("stream_interrupted").into()),
+                    Err(failure) => Ok(Err(failure)),
+                };
+            }
+        }
+    }
+}
+
+/// Output gathered from stream events, used when the terminal event's
+/// response object leaves `output` empty.
+#[derive(Default)]
+struct StreamOutput {
+    items: Vec<Value>,
+    text: String,
+}
+
+impl StreamOutput {
+    fn accept(&mut self, event: &[u8]) -> std::result::Result<Option<Value>, ChatGptFailure> {
+        let Some(payload) = stream_event_payload(event) else {
+            return Ok(None);
+        };
+        match payload["type"].as_str() {
+            Some("response.output_item.done") => {
+                self.items.push(payload["item"].clone());
+                Ok(None)
+            }
+            Some("response.output_text.delta") => {
+                self.text
+                    .push_str(payload["delta"].as_str().unwrap_or_default());
+                Ok(None)
+            }
+            _ => {
+                let Some(mut response) = parse_stream_payload(&payload)? else {
+                    return Ok(None);
+                };
+                let output_missing = response["output"]
+                    .as_array()
+                    .is_none_or(|output| output.is_empty());
+                if output_missing {
+                    let items = if !self.items.is_empty() {
+                        std::mem::take(&mut self.items)
+                    } else if !self.text.is_empty() {
+                        vec![json!({
+                            "type": "message",
+                            "content": [{ "type": "output_text", "text": self.text }],
+                        })]
+                    } else {
+                        Vec::new()
+                    };
+                    response["output"] = json!(items);
                 }
-                return Err(OpenAiOutputFailure("stream_interrupted").into());
+                Ok(Some(response))
             }
         }
     }
@@ -378,7 +491,15 @@ fn find_event_end(buffer: &[u8]) -> Option<(usize, usize)> {
     }
 }
 
+#[cfg(test)]
 fn parse_stream_event(event: &[u8]) -> Result<Option<Value>> {
+    match stream_event_payload(event) {
+        Some(payload) => parse_stream_payload(&payload).map_err(|failure| failure.failure.into()),
+        None => Ok(None),
+    }
+}
+
+fn stream_event_payload(event: &[u8]) -> Option<Value> {
     let text = String::from_utf8_lossy(event);
     let data = text
         .lines()
@@ -387,29 +508,32 @@ fn parse_stream_event(event: &[u8]) -> Result<Option<Value>> {
         .collect::<Vec<_>>()
         .join("\n");
     if data.is_empty() || data == "[DONE]" {
-        return Ok(None);
+        return None;
     }
-    let Ok(payload) = serde_json::from_str::<Value>(&data) else {
-        return Ok(None);
+    serde_json::from_str::<Value>(&data).ok()
+}
+
+/// The finished response for a terminal event, `None` for other events, or the
+/// plan error a failed stream reports.
+fn parse_stream_payload(payload: &Value) -> std::result::Result<Option<Value>, ChatGptFailure> {
+    let error = match payload["type"].as_str() {
+        Some("response.completed" | "response.incomplete") => {
+            return Ok(Some(payload["response"].clone()))
+        }
+        Some("response.failed") => &payload["response"]["error"],
+        Some("error") if payload["error"].is_object() => &payload["error"],
+        Some("error") => payload,
+        _ => return Ok(None),
     };
-    match payload["type"].as_str() {
-        Some("response.completed" | "response.incomplete") => Ok(Some(payload["response"].clone())),
-        Some("response.failed") => {
-            let code = payload["response"]["error"]["code"].as_str();
-            Err(chatgpt_failure(stream_error_status(code), code)
-                .failure
-                .into())
-        }
-        Some("error") => {
-            let code = payload["error"]["code"]
-                .as_str()
-                .or_else(|| payload["code"].as_str());
-            Err(chatgpt_failure(stream_error_status(code), code)
-                .failure
-                .into())
-        }
-        _ => Ok(None),
-    }
+    let code = error["code"].as_str();
+    let mut failure = chatgpt_failure(stream_error_status(code), code);
+    failure.param = error["param"].as_str().map(str::to_string);
+    warn!(
+        code = code.unwrap_or("-"),
+        param = failure.param.as_deref().unwrap_or("-"),
+        "ChatGPT plan stream failed"
+    );
+    Err(failure)
 }
 
 /// Errors after the stream opened arrive with HTTP 200; report their usual status.
@@ -480,6 +604,7 @@ impl TranslationService {
             api_url: OPENAI_API_URL.to_string(),
             api_key,
             chatgpt: None,
+            chatgpt_dropped_fields: RwLock::default(),
             detection_model,
             translation_model,
             high_end_model,
@@ -495,6 +620,7 @@ impl TranslationService {
             api_url,
             api_key: Some("test-api-key".to_string()),
             chatgpt: None,
+            chatgpt_dropped_fields: RwLock::default(),
             detection_model: "test-detect".to_string(),
             translation_model: "test-translate".to_string(),
             high_end_model: "test-high-end".to_string(),
@@ -653,8 +779,18 @@ impl TranslationService {
         policy: RequestPolicy,
     ) -> Result<(Value, bool)> {
         if let Some(auth) = self.chatgpt.as_ref().filter(|auth| auth.is_signed_in()) {
-            let body = chatgpt_request_body(body, auth.model().as_deref());
-            return Ok((self.send_chatgpt_request(auth, &body, policy).await?, true));
+            if auth.model().is_none() {
+                // Sign-in lists the account's models; retry if that failed, so
+                // an API-only model name is never sent to the plan route.
+                if let Err(error) = auth.refresh_models().await {
+                    warn!("Could not list ChatGPT models: {error:#}");
+                }
+            }
+            let mut body = chatgpt_request_body(body, auth.model().as_deref());
+            for field in self.chatgpt_dropped_fields.read().unwrap().iter() {
+                remove_field(&mut body, field);
+            }
+            return Ok((self.send_chatgpt_request(auth, body, policy).await?, true));
         }
         Ok((self.send_api_key_request(&body, policy).await?, false))
     }
@@ -674,7 +810,7 @@ impl TranslationService {
     async fn send_chatgpt_request(
         &self,
         auth: &crate::chatgpt::ChatGptAuth,
-        body: &Value,
+        mut body: Value,
         policy: RequestPolicy,
     ) -> Result<Value> {
         let mut retried_auth = false;
@@ -691,7 +827,7 @@ impl TranslationService {
                 .header("content-type", "application/json")
                 .header("accept", "text/event-stream")
                 .timeout(policy.timeout())
-                .json(body)
+                .json(&body)
                 .send()
                 .await;
             let response = match response {
@@ -712,14 +848,31 @@ impl TranslationService {
             };
 
             let status = response.status();
-            if !status.is_success() {
+            let failure = if status.is_success() {
+                match read_response_stream(response).await? {
+                    Ok(result) => return Ok(result),
+                    Err(failure) => failure,
+                }
+            } else {
                 let body = response.text().await.unwrap_or_default();
-                let failure = OpenAiApiFailure::from_chatgpt_response(status, &body);
+                OpenAiApiFailure::from_chatgpt_response(status, &body)
+            };
+            {
                 // One refresh after a rejected token; never loop through OAuth.
                 if status == reqwest::StatusCode::UNAUTHORIZED && !retried_auth {
                     retried_auth = true;
                     auth.mark_access_token_rejected(&token);
                     continue;
+                }
+                // OpenAI names the unsupported field: drop it and send the
+                // changed body, never the same one again.
+                if failure.code.as_deref() == Some("subscription_sharing_unsupported_capability") {
+                    if let Some(field) = failure.param.as_deref().and_then(droppable_field) {
+                        if self.chatgpt_dropped_fields.write().unwrap().insert(field) {
+                            remove_field(&mut body, field);
+                            continue;
+                        }
+                    }
                 }
                 if failure.retryable && attempt + 1 < policy.attempts() {
                     warn!(
@@ -733,8 +886,6 @@ impl TranslationService {
                 }
                 return Err(failure.failure.into());
             }
-
-            return read_response_stream(response).await;
         }
     }
 
@@ -2171,6 +2322,78 @@ mod tests {
         assert_eq!(failure.reason, "chatgpt_usage_limit");
         assert_eq!(requests.lock().unwrap().len(), 1);
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn chatgpt_drops_a_rejected_field_and_resends_once() {
+        let detect = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": "{\"language\":\"Spanish\",\"isTargetLanguage\":false}"}]}],
+            },
+        });
+        let (url, requests, server) = spawn_capturing_openai_mock(vec![
+            MockResponse {
+                status: "400 Bad Request",
+                body: serde_json::json!({"error": {"code": "subscription_sharing_unsupported_capability", "param": "reasoning.effort"}}).to_string(),
+            },
+            MockResponse { status: "200 OK", body: sse(&[detect.clone()]) },
+            MockResponse { status: "200 OK", body: sse(&[detect]) },
+        ]);
+        let (service, dir) = chatgpt_service(url, &["gpt-6.1-sol"]);
+        assert_eq!(service.source_language("Hola").await.unwrap().0, "Spanish");
+        // Later requests leave the field out from the start.
+        assert_eq!(service.source_language("Hola").await.unwrap().0, "Spanish");
+        server.join().unwrap();
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 3);
+        let body = |i: usize| -> serde_json::Value {
+            serde_json::from_str(requests[i].split_once("\r\n\r\n").unwrap().1).unwrap()
+        };
+        assert!(body(0)["reasoning"]["effort"].is_string());
+        assert!(body(1).get("reasoning").is_none());
+        assert!(body(2).get("reasoning").is_none());
+        assert_eq!(body(2)["text"]["format"]["type"], "json_object");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn chatgpt_output_comes_from_stream_events_when_completed_omits_it() {
+        let events = [
+            serde_json::json!({"type": "response.output_text.delta", "delta": "{\"language\":\"French\","}),
+            serde_json::json!({"type": "response.output_text.delta", "delta": "\"isTargetLanguage\":false}"}),
+            serde_json::json!({"type": "response.completed", "response": {"status": "completed", "output": []}}),
+        ];
+        let (url, _requests, server) = spawn_capturing_openai_mock(vec![MockResponse {
+            status: "200 OK",
+            body: sse(&events),
+        }]);
+        let (service, dir) = chatgpt_service(url, &["gpt-6.1-sol"]);
+        assert_eq!(
+            service.source_language("Bonjour").await.unwrap().0,
+            "French"
+        );
+        server.join().unwrap();
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn only_optional_fields_are_dropped_for_unsupported_capabilities() {
+        assert_eq!(
+            super::droppable_field("reasoning.effort"),
+            Some("reasoning.effort")
+        );
+        assert_eq!(
+            super::droppable_field("text.format.type"),
+            Some("text.format")
+        );
+        assert_eq!(super::droppable_field("model"), None);
+        assert_eq!(super::droppable_field("input"), None);
+        let mut body =
+            serde_json::json!({"text": {"format": {"type": "json_object"}}, "model": "m"});
+        super::remove_field(&mut body, "text.format");
+        assert_eq!(body, serde_json::json!({"model": "m"}));
     }
 
     #[test]

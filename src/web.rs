@@ -3830,7 +3830,7 @@ pub(crate) async fn translate_message(
                     success: false,
                     translated_text: None,
                     source_language: None,
-                    error: Some(format!("Translation failed: {}", e)),
+                    error: Some(format!("Translation failed: {:#}", e)),
                 }),
             )
                 .into_response();
