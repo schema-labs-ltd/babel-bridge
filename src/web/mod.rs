@@ -218,6 +218,10 @@ pub enum WebSocketEvent {
     },
     Resync,
     TopicsUpdated,
+    // Part of the pinned client contract (fixtures/api); clients handle it
+    // even though the server does not send it today.
+    #[allow(dead_code)]
+    Heartbeat,
     Typing {
         chat_id: String,
         user_id: String,
@@ -248,6 +252,11 @@ pub enum WebSocketEvent {
         message_id: Option<String>,
         timestamp: Option<i64>,
         error: Option<String>,
+    },
+    // Part of the pinned client contract (fixtures/api).
+    #[allow(dead_code)]
+    Error {
+        error: String,
     },
 }
 
