@@ -1,0 +1,22 @@
+[
+  {
+    "id": "120363000000000001@g.us",
+    "lastMessagePreview": "[ Poll: Dinner? ]",
+    "lastMessageTime": 1767312240000,
+    "name": "Family",
+    "phone": null,
+    "pinnedAt": 1767400000000,
+    "type": "group",
+    "unreadCount": 5
+  },
+  {
+    "id": "447700900123@s.whatsapp.net",
+    "lastMessagePreview": "👍",
+    "lastMessageTime": 1767225720500,
+    "name": "Ana",
+    "phone": "447700900123",
+    "pinnedAt": null,
+    "type": "private",
+    "unreadCount": 1
+  }
+]

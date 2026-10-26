@@ -1,0 +1,396 @@
+[
+  {
+    "connected": false,
+    "connection_state": "linking_required",
+    "name": null,
+    "phone": null,
+    "qr": "2@linking-code",
+    "type": "status"
+  },
+  {
+    "data": "2@linking-code",
+    "type": "qr"
+  },
+  {
+    "connected": true,
+    "connection_state": "connected",
+    "name": "Me",
+    "phone": "447700900999",
+    "qr": null,
+    "type": "status"
+  },
+  {
+    "name": "Me",
+    "phone": "447700900999",
+    "type": "connected"
+  },
+  {
+    "message": {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Hola, ¿cómo estás?",
+        "receipt_sender_jid": "447700900123@s.whatsapp.net",
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": null,
+      "id": "ana-hello",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": "Hola, ¿cómo estás?",
+      "senderName": "Ana",
+      "senderPhone": "447700900123",
+      "sourceLanguage": null,
+      "timestamp": 1767225600000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Very well, thanks!",
+        "reply_context": {
+          "messageId": "ana-hello",
+          "senderName": "Ana",
+          "text": "Hola, ¿cómo estás?"
+        },
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": "sent",
+      "id": "me-reply",
+      "isForwarded": false,
+      "isFromMe": true,
+      "isTranslated": false,
+      "originalText": "Very well, thanks!",
+      "senderName": null,
+      "senderPhone": "447700900999",
+      "sourceLanguage": null,
+      "timestamp": 1767225660000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Very well, thank you!",
+        "edited_at_ms": 1767225700000,
+        "mentions": null,
+        "reply_context": {
+          "messageId": "ana-hello",
+          "senderName": "Ana",
+          "text": "Hola, ¿cómo estás?"
+        },
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": "sent",
+      "id": "me-reply",
+      "isForwarded": false,
+      "isFromMe": true,
+      "isTranslated": false,
+      "originalText": "Very well, thank you!",
+      "senderName": null,
+      "senderPhone": "447700900999",
+      "sourceLanguage": null,
+      "timestamp": 1767225660000,
+      "translatedText": null
+    },
+    "type": "message_updated"
+  },
+  {
+    "message": {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "emoji": "👍",
+        "receipt_sender_jid": "447700900123@s.whatsapp.net",
+        "sender_timestamp_ms": 1767225720500,
+        "target_message_id": "me-reply",
+        "type": "reaction"
+      },
+      "contentType": "Reaction",
+      "deliveryStatus": null,
+      "id": "ana-reaction",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "senderName": "Ana",
+      "senderPhone": "447700900123",
+      "sourceLanguage": null,
+      "timestamp": 1767225720500,
+      "translatedText": null
+    },
+    "type": "reaction"
+  },
+  {
+    "message_ids": [
+      "me-reply"
+    ],
+    "status": "read",
+    "type": "receipt"
+  },
+  {
+    "message": {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "album_id": "ben-album",
+        "album_index": 0,
+        "caption": "Beach day",
+        "file_size": 70,
+        "height": 1,
+        "media_data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "mime_type": "image/png",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "image",
+        "width": 1
+      },
+      "contentType": "Image",
+      "deliveryStatus": null,
+      "id": "ben-photo-0",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": "Beach day",
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312000000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "album_id": "ben-album",
+        "album_index": 1,
+        "file_size": 70,
+        "height": 1,
+        "media_data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "mime_type": "image/png",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "image",
+        "width": 1
+      },
+      "contentType": "Image",
+      "deliveryStatus": null,
+      "id": "ben-photo-1",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312001000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "duration_seconds": 7,
+        "file_size": 4096,
+        "is_voice_note": true,
+        "mime_type": "audio/ogg; codecs=opus",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "audio"
+      },
+      "contentType": "Voice Note",
+      "deliveryStatus": null,
+      "id": "ben-voice",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312060000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "address": "London SW1A 0AA",
+        "latitude": 51.5007,
+        "longitude": -0.1246,
+        "name": "Big Ben",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "location"
+      },
+      "contentType": "Location",
+      "deliveryStatus": null,
+      "id": "ben-location",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312120000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "file_name": "tickets.pdf",
+        "file_size": 2048,
+        "mime_type": "application/pdf",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "document"
+      },
+      "contentType": "Document",
+      "deliveryStatus": null,
+      "id": "ben-document",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312180000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "message": {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "options": [
+          "Pizza",
+          "Curry"
+        ],
+        "question": "Dinner?",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "poll"
+      },
+      "contentType": "Poll",
+      "deliveryStatus": null,
+      "id": "ben-poll",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312240000,
+      "translatedText": null
+    },
+    "type": "message"
+  },
+  {
+    "chat_id": "447700900123@s.whatsapp.net",
+    "state": "typing",
+    "type": "typing",
+    "user_id": "447700900123@s.whatsapp.net"
+  },
+  {
+    "completed": 1,
+    "progress_id": "album-1",
+    "stage": "uploading",
+    "total": 2,
+    "type": "send_progress"
+  },
+  {
+    "chat_id": "447700900123@s.whatsapp.net",
+    "message_ids": [
+      "ana-hello"
+    ],
+    "type": "messages_viewed",
+    "unread_count": 0
+  },
+  {
+    "chat_id": "120363000000000001@g.us",
+    "type": "mark_as_read"
+  },
+  {
+    "chat_id": "447700900123@s.whatsapp.net",
+    "settings": {
+      "languageOverride": "Spanish",
+      "replyOnly": true,
+      "sendOriginalFollowUp": true,
+      "translationEnabled": true,
+      "translationStyle": "casual"
+    },
+    "type": "conversation_settings_updated"
+  },
+  {
+    "type": "disconnected"
+  },
+  {
+    "message_id": "ben-voice",
+    "type": "voice_ready"
+  },
+  {
+    "type": "resync"
+  },
+  {
+    "type": "topics_updated"
+  },
+  {
+    "type": "heartbeat"
+  },
+  {
+    "error": null,
+    "message_id": "3EB0SENT",
+    "request_id": 7,
+    "success": true,
+    "temp_message_id": "temp-1",
+    "timestamp": 1767225780000,
+    "type": "send_result"
+  },
+  {
+    "error": "WhatsApp is not connected",
+    "type": "error"
+  }
+]

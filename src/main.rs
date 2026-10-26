@@ -4,6 +4,8 @@
 //! via the whatsmeow library. Communication happens via JSON-lines over stdio.
 
 mod access;
+#[cfg(test)]
+mod api_contract;
 mod bridge;
 mod chatgpt;
 mod cli;

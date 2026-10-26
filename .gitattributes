@@ -6,3 +6,4 @@ wa-bridge/go.sum linguist-generated
 web/extensions/dist/** linguist-generated
 *.pbxproj linguist-generated
 *.xcassets/** linguist-generated
+fixtures/api/responses/** linguist-generated

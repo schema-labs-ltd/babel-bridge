@@ -1,0 +1,246 @@
+{
+  "hasMore": false,
+  "messages": [
+    {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Hola, ¿cómo estás?",
+        "receipt_sender_jid": "447700900123@s.whatsapp.net",
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": null,
+      "id": "ana-hello",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": "Hola, ¿cómo estás?",
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ana",
+      "senderPhone": "447700900123",
+      "sourceLanguage": null,
+      "timestamp": 1767225600000,
+      "translatedText": null
+    },
+    {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Very well, thank you!",
+        "edited_at_ms": 1767225700000,
+        "mentions": null,
+        "reply_context": {
+          "messageId": "ana-hello",
+          "senderName": "Ana",
+          "text": "Hola, ¿cómo estás?"
+        },
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": "read",
+      "id": "me-reply",
+      "isForwarded": false,
+      "isFromMe": true,
+      "isTranslated": false,
+      "originalText": "Very well, thank you!",
+      "reactionStates": {
+        "447700900123": {
+          "emoji": "👍",
+          "id": "ana-reaction",
+          "timestamp": 1767225720500
+        }
+      },
+      "reactions": {
+        "👍": [
+          "447700900123"
+        ]
+      },
+      "senderName": null,
+      "senderPhone": "447700900999",
+      "sourceLanguage": null,
+      "timestamp": 1767225660000,
+      "translatedText": null
+    },
+    {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "album_id": "ben-album",
+        "album_index": 0,
+        "caption": "Beach day",
+        "file_size": 70,
+        "has_media": true,
+        "height": 1,
+        "mime_type": "image/png",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "image",
+        "width": 1
+      },
+      "contentType": "Image",
+      "deliveryStatus": null,
+      "id": "ben-photo-0",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": "Beach day",
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312000000,
+      "translatedText": null
+    },
+    {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "album_id": "ben-album",
+        "album_index": 1,
+        "file_size": 70,
+        "has_media": true,
+        "height": 1,
+        "mime_type": "image/png",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "image",
+        "width": 1
+      },
+      "contentType": "Image",
+      "deliveryStatus": null,
+      "id": "ben-photo-1",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312001000,
+      "translatedText": null
+    },
+    {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "duration_seconds": 7,
+        "file_size": 4096,
+        "is_voice_note": true,
+        "mime_type": "audio/ogg; codecs=opus",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "audio"
+      },
+      "contentType": "Voice Note",
+      "deliveryStatus": null,
+      "id": "ben-voice",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312060000,
+      "translatedText": null
+    },
+    {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "address": "London SW1A 0AA",
+        "latitude": 51.5007,
+        "longitude": -0.1246,
+        "name": "Big Ben",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "location"
+      },
+      "contentType": "Location",
+      "deliveryStatus": null,
+      "id": "ben-location",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312120000,
+      "translatedText": null
+    },
+    {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "file_name": "tickets.pdf",
+        "file_size": 2048,
+        "mime_type": "application/pdf",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "document"
+      },
+      "contentType": "Document",
+      "deliveryStatus": null,
+      "id": "ben-document",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312180000,
+      "translatedText": null
+    },
+    {
+      "chatType": "group",
+      "contactId": "120363000000000001@g.us",
+      "contactName": "Family",
+      "contactPhone": null,
+      "content": {
+        "options": [
+          "Pizza",
+          "Curry"
+        ],
+        "question": "Dinner?",
+        "receipt_sender_jid": "447700900456@s.whatsapp.net",
+        "type": "poll"
+      },
+      "contentType": "Poll",
+      "deliveryStatus": null,
+      "id": "ben-poll",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ben",
+      "senderPhone": "447700900456",
+      "sourceLanguage": null,
+      "timestamp": 1767312240000,
+      "translatedText": null
+    }
+  ]
+}
