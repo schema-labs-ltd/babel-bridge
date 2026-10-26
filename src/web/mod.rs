@@ -302,6 +302,19 @@ struct StatusResponse {
     qr: Option<String>,
 }
 
+/// Content-free server state for agents and support, behind web auth.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsResponse {
+    version: &'static str,
+    /// Set by Railway on deploys; absent locally.
+    commit: Option<String>,
+    connected: bool,
+    connection_state: WhatsAppConnectionState,
+    ai_configured: bool,
+    recent_problems: Vec<crate::log_privacy::LoggedProblem>,
+}
+
 #[derive(Serialize)]
 struct HealthResponse {
     ok: bool,

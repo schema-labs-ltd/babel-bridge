@@ -11,6 +11,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let protected_api = Router::new()
         .route("/api/logout", post(logout))
         .route("/api/status", get(get_status))
+        .route("/api/diagnostics", get(get_diagnostics))
         .route("/api/outbox/:id", get(crate::outbox::status))
         .route(
             "/api/settings/openai",

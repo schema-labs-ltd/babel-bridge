@@ -12,6 +12,25 @@ pub(super) async fn get_status(State(state): State<Arc<AppState>>) -> Json<Statu
     })
 }
 
+/// Recent warnings and errors (already redacted by the log writer) and
+/// connection state, so an agent can diagnose production without log access.
+/// Never includes the account's phone, name, QR code or any message data.
+pub(super) async fn get_diagnostics(
+    State(state): State<Arc<AppState>>,
+) -> Json<DiagnosticsResponse> {
+    Json(DiagnosticsResponse {
+        version: env!("CARGO_PKG_VERSION"),
+        commit: std::env::var("RAILWAY_GIT_COMMIT_SHA").ok(),
+        connected: *state.connected.read().await,
+        connection_state: *state.connection_state.read().await,
+        ai_configured: state
+            .ai_service
+            .as_ref()
+            .is_some_and(|service| service.is_configured()),
+        recent_problems: crate::log_privacy::recent_problems(),
+    })
+}
+
 pub(super) async fn get_health() -> Json<HealthResponse> {
     Json(HealthResponse {
         ok: true,
