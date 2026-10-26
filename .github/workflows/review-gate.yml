@@ -1,0 +1,68 @@
+# Posts the `review-gate` commit status, which branch protection requires, so
+# auto-merge waits for the bot reviews. It passes once Copilot has reviewed the
+# head commit and Codex has reviewed, commented on or +1'd the PR. The rules
+# and their self-test are in .github/scripts/review-gate.sh.
+#
+# A new head polls for up to 15 minutes. A submitted review re-checks at once.
+# Reactions trigger nothing, so the schedule re-checks open PRs for a late
+# Codex +1. Every run uses the script from the default branch.
+name: review-gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number (empty checks every open PR)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: evaluate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      statuses: write
+    concurrency:
+      group: review-gate-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.pr || 'all' }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Self-test review rules
+        id: selftest
+        run: |
+          # pull_request_review runs the PR's copy of this file, which can
+          # reach a default branch that does not have the script yet.
+          if [ ! -f .github/scripts/review-gate.sh ]; then
+            echo "The default branch has no review-gate script yet."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          .github/scripts/review-gate.sh selftest
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate and post the review-gate status
+        if: steps.selftest.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+          POLL_SECONDS: ${{ github.event_name == 'pull_request_target' && '900' || '0' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/scripts/review-gate.sh run

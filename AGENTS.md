@@ -46,6 +46,12 @@ CI fails when these drift from their sources, so regenerate them in the same cha
 - After an intended API change, run `UPDATE_FIXTURES=1 cargo test api_contract`, review the fixture diff, update `ios/WhatsAppTranslator/Models/APIModels.swift`, then run `scripts/check-api-contract.sh`. That script builds `APIModels.swift` with `ios/APIContract/APIContractCheck.swift` and decodes every fixture; it runs on Linux with a Swift 6 toolchain, and the `CI / api-contract` job runs it on every pull request.
 - Keep `APIModels.swift` and `MessageTone.swift` free of Apple-only frameworks so the check keeps building on Linux. A new fixture needs a matching check in `APIContractCheck.swift`, or the script fails.
 
+## Merge gates
+
+- Two commit statuses gate merges besides CI. `review-gate` passes once Copilot has reviewed the head commit and Codex has reviewed, commented on, or +1'd the PR. `risk` labels the PR `risk:low`, `risk:standard` or `risk:high` from the paths it changes, using the rules in `.github/scripts/pr-risk.sh`, and fails on high risk until the owner approves.
+- The owner approves a high-risk PR by commenting `/approve <head sha>` by hand. Agents must never post `/approve`; a comment posted through an app, as agents acting for `vultuk` do, or an edited comment does not count. A new push changes the head, so it needs a new `/approve`.
+- When a PR is high risk, say so in its description and the handoff, with the head SHA to approve. Do not split or reshape a change to lower its tier. To change the tiers, edit `pr-risk.sh` and its `expect_tier` self-test together.
+
 ## File size limit
 
 - A Lefthook pre-commit hook (`lefthook.yml`, `scripts/check-file-size.sh`) blocks any commit that stages a hand-written text file over 5,000 tokens, counted as bytes / 4 (20,000 bytes). Install it once per clone with `npx lefthook install` (or `lefthook install`).
