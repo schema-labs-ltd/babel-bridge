@@ -1080,6 +1080,7 @@ impl TranslationService {
         ).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn request_text_output(
         &self,
         model: &str,
@@ -1105,6 +1106,7 @@ impl TranslationService {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn request_text_output_with_policy(
         &self,
         model: &str,

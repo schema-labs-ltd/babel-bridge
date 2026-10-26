@@ -175,15 +175,17 @@ impl MessageDisplay {
         )?;
 
         // If group, show group name
-        if let Chat::Group { name, .. } = &msg.chat {
-            if let Some(group_name) = name {
-                execute!(
-                    stdout,
-                    SetForegroundColor(self.colors.group_name),
-                    Print(format!(": {}", group_name)),
-                    ResetColor
-                )?;
-            }
+        if let Chat::Group {
+            name: Some(group_name),
+            ..
+        } = &msg.chat
+        {
+            execute!(
+                stdout,
+                SetForegroundColor(self.colors.group_name),
+                Print(format!(": {}", group_name)),
+                ResetColor
+            )?;
         }
 
         println!();

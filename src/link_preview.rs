@@ -52,6 +52,7 @@ pub async fn validate_link_preview_url(url: &str) -> Result<()> {
 }
 
 /// Extract URLs from text
+#[cfg(test)]
 pub fn extract_urls(text: &str) -> Vec<String> {
     // Match URLs starting with http:// or https://
     // This regex is intentionally simple but handles most common cases

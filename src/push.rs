@@ -283,10 +283,7 @@ impl PushNotification {
         }
     }
 
-    pub fn from_message(message: &StoredMessage, badge: i32) -> Self {
-        Self::from_message_with_avatar(message, badge, None)
-    }
-
+    #[cfg(test)]
     pub fn from_message_with_avatar(
         message: &StoredMessage,
         badge: i32,

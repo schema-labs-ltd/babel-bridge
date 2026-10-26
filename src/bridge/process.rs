@@ -189,13 +189,6 @@ impl BridgeProcess {
         crate::shutdown::clear_bridge_pid();
         stopped
     }
-
-    /// Check if the process is still running
-    pub fn try_wait(&mut self) -> Result<Option<std::process::ExitStatus>> {
-        self.child
-            .try_wait()
-            .context("Failed to check bridge process status")
-    }
 }
 
 /// How a bridge child stopped.
