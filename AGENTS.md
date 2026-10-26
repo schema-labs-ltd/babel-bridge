@@ -2,7 +2,7 @@
 
 ## Repository map
 
-- `src/`: Rust server (axum). `web.rs` holds the HTTP and WebSocket routes, `storage.rs` and `storage/` the SQLite store, `translation.rs` and `chatgpt.rs` the translation providers, `mcp.rs` the MCP server, `push.rs` APNs, and `bridge/` the process and JSON protocol for the Go bridge.
+- `src/`: Rust server (axum). `web/` holds the HTTP and WebSocket routes, `storage.rs` and `storage/` the SQLite store, `translation.rs` and `chatgpt.rs` the translation providers, `mcp.rs` the MCP server, `push.rs` APNs, and `bridge/` the process and JSON protocol for the Go bridge.
 - `wa-bridge/`: Go WhatsApp client (whatsmeow) that the Rust server runs as a child process. `build.rs` builds it during `cargo build` unless `SKIP_GO_BUILD` is set.
 - `web/public/`: the browser app, plain JavaScript served as is with no build step. Unit tests are in `web/tests/` and run with `node --test`.
 - `web/extensions/`: the MCP Apps chat UI, built with esbuild into the committed `web/extensions/dist/chats.html`, which the Rust server embeds.
