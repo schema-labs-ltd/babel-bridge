@@ -325,11 +325,20 @@ jobs:
           echo "xcodebuild build succeeded for ${BUILD_SCHEME}"
 
       - name: xcodebuild test
+        id: test
+        env:
+          # xcodebuild passes TEST_RUNNER_* to the tests without the prefix.
+          # Tests that need real audio output skip on CI's cold simulators.
+          TEST_RUNNER_SKIP_AUDIO_PLAYBACK: "1"
         run: |
           set -eu
           derived="${GITHUB_WORKSPACE}/.deriveddata/${PLATFORM}"
           mkdir -p "$derived"
           logfile="${RUNNER_TEMP}/xcodebuild-${PLATFORM}-test.log"
+          result_bundle="${RUNNER_TEMP}/test-results/${PLATFORM}.xcresult"
+          rm -rf "$result_bundle"
+          echo "RESULT_BUNDLE=${result_bundle}" >> "$GITHUB_ENV"
+          echo "TEST_LOG=${logfile}" >> "$GITHUB_ENV"
           cd "$GITHUB_WORKSPACE/ios"
           args=(
             test
@@ -338,6 +347,7 @@ jobs:
             -configuration Debug
             -destination "$DESTINATION"
             -derivedDataPath "$derived"
+            -resultBundlePath "$result_bundle"
             -only-testing:"$ONLY_TESTING"
             -jobs 2
             CODE_SIGNING_ALLOWED=NO
@@ -371,6 +381,48 @@ jobs:
             tail -n 40 "$logfile"
             exit 1
           fi
+
+      # Agents read CI logs through the API and only see the last lines, so put
+      # the failing tests in the step summary and keep the full result bundle.
+      - name: Summarize test failures
+        if: failure() && steps.test.outcome == 'failure'
+        run: |
+          set -u
+          {
+            echo "## ${PLATFORM} test failures"
+            echo
+            summary="${RUNNER_TEMP}/xcresult-summary.json"
+            if [ -d "${RESULT_BUNDLE:-}" ] && xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE" --compact > "$summary" 2>/dev/null; then
+              python3 - "$summary" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          failures = data.get("testFailures") or []
+          print(f"{data.get('failedTests', len(failures))} failed of {data.get('totalTestCount', '?')} tests.")
+          print()
+          for failure in failures[:50]:
+              name = failure.get("testIdentifierString") or failure.get("testName", "?")
+              text = " ".join((failure.get("failureText") or "").split())[:400]
+              print(f"- `{failure.get('targetName', '')} {name}`: {text}")
+          PY
+            else
+              echo "No result bundle summary; matching lines from the log:"
+              echo
+              echo '```'
+              grep -E "error: |Test Case .* failed|failed \(" "${TEST_LOG:-/dev/null}" | head -n 50 || true
+              echo '```'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: failure() && steps.test.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/test-results/
+            ${{ runner.temp }}/xcodebuild-${{ matrix.platform }}-test.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   apple:
     name: apple
