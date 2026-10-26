@@ -53,12 +53,18 @@ is_generated() {
 
 # Reads a pulls/{n}/files JSON array and sets TIER and REASONS.
 classify() {
-  local files_json="$1" status additions deletions file previous marketing tier lines=0
+  local files_json="$1" status additions deletions file previous marketing odd tier lines=0
   TIER=low
   REASONS=()
   # Fields are joined with US (0x1f): IFS whitespace like tab would merge the
-  # empty previous_filename into its neighbour.
-  while IFS=$'\x1f' read -r status additions deletions file previous marketing; do
+  # empty previous_filename into its neighbour. Paths are PR input, so jq
+  # replaces newlines and US in them, and the line counts are checked as numbers
+  # before any arithmetic sees them.
+  while IFS=$'\x1f' read -r status additions deletions file previous marketing odd; do
+    if ! [[ $additions =~ ^[0-9]+$ && $deletions =~ ^[0-9]+$ ]]; then
+      echo "error: unexpected line counts for $file" >&2
+      exit 1
+    fi
     for path in "$file" "$previous"; do
       [ -z "$path" ] && continue
       tier=$(tier_for_path "$path")
@@ -73,6 +79,14 @@ classify() {
       TIER=high
       REASONS+=("deletes a test: $file")
     fi
+    if [ "$status" = renamed ] && is_test_path "$previous" && ! is_test_path "$file"; then
+      TIER=high
+      REASONS+=("moves a test out of the test paths: $previous")
+    fi
+    if [ "$odd" = 1 ]; then
+      TIER=high
+      REASONS+=("control characters in a path: $file")
+    fi
     if [ "$marketing" = 1 ]; then
       TIER=high
       REASONS+=("changes MARKETING_VERSION: $file")
@@ -81,8 +95,10 @@ classify() {
       lines=$((lines + additions + deletions))
     fi
   done < <(jq -r '.[] | [
-      .status, .additions, .deletions, .filename, (.previous_filename // ""),
-      (if ((.patch // "") | test("(?m)^[-+].*MARKETING_VERSION")) then 1 else 0 end)
+      .status, .additions, .deletions,
+      ((.filename, (.previous_filename // "")) | gsub("[\n\r\u001f]"; "?")),
+      (if ((.patch // "") | test("(?m)^[-+].*MARKETING_VERSION")) then 1 else 0 end),
+      (if ((.filename + (.previous_filename // "")) | test("[\n\r\u001f]")) then 1 else 0 end)
     ] | map(tostring) | join("\u001f")' "$files_json")
   if [ "$lines" -gt "$MAX_LINES" ]; then
     TIER=high
@@ -193,6 +209,9 @@ selftest() {
     {"filename":"src/main.rs","status":"modified","additions":5,"deletions":1}]' standard
   expect_files "deleted test" '[{"filename":"web/tests/topics.test.js","status":"removed","additions":0,"deletions":40}]' high
   expect_files "renamed test" '[{"filename":"web/tests/b.test.js","previous_filename":"web/tests/a.test.js","status":"renamed","additions":0,"deletions":0}]' low
+  expect_files "test moved out of tests" '[{"filename":"docs/topics.js","previous_filename":"web/tests/topics.test.js","status":"renamed","additions":0,"deletions":0}]' high
+  expect_files "newline in a path" '[{"filename":"docs/a\n.github/x","status":"added","additions":1,"deletions":1}]' high
+  expect_files "injected record" '[{"filename":"docs/a\nmodified\u001f$(id)\u001f0\u001fdocs/b","status":"added","additions":1,"deletions":1}]' high
   expect_files "moved out of a high path" '[{"filename":"src/auth_old.rs","previous_filename":"src/web/auth.rs","status":"renamed","additions":0,"deletions":0}]' high
   expect_files "large change" '[{"filename":"src/main.rs","status":"modified","additions":700,"deletions":101}]' high
   expect_files "large generated file" '[{"filename":"web/extensions/dist/chats.html","status":"modified","additions":900,"deletions":900}]' standard
@@ -285,6 +304,12 @@ run() {
   gh api "repos/$REPO/pulls/$PR_NUMBER" > "$WORK/pr.json"
   if [ "$(jq -r .state "$WORK/pr.json")" != open ]; then
     echo "PR #$PR_NUMBER is not open; nothing to do."
+    return 0
+  fi
+  # Statuses belong to a commit, which PRs into other branches can share. Only
+  # PRs into the default branch decide them.
+  if [ "$(jq -r .base.ref "$WORK/pr.json")" != "$(jq -r .base.repo.default_branch "$WORK/pr.json")" ]; then
+    echo "PR #$PR_NUMBER does not target the default branch; nothing to do."
     return 0
   fi
   HEAD_SHA=$(jq -r .head.sha "$WORK/pr.json")

@@ -115,6 +115,11 @@ check_pr() {
       echo "PR #$number is not open."
       return 0
     fi
+    # Statuses belong to a commit, which PRs into other branches can share.
+    if [ "$(jq -r .base.ref "$work/pr.json")" != "$(jq -r .base.repo.default_branch "$work/pr.json")" ]; then
+      echo "PR #$number does not target the default branch."
+      return 0
+    fi
     if [ -n "$head" ] && [ "$head" != "$(jq -r .head.sha "$work/pr.json")" ]; then
       echo "PR #$number has a newer head; its own run takes over."
       return 0
