@@ -31,20 +31,28 @@ final class MessageToneTests: XCTestCase {
             let url = try XCTUnwrap(tone.resourceURL(), tone.rawValue)
             let descriptor = try XCTUnwrap(MessageTone.catalog.first { $0.id == tone })
             XCTAssertEqual(descriptor.filename, tone.filename)
-            let audio = try AVAudioPlayer(contentsOf: url)
-            XCTAssertTrue((0.2..<3).contains(audio.duration), tone.title)
-            XCTAssertEqual(audio.numberOfChannels, 1)
-            XCTAssertTrue(audio.prepareToPlay(), tone.title)
+            // Decodes to PCM without touching audio hardware, so it runs in CI.
+            let file = try AVAudioFile(forReading: url)
+            let duration = Double(file.length) / file.processingFormat.sampleRate
+            XCTAssertTrue((0.2..<3).contains(duration), tone.title)
+            XCTAssertEqual(file.processingFormat.channelCount, 1)
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+            try file.read(into: buffer)
+            XCTAssertGreaterThan(buffer.frameLength, 0, tone.title)
         }
+    }
+
+    private func skipWithoutAudioPlayback() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["SKIP_AUDIO_PLAYBACK"] == "1",
+            "Audio playback is checked locally and on devices, not in CI."
+        )
     }
 
     /// Needs a working audio output, which a cold CI simulator does not reliably have.
     /// CI sets `TEST_RUNNER_SKIP_AUDIO_PLAYBACK=1`; run it locally or on a device.
     func testEveryBundledToneActuallyPlays() async throws {
-        try XCTSkipIf(
-            ProcessInfo.processInfo.environment["SKIP_AUDIO_PLAYBACK"] == "1",
-            "Audio playback is checked locally and on devices, not in CI."
-        )
+        try skipWithoutAudioPlayback()
         for tone in MessageTone.customTones {
             let url = try XCTUnwrap(tone.resourceURL(), tone.rawValue)
             let audio = try AVAudioPlayer(contentsOf: url)
@@ -60,7 +68,9 @@ final class MessageToneTests: XCTestCase {
         }
     }
 
+    /// Plays real audio, so CI skips it like the test above.
     func testPreviewCanSwitchTonesAndStopsForSilentOrDismissal() throws {
+        try skipWithoutAudioPlayback()
         let player = MessageTonePreviewPlayer()
         try player.play(.aurora)
         XCTAssertTrue(player.isPlaying)

@@ -5,10 +5,13 @@ import XCTest
 final class VoicePlaybackTests: XCTestCase {
     func testConvertedWhatsAppAudioDecodes() throws {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "playback-fixture", withExtension: "mp3"))
-        let player = try AVAudioPlayer(contentsOf: url)
-        XCTAssertGreaterThan(player.duration, 0.9)
-        XCTAssertGreaterThan(player.numberOfChannels, 0)
-        XCTAssertTrue(player.prepareToPlay())
+        // Decodes to PCM without touching audio hardware, so it runs in CI.
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertGreaterThan(Double(file.length) / file.processingFormat.sampleRate, 0.9)
+        XCTAssertGreaterThan(file.processingFormat.channelCount, 0)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: buffer)
+        XCTAssertGreaterThan(buffer.frameLength, 0)
     }
 
     /// Needs a working audio output, which a cold CI simulator does not reliably have.
