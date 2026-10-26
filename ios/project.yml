@@ -142,9 +142,16 @@ targets:
     sources:
       - path: WhatsAppTranslatorIntents
       - path: WhatsAppTranslator/Models/APIModels.swift
+      - path: WhatsAppTranslator/Models/APIModels+Features.swift
+      - path: WhatsAppTranslator/Models/APIModels+MessageContent.swift
+      - path: WhatsAppTranslator/Models/APIModels+Requests.swift
       - path: WhatsAppTranslator/Models/ServerConfiguration.swift
       - path: WhatsAppTranslator/Models/MessageTone.swift
       - path: WhatsAppTranslator/Services/APIClient.swift
+      - path: WhatsAppTranslator/Services/APIClient+LiveEvents.swift
+      - path: WhatsAppTranslator/Services/APIClient+Messaging.swift
+      - path: WhatsAppTranslator/Services/APIClient+Settings.swift
+      - path: WhatsAppTranslator/Services/BackgroundPhotoUploadSession.swift
       - path: WhatsAppTranslator/Services/SendRecoveryStore.swift
       - path: WhatsAppTranslator/Services/CredentialStore.swift
       - path: Shared/MessagingIntentModels.swift
