@@ -140,6 +140,10 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Opened $url" >> "$GITHUB_STEP_SUMMARY"
 
+          # The review gate waits for Codex, which may not pick up a PR it did not see opened.
+          gh pr comment "$url" --body "@codex review" \
+            || echo "::warning::Could not ask Codex to review $url."
+
           # Needs "Allow auto-merge" in the repo settings; the PR is open either way.
           gh pr merge "$url" --auto --squash \
             || echo "::warning::Could not turn on auto-merge for $url. Merge it once the checks pass."
