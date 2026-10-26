@@ -72,7 +72,7 @@ impl TranslationService {
                 .bearer_auth(&token)
                 .header("content-type", "application/json")
                 .header("accept", "text/event-stream")
-                .timeout(policy.timeout())
+                .timeout(policy.chatgpt_timeout())
                 .json(&body)
                 .send()
                 .await;
@@ -95,7 +95,7 @@ impl TranslationService {
 
             let status = response.status();
             let failure = if status.is_success() {
-                match read_response_stream(response).await? {
+                match read_response_stream(response, policy.chatgpt_idle_timeout()).await? {
                     Ok(result) => return Ok(result),
                     Err(failure) => failure,
                 }

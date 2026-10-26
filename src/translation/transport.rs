@@ -168,9 +168,11 @@ pub(super) fn remove_field(body: &mut Value, field: &str) {
 /// the caller reports why output stopped.
 pub(super) async fn read_response_stream(
     response: reqwest::Response,
+    idle_timeout: Duration,
 ) -> Result<std::result::Result<Value, ChatGptFailure>> {
     use futures::StreamExt;
 
+    let started = std::time::Instant::now();
     let mut stream = response.bytes_stream();
     let mut buffer: Vec<u8> = Vec::new();
     let mut collected = StreamOutput::default();
@@ -183,12 +185,26 @@ pub(super) async fn read_response_stream(
                 Err(failure) => return Ok(Err(failure)),
             }
         }
-        match stream.next().await {
-            Some(chunk) => buffer.extend_from_slice(&chunk.context("ChatGPT stream interrupted")?),
+        let next = match tokio::time::timeout(idle_timeout, stream.next()).await {
+            Ok(next) => next,
+            Err(_) => {
+                collected.log_unfinished("idle timeout", started.elapsed());
+                return Err(OpenAiOutputFailure("stream_stalled").into());
+            }
+        };
+        match next {
+            Some(Ok(chunk)) => buffer.extend_from_slice(&chunk),
+            Some(Err(error)) => {
+                collected.log_unfinished("read error", started.elapsed());
+                return Err(error).context("ChatGPT stream interrupted");
+            }
             None => {
                 return match collected.accept(&buffer) {
                     Ok(Some(result)) => Ok(Ok(result)),
-                    Ok(None) => Err(OpenAiOutputFailure("stream_interrupted").into()),
+                    Ok(None) => {
+                        collected.log_unfinished("closed early", started.elapsed());
+                        Err(OpenAiOutputFailure("stream_interrupted").into())
+                    }
                     Err(failure) => Ok(Err(failure)),
                 };
             }
@@ -203,13 +219,30 @@ pub(super) struct StreamOutput {
     items: Vec<Value>,
     text: String,
     done_text: String,
+    /// Event types in arrival order, collapsing repeats, for diagnostics.
+    event_types: Vec<String>,
 }
 
 impl StreamOutput {
+    /// Log how far a stream got before it stopped: event types only, never text.
+    fn log_unfinished(&self, reason: &str, elapsed: Duration) {
+        warn!(
+            reason,
+            elapsed_ms = elapsed.as_millis() as u64,
+            events = %self.event_types.join(","),
+            "ChatGPT plan stream ended before response.completed"
+        );
+    }
+
     fn accept(&mut self, event: &[u8]) -> std::result::Result<Option<Value>, ChatGptFailure> {
         let Some(payload) = stream_event_payload(event) else {
             return Ok(None);
         };
+        let kind = payload["type"].as_str().unwrap_or("?");
+        if self.event_types.last().map(String::as_str) != Some(kind) && self.event_types.len() < 40
+        {
+            self.event_types.push(kind.to_string());
+        }
         match payload["type"].as_str() {
             Some("response.output_item.done") => {
                 self.items.push(payload["item"].clone());
