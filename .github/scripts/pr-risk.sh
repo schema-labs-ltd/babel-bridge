@@ -225,6 +225,29 @@ selftest() {
   echo "risk rules self-test passed"
 }
 
+# Prints N when the PR's head branch is revert/pr-N and its diff exactly undoes
+# merged PR N's commit on the default branch, so a revert of a high-risk PR
+# can merge without waiting for /approve. Needs the full default-branch history.
+clean_revert_of() {
+  local ref n merge base ours theirs
+  ref=$(jq -r .head.ref "$WORK/pr.json")
+  [[ $ref =~ ^revert/pr-([0-9]+)$ ]] || return 1
+  n=${BASH_REMATCH[1]}
+  [ "$(jq -r .head.repo.full_name "$WORK/pr.json")" = "$REPO" ] || return 1
+  gh api "repos/$REPO/pulls/$n" > "$WORK/reverted.json" || return 1
+  [ "$(jq -r .merged "$WORK/reverted.json")" = true ] || return 1
+  merge=$(jq -r .merge_commit_sha "$WORK/reverted.json")
+  base=$(jq -r .base.sha "$WORK/pr.json")
+  git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+    fetch -q --no-tags origin "$HEAD_SHA" || return 1
+  git merge-base --is-ancestor "$merge" "$base" || return 1
+  base=$(git merge-base "$base" "$HEAD_SHA") || return 1
+  ours=$(git diff --binary "$base" "$HEAD_SHA" | git patch-id --stable | cut -d' ' -f1)
+  theirs=$(git diff --binary "$merge" "$merge^" | git patch-id --stable | cut -d' ' -f1)
+  [ -n "$ours" ] && [ "$ours" = "$theirs" ] || return 1
+  echo "$n"
+}
+
 post_status() {
   gh api "repos/$REPO/statuses/$HEAD_SHA" -f state="$1" -f context=risk \
     -f description="${2:0:140}" -f target_url="${RUN_URL:-}" > /dev/null
@@ -271,6 +294,11 @@ run() {
   if [ "$(jq length "$WORK/files.json")" -ge 3000 ]; then
     TIER=high
     REASONS+=("3000 or more files changed")
+  fi
+  local reverted
+  if [ "$TIER" != low ] && reverted=$(clean_revert_of); then
+    TIER=low
+    REASONS=("clean revert of #$reverted")
   fi
   echo "PR #$PR_NUMBER at $HEAD_SHA is risk:$TIER"
   printf '  %s\n' "${REASONS[@]}"
