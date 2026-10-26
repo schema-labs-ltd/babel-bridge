@@ -314,6 +314,9 @@ run() {
     return 0
   fi
   HEAD_SHA=$(jq -r .head.sha "$WORK/pr.json")
+  # Block first, so a failed fetch below cannot leave an earlier success standing
+  # after an approval was edited or deleted.
+  post_status pending "Checking risk"
   gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" | jq -s 'add // []' > "$WORK/files.json"
   gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" | jq -s 'add // []' > "$WORK/comments.json"
 
