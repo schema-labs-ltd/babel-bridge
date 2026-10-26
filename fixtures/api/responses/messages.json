@@ -1,0 +1,98 @@
+{
+  "hasMore": false,
+  "messages": [
+    {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Hola, ¿cómo estás?",
+        "receipt_sender_jid": "447700900123@s.whatsapp.net",
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": null,
+      "id": "ana-hello",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": "Hola, ¿cómo estás?",
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ana",
+      "senderPhone": "447700900123",
+      "sourceLanguage": null,
+      "timestamp": 1767225600000,
+      "translatedText": null
+    },
+    {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "body": "Very well, thank you!",
+        "edited_at_ms": 1767225700000,
+        "mentions": null,
+        "reply_context": {
+          "messageId": "ana-hello",
+          "senderName": "Ana",
+          "text": "Hola, ¿cómo estás?"
+        },
+        "type": "text"
+      },
+      "contentType": "Text",
+      "deliveryStatus": "read",
+      "id": "me-reply",
+      "isForwarded": false,
+      "isFromMe": true,
+      "isTranslated": false,
+      "originalText": "Very well, thank you!",
+      "reactionStates": {
+        "447700900123": {
+          "emoji": "👍",
+          "id": "ana-reaction",
+          "timestamp": 1767225720500
+        }
+      },
+      "reactions": {
+        "👍": [
+          "447700900123"
+        ]
+      },
+      "senderName": null,
+      "senderPhone": "447700900999",
+      "sourceLanguage": null,
+      "timestamp": 1767225660000,
+      "translatedText": null
+    },
+    {
+      "chatType": "private",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "contactPhone": "447700900123",
+      "content": {
+        "emoji": "👍",
+        "receipt_sender_jid": "447700900123@s.whatsapp.net",
+        "sender_timestamp_ms": 1767225720500,
+        "target_message_id": "me-reply",
+        "type": "reaction"
+      },
+      "contentType": "Reaction",
+      "deliveryStatus": null,
+      "id": "ana-reaction",
+      "isForwarded": false,
+      "isFromMe": false,
+      "isTranslated": false,
+      "originalText": null,
+      "reactionStates": {},
+      "reactions": {},
+      "senderName": "Ana",
+      "senderPhone": "447700900123",
+      "sourceLanguage": null,
+      "timestamp": 1767225720500,
+      "translatedText": null
+    }
+  ]
+}
