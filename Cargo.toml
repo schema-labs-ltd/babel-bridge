@@ -2,7 +2,7 @@
 name = "whatsapp-translator"
 version = "0.1.0"
 edition = "2021"
-description = "WhatsApp Business account archiver with real-time message display"
+description = "Self-hosted WhatsApp client with translation, AI replies, native apps and MCP access"
 license = "MIT"
 
 [dependencies]
