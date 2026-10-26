@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
@@ -15,7 +15,7 @@ const OPENAI_MAX_ATTEMPTS: usize = 3;
 const TOPIC_MAX_OUTPUT_TOKENS: u32 = 16384;
 
 #[derive(Clone, Copy)]
-enum RequestPolicy {
+pub(crate) enum RequestPolicy {
     Interactive,
     TopicBatch,
 }
@@ -152,7 +152,9 @@ const CHEAP_PRICING: PricingTier = PricingTier {
 pub struct TranslationService {
     client: Client,
     api_url: String,
-    api_key: String,
+    api_key: Option<String>,
+    /// When signed in, text AI uses the ChatGPT plan instead of the API key.
+    chatgpt: Option<Arc<crate::chatgpt::ChatGptAuth>>,
     detection_model: String,
     translation_model: String,
     high_end_model: String,
@@ -243,6 +245,187 @@ fn openai_retry_delay(attempt: usize) -> Duration {
     Duration::from_millis(200 * (attempt as u64 + 1))
 }
 
+/// Request fields the ChatGPT plan route rejects.
+const CHATGPT_UNSUPPORTED_FIELDS: &[&str] = &[
+    "background",
+    "conversation",
+    "max_output_tokens",
+    "max_tool_calls",
+    "metadata",
+    "moderation",
+    "multi_agent",
+    "previous_response_id",
+    "prompt",
+    "prompt_cache_retention",
+    "safety_identifier",
+    "temperature",
+    "top_logprobs",
+    "top_p",
+    "truncation",
+    "user",
+];
+
+/// Shape a Responses body for ChatGPT plan usage: no storage, streamed output,
+/// an input array, developer instead of system messages, and the account's model.
+fn chatgpt_request_body(mut body: Value, model: Option<&str>) -> Value {
+    if let Some(object) = body.as_object_mut() {
+        for field in CHATGPT_UNSUPPORTED_FIELDS {
+            object.remove(*field);
+        }
+        object.insert("store".into(), json!(false));
+        object.insert("stream".into(), json!(true));
+        if let Some(model) = model {
+            object.insert("model".into(), json!(model));
+        }
+        match object.get_mut("input") {
+            Some(Value::String(text)) => {
+                let text = std::mem::take(text);
+                object.insert("input".into(), json!([{ "role": "user", "content": text }]));
+            }
+            Some(Value::Array(items)) => {
+                for item in items {
+                    if item["role"] == "system" {
+                        item["role"] = json!("developer");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    body
+}
+
+/// Map ChatGPT plan errors to safe diagnostics and say whether a retry can help.
+struct ChatGptFailure {
+    failure: OpenAiApiFailure,
+    retryable: bool,
+}
+
+fn chatgpt_failure(status: u16, code: Option<&str>) -> ChatGptFailure {
+    let (reason, retryable) = match code {
+        Some("subscription_sharing_usage_limit_exceeded") => ("chatgpt_usage_limit", false),
+        Some("subscription_sharing_user_not_eligible") => ("chatgpt_not_eligible", false),
+        Some(
+            "subscription_sharing_usage_unavailable" | "subscription_sharing_user_unavailable",
+        ) => ("chatgpt_unavailable", true),
+        Some("subscription_sharing_unsupported_capability") => {
+            ("chatgpt_unsupported_request", false)
+        }
+        Some("subscription_sharing_route_not_supported") => ("chatgpt_route_not_supported", false),
+        Some("subscription_sharing_invalid_user") => ("chatgpt_sign_in_rejected", false),
+        Some("chatpass_v2_scope_not_authorized" | "chatpass_v2_invalid_authorization_context") => {
+            ("chatgpt_permission_missing", false)
+        }
+        _ => match status {
+            401 => ("chatgpt_sign_in_rejected", false),
+            403 => ("permission_denied", false),
+            404 => ("model_or_endpoint_unavailable", false),
+            429 => ("chatgpt_usage_limit", false),
+            408 | 500..=599 => ("upstream_unavailable", true),
+            _ => ("invalid_request", false),
+        },
+    };
+    ChatGptFailure {
+        failure: OpenAiApiFailure { status, reason },
+        retryable,
+    }
+}
+
+impl OpenAiApiFailure {
+    fn from_chatgpt_response(status: reqwest::StatusCode, body: &str) -> ChatGptFailure {
+        let body: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+        chatgpt_failure(status.as_u16(), body["error"]["code"].as_str())
+    }
+}
+
+/// Read Responses server-sent events until the response finishes. Only
+/// `response.completed` counts as success; `response.incomplete` is returned so
+/// the caller reports why output stopped.
+async fn read_response_stream(response: reqwest::Response) -> Result<Value> {
+    use futures::StreamExt;
+
+    let mut stream = response.bytes_stream();
+    let mut buffer: Vec<u8> = Vec::new();
+    loop {
+        while let Some(end) = find_event_end(&buffer) {
+            let event: Vec<u8> = buffer.drain(..end.0 + end.1).collect();
+            if let Some(result) = parse_stream_event(&event[..end.0])? {
+                return Ok(result);
+            }
+        }
+        match stream.next().await {
+            Some(chunk) => buffer.extend_from_slice(&chunk.context("ChatGPT stream interrupted")?),
+            None => {
+                if let Some(result) = parse_stream_event(&buffer)? {
+                    return Ok(result);
+                }
+                return Err(OpenAiOutputFailure("stream_interrupted").into());
+            }
+        }
+    }
+}
+
+/// Position of the blank line ending the next event, and that separator's length.
+fn find_event_end(buffer: &[u8]) -> Option<(usize, usize)> {
+    let lf = buffer.windows(2).position(|w| w == b"\n\n").map(|i| (i, 2));
+    let crlf = buffer
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| (i, 4));
+    match (lf, crlf) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (a, b) => a.or(b),
+    }
+}
+
+fn parse_stream_event(event: &[u8]) -> Result<Option<Value>> {
+    let text = String::from_utf8_lossy(event);
+    let data = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .map(|line| line.strip_prefix(' ').unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if data.is_empty() || data == "[DONE]" {
+        return Ok(None);
+    }
+    let Ok(payload) = serde_json::from_str::<Value>(&data) else {
+        return Ok(None);
+    };
+    match payload["type"].as_str() {
+        Some("response.completed" | "response.incomplete") => Ok(Some(payload["response"].clone())),
+        Some("response.failed") => {
+            let code = payload["response"]["error"]["code"].as_str();
+            Err(chatgpt_failure(stream_error_status(code), code)
+                .failure
+                .into())
+        }
+        Some("error") => {
+            let code = payload["error"]["code"]
+                .as_str()
+                .or_else(|| payload["code"].as_str());
+            Err(chatgpt_failure(stream_error_status(code), code)
+                .failure
+                .into())
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Errors after the stream opened arrive with HTTP 200; report their usual status.
+fn stream_error_status(code: Option<&str>) -> u16 {
+    match code {
+        Some("subscription_sharing_usage_limit_exceeded") => 429,
+        Some(
+            "subscription_sharing_usage_unavailable" | "subscription_sharing_user_unavailable",
+        ) => 503,
+        Some("subscription_sharing_unsupported_capability") => 400,
+        Some("subscription_sharing_invalid_user") => 401,
+        Some(_) => 403,
+        None => 502,
+    }
+}
+
 impl TranslationService {
     pub fn default_language(&self) -> &str {
         &self.default_language
@@ -282,7 +465,7 @@ impl TranslationService {
     }
 
     pub fn new(
-        api_key: String,
+        api_key: Option<String>,
         detection_model: String,
         translation_model: String,
         high_end_model: String,
@@ -296,6 +479,7 @@ impl TranslationService {
             client: Self::build_http_client(),
             api_url: OPENAI_API_URL.to_string(),
             api_key,
+            chatgpt: None,
             detection_model,
             translation_model,
             high_end_model,
@@ -309,7 +493,8 @@ impl TranslationService {
         Self {
             client: Self::build_http_client(),
             api_url,
-            api_key: "test-api-key".to_string(),
+            api_key: Some("test-api-key".to_string()),
+            chatgpt: None,
             detection_model: "test-detect".to_string(),
             translation_model: "test-translate".to_string(),
             high_end_model: "test-high-end".to_string(),
@@ -325,8 +510,37 @@ impl TranslationService {
             .expect("OpenAI HTTP client should build")
     }
 
-    pub fn get_api_key(&self) -> String {
-        self.api_key.clone()
+    pub fn with_chatgpt(mut self, auth: Arc<crate::chatgpt::ChatGptAuth>) -> Self {
+        self.chatgpt = Some(auth);
+        self
+    }
+
+    pub fn chatgpt(&self) -> Option<&Arc<crate::chatgpt::ChatGptAuth>> {
+        self.chatgpt.as_ref()
+    }
+
+    fn chatgpt_signed_in(&self) -> bool {
+        self.chatgpt
+            .as_ref()
+            .is_some_and(|auth| auth.is_signed_in())
+    }
+
+    /// Text AI can run: an API key is set or someone signed in with ChatGPT.
+    pub fn is_configured(&self) -> bool {
+        self.api_key.is_some() || self.chatgpt_signed_in()
+    }
+
+    /// ChatGPT plan usage covers the Responses API only, so audio needs the key.
+    pub fn audio_api_key(&self) -> Result<&str> {
+        self.api_key.as_deref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Voice notes need an OpenAI API key. Sign in with ChatGPT covers text AI only."
+            )
+        })
+    }
+
+    pub fn has_audio(&self) -> bool {
+        self.api_key.is_some()
     }
 
     pub fn get_detection_model(&self) -> String {
@@ -431,15 +645,111 @@ impl TranslationService {
         }
     }
 
-    async fn send_request(&self, body: Value, policy: RequestPolicy) -> Result<OpenAiResponse> {
+    /// Send one Responses request with whichever credential is active. Returns
+    /// the final response object and whether the ChatGPT plan paid for it.
+    pub(crate) async fn post_responses(
+        &self,
+        body: Value,
+        policy: RequestPolicy,
+    ) -> Result<(Value, bool)> {
+        if let Some(auth) = self.chatgpt.as_ref().filter(|auth| auth.is_signed_in()) {
+            let body = chatgpt_request_body(body, auth.model().as_deref());
+            return Ok((self.send_chatgpt_request(auth, &body, policy).await?, true));
+        }
+        Ok((self.send_api_key_request(&body, policy).await?, false))
+    }
+
+    async fn send_request(
+        &self,
+        body: Value,
+        policy: RequestPolicy,
+    ) -> Result<(OpenAiResponse, bool)> {
+        let (response, plan) = self.post_responses(body, policy).await?;
+        Ok((
+            serde_json::from_value(response).context("Failed to parse OpenAI response")?,
+            plan,
+        ))
+    }
+
+    async fn send_chatgpt_request(
+        &self,
+        auth: &crate::chatgpt::ChatGptAuth,
+        body: &Value,
+        policy: RequestPolicy,
+    ) -> Result<Value> {
+        let mut retried_auth = false;
+        let mut attempt = 0;
+        loop {
+            let token = auth
+                .access_token()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Signed out of ChatGPT"))?;
+            let response = self
+                .client
+                .post(&self.api_url)
+                .bearer_auth(&token)
+                .header("content-type", "application/json")
+                .header("accept", "text/event-stream")
+                .timeout(policy.timeout())
+                .json(body)
+                .send()
+                .await;
+            let response = match response {
+                Ok(response) => response,
+                Err(error)
+                    if should_retry_reqwest_error(&error) && attempt + 1 < policy.attempts() =>
+                {
+                    warn!(
+                        "ChatGPT request attempt {} failed, retrying: {}",
+                        attempt + 1,
+                        error
+                    );
+                    sleep(openai_retry_delay(attempt)).await;
+                    attempt += 1;
+                    continue;
+                }
+                Err(error) => return Err(error).context("Failed to send ChatGPT plan request"),
+            };
+
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                let failure = OpenAiApiFailure::from_chatgpt_response(status, &body);
+                // One refresh after a rejected token; never loop through OAuth.
+                if status == reqwest::StatusCode::UNAUTHORIZED && !retried_auth {
+                    retried_auth = true;
+                    auth.mark_access_token_rejected(&token);
+                    continue;
+                }
+                if failure.retryable && attempt + 1 < policy.attempts() {
+                    warn!(
+                        "ChatGPT request attempt {} returned {}, retrying",
+                        attempt + 1,
+                        status
+                    );
+                    sleep(openai_retry_delay(attempt)).await;
+                    attempt += 1;
+                    continue;
+                }
+                return Err(failure.failure.into());
+            }
+
+            return read_response_stream(response).await;
+        }
+    }
+
+    async fn send_api_key_request(&self, body: &Value, policy: RequestPolicy) -> Result<Value> {
+        let api_key = self.api_key.as_deref().ok_or_else(|| {
+            anyhow::anyhow!("AI is not configured: set OPENAI_API_KEY or sign in with ChatGPT")
+        })?;
         for attempt in 0..policy.attempts() {
             let response = self
                 .client
                 .post(&self.api_url)
-                .bearer_auth(&self.api_key)
+                .bearer_auth(api_key)
                 .header("content-type", "application/json")
                 .timeout(policy.timeout())
-                .json(&body)
+                .json(body)
                 .send()
                 .await;
 
@@ -604,7 +914,7 @@ impl TranslationService {
             body["text"] = Value::Object(text_settings);
         }
 
-        let response = self.send_request(body, policy).await?;
+        let (response, plan) = self.send_request(body, policy).await?;
         if response
             .status
             .as_deref()
@@ -625,7 +935,10 @@ impl TranslationService {
         if output.trim().is_empty() {
             return Err(OpenAiOutputFailure("empty_response").into());
         }
-        let usage = Self::usage_from_api(response.usage, pricing);
+        let mut usage = Self::usage_from_api(response.usage, pricing);
+        if plan {
+            usage.cost_usd = 0.0;
+        }
         Ok((output, usage))
     }
 
@@ -1164,7 +1477,10 @@ Write my reply (keep it short and casual like my examples):"#,
 
 #[cfg(test)]
 mod tests {
-    use super::{TranslationService, UsageInfo, CHEAP_PRICING};
+    use super::{
+        chatgpt_request_body, find_event_end, parse_stream_event, OpenAiApiFailure,
+        TranslationService, UsageInfo, CHEAP_PRICING,
+    };
     use crate::storage::OpenAiSettings;
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
@@ -1708,5 +2024,165 @@ mod tests {
         assert!(requests[0].contains("primarily in Hungarian"));
         assert!(requests[1].contains("English to Hungarian"));
         server.join().expect("mock server should finish");
+    }
+
+    fn sse(events: &[serde_json::Value]) -> String {
+        events
+            .iter()
+            .map(|event| {
+                format!(
+                    "event: {}\ndata: {}\n\n",
+                    event["type"].as_str().unwrap(),
+                    event
+                )
+            })
+            .collect()
+    }
+
+    fn chatgpt_service(url: String, models: &[&str]) -> (TranslationService, std::path::PathBuf) {
+        let dir =
+            std::env::temp_dir().join(format!("wa-chatgpt-translation-{}", uuid::Uuid::new_v4()));
+        let auth = crate::chatgpt::ChatGptAuth::signed_in_for_test(&dir, "plan-token", models);
+        (
+            TranslationService::new_with_api_url(url).with_chatgpt(Arc::new(auth)),
+            dir,
+        )
+    }
+
+    #[test]
+    fn chatgpt_body_streams_without_storage_or_unsupported_fields() {
+        let body = chatgpt_request_body(
+            serde_json::json!({
+                "model": "gpt-6-astra",
+                "instructions": "Translate",
+                "input": "Hola",
+                "max_output_tokens": 8192,
+                "temperature": 0.2,
+                "reasoning": {"effort": "low"},
+                "text": {"format": {"type": "json_object"}},
+            }),
+            Some("gpt-6.1-sol"),
+        );
+        assert_eq!(body["model"], "gpt-6.1-sol");
+        assert_eq!(body["store"], false);
+        assert_eq!(body["stream"], true);
+        assert!(body.get("max_output_tokens").is_none());
+        assert!(body.get("temperature").is_none());
+        assert_eq!(body["input"][0]["role"], "user");
+        assert_eq!(body["input"][0]["content"], "Hola");
+        assert_eq!(body["reasoning"]["effort"], "low");
+        let body = chatgpt_request_body(
+            serde_json::json!({"input": [{"role": "system", "content": "x"}]}),
+            None,
+        );
+        assert_eq!(body["input"][0]["role"], "developer");
+        assert!(body.get("model").is_none());
+    }
+
+    #[test]
+    fn stream_events_finish_only_on_a_terminal_event() {
+        assert!(parse_stream_event(
+            b"event: x\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hi\"}"
+        )
+        .unwrap()
+        .is_none());
+        let done = parse_stream_event(
+            b"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(done["status"], "completed");
+        let error = parse_stream_event(
+            b"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}",
+        )
+        .unwrap_err();
+        let failure = error.downcast_ref::<OpenAiApiFailure>().unwrap();
+        assert_eq!(
+            (failure.status, failure.reason),
+            (429, "chatgpt_usage_limit")
+        );
+        assert_eq!(find_event_end(b"a\r\n\r\nb"), Some((1, 4)));
+    }
+
+    #[tokio::test]
+    async fn signed_in_chatgpt_uses_plan_token_model_and_costs_nothing() {
+        let completed = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": "Good morning"}]}],
+                "usage": {"input_tokens": 1000, "output_tokens": 1000},
+            },
+        });
+        let detect = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": "{\"language\":\"Spanish\",\"isTargetLanguage\":false}"}]}],
+                "usage": {"input_tokens": 1000, "output_tokens": 1000},
+            },
+        });
+        let (url, requests, server) = spawn_capturing_openai_mock(vec![
+            MockResponse {
+                status: "200 OK",
+                body: sse(&[serde_json::json!({"type":"response.created"}), detect]),
+            },
+            MockResponse {
+                status: "200 OK",
+                body: sse(&[completed]),
+            },
+        ]);
+        let (service, dir) = chatgpt_service(url, &["gpt-6.1-sol"]);
+        let result = service
+            .process_text("Buenos días", None, None)
+            .await
+            .unwrap();
+        server.join().unwrap();
+        assert_eq!(result.translated_text.as_deref(), Some("Good morning"));
+        assert_eq!(result.usage.cost_usd, 0.0);
+        assert!(result.usage.input_tokens > 0);
+        let requests = requests.lock().unwrap();
+        for request in requests.iter() {
+            assert!(request
+                .to_lowercase()
+                .contains("authorization: bearer plan-token"));
+            let (_, body) = request.split_once("\r\n\r\n").unwrap();
+            let body: serde_json::Value = serde_json::from_str(body).unwrap();
+            assert_eq!(body["model"], "gpt-6.1-sol");
+            assert_eq!(body["stream"], true);
+            assert_eq!(body["store"], false);
+            assert!(body.get("max_output_tokens").is_none());
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn chatgpt_usage_limit_is_reported_without_retrying_or_using_the_api_key() {
+        let (url, requests, server) = spawn_capturing_openai_mock(vec![MockResponse {
+            status: "429 Too Many Requests",
+            body:
+                serde_json::json!({"error": {"code": "subscription_sharing_usage_limit_exceeded"}})
+                    .to_string(),
+        }]);
+        let (service, dir) = chatgpt_service(url, &[]);
+        let error = service.source_language("Hola").await.unwrap_err();
+        server.join().unwrap();
+        let failure = error.downcast_ref::<OpenAiApiFailure>().unwrap();
+        assert_eq!(failure.reason, "chatgpt_usage_limit");
+        assert_eq!(requests.lock().unwrap().len(), 1);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn audio_needs_the_api_key_even_when_signed_in() {
+        let dir = std::env::temp_dir().join(format!("wa-chatgpt-audio-{}", uuid::Uuid::new_v4()));
+        let auth = crate::chatgpt::ChatGptAuth::signed_in_for_test(&dir, "t", &[]);
+        let service =
+            TranslationService::new(None, "a".into(), "b".into(), "c".into(), "English".into())
+                .with_chatgpt(Arc::new(auth));
+        assert!(service.is_configured());
+        assert!(!service.has_audio());
+        assert!(service.audio_api_key().is_err());
+        std::fs::remove_dir_all(dir).ok();
     }
 }

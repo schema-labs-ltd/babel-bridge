@@ -2,6 +2,7 @@ import {ViewedMessageTracker, isMessageVisible} from './read-receipts.js';
 import { setupVoiceNotes } from './voice-notes.js';
 import { setupMessageTones } from './message-tones.js';
 import { setupTopics } from './topics.js';
+import { setupChatGptSignIn } from './chatgpt-signin.js';
 import { createReliableFetch, reconnectDelay, mergeMessageUpdate } from './send-recovery.js';
 // WhatsApp Translator Web Client
 
@@ -296,6 +297,7 @@ class WhatsAppClient {
     this.syncAppearanceControls();
     modal.classList.remove('hidden');
     this.messageTones?.refreshLabel();
+    this.chatGpt?.refresh();
     try {
       const response = await this.apiFetch('/api/settings/openai');
       if (!response.ok) throw new Error(`Settings request failed (${response.status})`);
@@ -6503,3 +6505,4 @@ window.app = new WhatsAppClient();
 setupVoiceNotes(window.app);
 window.app.messageTones = setupMessageTones(window.app);
 window.app.topics = setupTopics(window.app);
+window.app.chatGpt = setupChatGptSignIn(window.app);

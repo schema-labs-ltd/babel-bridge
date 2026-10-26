@@ -397,6 +397,38 @@ actor APIClient {
         )
     }
 
+    func chatGPTStatus() async throws -> ChatGPTStatus {
+        try await authorizedRequest("/api/chatgpt")
+    }
+
+    func startChatGPTSignIn(redirectURI: String) async throws -> ChatGPTSignInStart {
+        try await authorizedRequest(
+            "/api/chatgpt/sign-in",
+            method: "POST",
+            body: JSONEncoder.backend.encode(["redirectUri": redirectURI])
+        )
+    }
+
+    func completeChatGPTSignIn(callbackURL: String) async throws -> ChatGPTStatus {
+        try await authorizedRequest(
+            "/api/chatgpt/callback",
+            method: "POST",
+            body: JSONEncoder.backend.encode(["callbackUrl": callbackURL])
+        )
+    }
+
+    func setChatGPTModel(_ model: String) async throws -> ChatGPTStatus {
+        try await authorizedRequest(
+            "/api/chatgpt/model",
+            method: "PUT",
+            body: JSONEncoder.backend.encode(["model": model])
+        )
+    }
+
+    func signOutOfChatGPT() async throws -> ChatGPTStatus {
+        try await authorizedRequest("/api/chatgpt/sign-out", method: "POST", body: Data("{}".utf8))
+    }
+
     func registerPushDevice(_ registration: PushDeviceRegistration) async throws {
         let _: SuccessResponse = try await authorizedRequest(
             "/api/push/devices",

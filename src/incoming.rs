@@ -8,7 +8,7 @@ use std::{
 pub fn start(state: Arc<AppState>) -> anyhow::Result<()> {
     state.store.recover_translations()?;
     start_notifications(state.clone());
-    if state.translator.is_none() {
+    if state.translator().is_none() {
         return Ok(());
     }
     for _ in 0..2 {
@@ -87,10 +87,7 @@ async fn translate(state: &AppState, id: &str) -> anyhow::Result<()> {
         .original_text
         .as_deref()
         .context("No text to translate")?;
-    let translator = state
-        .translator
-        .as_ref()
-        .context("Translation unavailable")?;
+    let translator = state.translator().context("Translation unavailable")?;
     let result = tokio::time::timeout(
         Duration::from_secs(90),
         translator.process_text(
@@ -174,8 +171,7 @@ pub async fn outgoing_language(
         }
         if let Some(text) = message.original_text.filter(|s| !s.trim().is_empty()) {
             let translator = state
-                .translator
-                .as_ref()
+                .translator()
                 .context("Translation is unavailable; message was not sent")?;
             let (language, usage) = translator.source_language(&text).await?;
             state.store.record_usage(
@@ -202,8 +198,7 @@ pub async fn outgoing_language(
             .filter(|s| !s.trim().is_empty())
         {
             let translator = state
-                .translator
-                .as_ref()
+                .translator()
                 .context("Translation is unavailable; message was not sent")?;
             let (language, usage) = translator.source_language(text).await?;
             state.store.record_usage(
@@ -217,10 +212,7 @@ pub async fn outgoing_language(
             }
         }
     }
-    Ok(state
-        .translator
-        .as_ref()
-        .map(|t| t.default_language().to_string()))
+    Ok(state.translator().map(|t| t.default_language().to_string()))
 }
 
 fn usable_language(language: &str) -> bool {

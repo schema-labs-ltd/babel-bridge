@@ -686,3 +686,24 @@ final class ReadReceiptTests: XCTestCase {
         XCTAssertNil(wrong)
     }
 }
+
+final class ChatGPTSignInTests: XCTestCase {
+    func testLoopbackRequestTargetKeepsTheCallbackQueryForTheServer() {
+        XCTAssertEqual(
+            ChatGPTSignInCoordinator.requestTarget("GET /auth/callback?code=a&state=b HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"),
+            "/auth/callback?code=a&state=b"
+        )
+        XCTAssertNil(ChatGPTSignInCoordinator.requestTarget("POST /auth/callback HTTP/1.1\r\n\r\n"))
+        XCTAssertNil(ChatGPTSignInCoordinator.requestTarget(""))
+    }
+
+    func testStatusDecodesWithoutOptionalFields() throws {
+        let status = try JSONDecoder().decode(
+            ChatGPTStatus.self,
+            from: Data(#"{"available":true,"signedIn":true,"models":[{"slug":"gpt-6.1-sol","displayName":"GPT-6.1 Sol"}]}"#.utf8)
+        )
+        XCTAssertTrue(status.signedIn)
+        XCTAssertEqual(status.models?.first?.slug, "gpt-6.1-sol")
+        XCTAssertNil(status.email)
+    }
+}

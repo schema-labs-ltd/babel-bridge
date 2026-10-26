@@ -4,18 +4,15 @@
 //! AI-generated replies sound like the user.
 
 use anyhow::{Context, Result};
-use reqwest::Client;
 use serde::Deserialize;
-use serde_json::{json, Value};
-use std::time::Duration;
-use tokio::time::sleep;
-use tracing::{info, warn};
+use serde_json::json;
+use std::sync::Arc;
+use tracing::info;
 
 use crate::storage::{MessageStore, StoredMessage, StyleProfile};
 
-const OPENAI_API_URL: &str = "https://api.openai.com/v1/responses";
-const OPENAI_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const OPENAI_MAX_ATTEMPTS: usize = 3;
+use crate::translation::{RequestPolicy, TranslationService};
+
 const GPT_5_4_NANO_INPUT_COST_PER_M: f64 = 0.10;
 const GPT_5_4_NANO_CACHED_INPUT_COST_PER_M: f64 = 0.01;
 const GPT_5_4_NANO_OUTPUT_COST_PER_M: f64 = 0.625;
@@ -24,8 +21,8 @@ const REFRESH_THRESHOLD: i32 = 50;
 const MAX_MESSAGES_FOR_ANALYSIS: usize = 50;
 
 pub struct StyleAnalyzer {
-    client: Client,
-    api_key: String,
+    /// Sends through the active credential: API key or ChatGPT plan.
+    service: Arc<TranslationService>,
     model: String,
     reasoning_effort: Option<String>,
 }
@@ -74,28 +71,14 @@ struct InputTokensDetails {
     cached_tokens: i32,
 }
 
-fn should_retry_reqwest_error(error: &reqwest::Error) -> bool {
-    error.is_timeout() || error.is_connect()
-}
-
-fn should_retry_status(status: reqwest::StatusCode) -> bool {
-    status == reqwest::StatusCode::REQUEST_TIMEOUT
-        || status == reqwest::StatusCode::TOO_MANY_REQUESTS
-        || status.is_server_error()
-}
-
-fn openai_retry_delay(attempt: usize) -> Duration {
-    Duration::from_millis(200 * (attempt as u64 + 1))
-}
-
 impl StyleAnalyzer {
-    pub fn new(api_key: String, model: String, reasoning_effort: Option<String>) -> Self {
+    pub fn new(
+        service: Arc<TranslationService>,
+        model: String,
+        reasoning_effort: Option<String>,
+    ) -> Self {
         Self {
-            client: Client::builder()
-                .timeout(OPENAI_REQUEST_TIMEOUT)
-                .build()
-                .expect("OpenAI HTTP client should build"),
-            api_key,
+            service,
             model,
             reasoning_effort,
         }
@@ -224,7 +207,13 @@ Be specific with examples from the messages. This description will help an AI wr
         });
         body["reasoning"] = json!({ "effort": self.reasoning_effort.as_deref().unwrap_or("none") });
 
-        let openai_response = self.send_style_analysis_request(&body).await?;
+        let (response, plan) = self
+            .service
+            .post_responses(body, RequestPolicy::Interactive)
+            .await
+            .context("Style analysis request failed")?;
+        let openai_response: OpenAiResponse =
+            serde_json::from_value(response).context("Failed to parse style analysis response")?;
 
         let profile_text = openai_response
             .output
@@ -239,7 +228,10 @@ Be specific with examples from the messages. This description will help an AI wr
             .trim()
             .to_string();
 
-        let usage = self.calculate_usage(openai_response.usage);
+        let mut usage = self.calculate_usage(openai_response.usage);
+        if plan {
+            usage.cost_usd = 0.0;
+        }
 
         info!(
             "Style analysis complete: {} in ({} cached), {} out, ${:.6}",
@@ -261,58 +253,6 @@ Be specific with examples from the messages. This description will help an AI wr
         };
 
         Ok((profile, usage))
-    }
-
-    async fn send_style_analysis_request(&self, body: &Value) -> Result<OpenAiResponse> {
-        for attempt in 0..OPENAI_MAX_ATTEMPTS {
-            let response = self
-                .client
-                .post(OPENAI_API_URL)
-                .bearer_auth(&self.api_key)
-                .header("content-type", "application/json")
-                .json(body)
-                .send()
-                .await;
-
-            let response = match response {
-                Ok(response) => response,
-                Err(error)
-                    if should_retry_reqwest_error(&error) && attempt + 1 < OPENAI_MAX_ATTEMPTS =>
-                {
-                    warn!(
-                        "Style analysis request attempt {} failed, retrying: {}",
-                        attempt + 1,
-                        error
-                    );
-                    sleep(openai_retry_delay(attempt)).await;
-                    continue;
-                }
-                Err(error) => return Err(error).context("Failed to send style analysis request"),
-            };
-
-            if !response.status().is_success() {
-                let status = response.status();
-                // Drop the upstream body. It can echo the writing sample that was sent.
-                let _ = response.text().await;
-                if should_retry_status(status) && attempt + 1 < OPENAI_MAX_ATTEMPTS {
-                    warn!(
-                        "Style analysis request attempt {} returned {}, retrying",
-                        attempt + 1,
-                        status
-                    );
-                    sleep(openai_retry_delay(attempt)).await;
-                    continue;
-                }
-                anyhow::bail!("Style analysis API error: HTTP {status}");
-            }
-
-            return response
-                .json()
-                .await
-                .context("Failed to parse style analysis response");
-        }
-
-        unreachable!("OpenAI retry loop should return or error");
     }
 
     fn calculate_usage(&self, usage: Option<ApiUsage>) -> StyleAnalysisUsage {

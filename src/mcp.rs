@@ -970,7 +970,7 @@ impl WhatsAppMcpServer {
             "connectionState": self.state.connection_state.read().await.label(),
             "accountName": self.state.name.read().await.clone(),
             "accountPhone": self.state.phone.read().await.clone(),
-            "translationConfigured": self.state.translator.is_some(),
+            "translationConfigured": self.state.translator().is_some(),
             "contactCount": contact_count,
             "messageCount": message_count,
             "checkedAt": chrono::Utc::now().to_rfc3339(),
@@ -1289,7 +1289,7 @@ impl WhatsAppMcpServer {
         };
 
         let translation_result = if let Some(target) = target_language.as_deref() {
-            let translator = self.state.translator.as_ref().ok_or_else(|| {
+            let translator = self.state.translator().ok_or_else(|| {
                 McpError::internal_error(
                     format!(
                         "Translation to {target} is needed, but translation is not configured. No message was sent or prepared."
@@ -2607,7 +2607,7 @@ mod tests {
         let mut first = FeedFixture::new();
         let mutable = Arc::get_mut(&mut first.state).unwrap();
         mutable.password = Some("synthetic-password".into());
-        mutable.translator = Some(Arc::new(
+        mutable.ai_service = Some(Arc::new(
             crate::translation::TranslationService::new_with_api_url(api_url),
         ));
         seed_feed(&first.state);

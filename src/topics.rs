@@ -176,7 +176,7 @@ pub fn start(state: Arc<AppState>) {
     if state.store.log_topic_queue_health().is_err() {
         tracing::warn!("Could not read topic queue health");
     }
-    if state.translator.is_none() {
+    if state.translator().is_none() {
         return;
     }
     tokio::spawn(async move {
@@ -297,7 +297,7 @@ pub fn start(state: Arc<AppState>) {
 
 async fn simplify_labels(state: &AppState, labels: &[TopicLabel]) -> Result<usize> {
     let account_epoch = state.voice_epoch.load(std::sync::atomic::Ordering::SeqCst);
-    let translator = state.translator.as_ref().context("AI is unavailable")?;
+    let translator = state.translator().context("AI is unavailable")?;
     let existing = state.store.topic_names("")?;
     let input: Vec<Value> = labels
         .iter()
@@ -317,7 +317,7 @@ async fn simplify_labels(state: &AppState, labels: &[TopicLabel]) -> Result<usiz
 
 async fn classify(state: &AppState, batch: &TopicBatch) -> Result<usize> {
     let account_epoch = state.voice_epoch.load(std::sync::atomic::Ordering::SeqCst);
-    let translator = state.translator.as_ref().context("AI is unavailable")?;
+    let translator = state.translator().context("AI is unavailable")?;
     let existing = state
         .store
         .topic_names(&batch.contact_id)
@@ -352,7 +352,7 @@ async fn classify(state: &AppState, batch: &TopicBatch) -> Result<usize> {
 pub async fn catalog(State(state): State<Arc<AppState>>) -> Response {
     match (state.store.list_topics(), state.store.topic_settings()) {
         (Ok(topics), Ok(settings)) => Json(
-            json!({"topics":topics,"settings":settings,"available":state.translator.is_some()}),
+            json!({"topics":topics,"settings":settings,"available":state.translator().is_some()}),
         )
         .into_response(),
         _ => (StatusCode::INTERNAL_SERVER_ERROR, "Could not load topics").into_response(),
@@ -374,7 +374,7 @@ pub async fn import_preview(State(state): State<Arc<AppState>>) -> Response {
 }
 
 pub async fn import_recent(State(state): State<Arc<AppState>>) -> Response {
-    if state.translator.is_none() {
+    if state.translator().is_none() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             "Configure OpenAI before importing topics",
@@ -411,7 +411,7 @@ pub async fn update_setting(
     if !matches!(state.store.get_contact(&id), Ok(Some(_))) || id == "status@broadcast" {
         return (StatusCode::NOT_FOUND, "Conversation not found").into_response();
     }
-    if input.enabled && state.translator.is_none() {
+    if input.enabled && state.translator().is_none() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             "Configure OpenAI before enabling topics",
