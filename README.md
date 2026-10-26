@@ -28,7 +28,7 @@ WhatsApp <-> wa-bridge (Go)  <-- JSON lines over stdin/stdout -->  Rust server (
 - Connect a WhatsApp account through QR login
 - View chats and messages in a local web UI
 - Browse a chat’s photos and videos in the native Gallery, with square previews and a full-screen swipe viewer
-- Native iPhone Duo support: vertical bars with prioritised items on the outer display, a two-column inbox and trailing sheets on the inner display, and chats, galleries and media viewers that keep content off the hinge in book and laptop poses (details in `ios/README.md`)
+- Native iPhone Duo support: vertical bars with prioritised items on the outer display, a two-column inbox and trailing sheets on the inner display, and chats, galleries and media viewers that keep content off the hinge in book and laptop poses (details in [docs/apple/iphone-duo.md](docs/apple/iphone-duo.md))
 - Send text, images, replies, and reactions
 - Translate incoming and outgoing messages with OpenAI
 - Listen to translated voice notes and record, preview, and send translated WhatsApp audio
