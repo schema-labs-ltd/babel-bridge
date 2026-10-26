@@ -90,7 +90,7 @@ below, so search for the argument to find what it does.
 | `-demoLiveEdits` | A message being edited live. |
 | `-demoSettings` | The chat list with Settings open. |
 | `-demoConversationSettings` | Conversation settings open when a conversation opens (pair with `-demoConversation`). The rows below that start in a conversation work the same way. |
-| `-demoTimezonePicker` | Conversation settings with the time zone picker open. |
+| `-demoTimezonePicker` | The time zone picker open inside conversation settings (pair with `-demoConversation` and `-demoConversationSettings`). |
 | `-demoCost` | A conversation with the translation cost sheet open. |
 | `-demoSearch` | A conversation with search open. |
 | `-demoActions` | The actions menu open on demo message 4. |
