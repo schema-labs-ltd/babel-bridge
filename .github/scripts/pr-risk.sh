@@ -242,8 +242,9 @@ clean_revert_of() {
     fetch -q --no-tags origin "$HEAD_SHA" || return 1
   git merge-base --is-ancestor "$merge" "$base" || return 1
   base=$(git merge-base "$base" "$HEAD_SHA") || return 1
-  ours=$(git diff --binary "$base" "$HEAD_SHA" | git patch-id --stable | cut -d' ' -f1)
-  theirs=$(git diff --binary "$merge" "$merge^" | git patch-id --stable | cut -d' ' -f1)
+  ours=$(git diff --binary "$base" "$HEAD_SHA" | git patch-id --verbatim | cut -d' ' -f1)
+  theirs=$(git diff --binary "$merge" "$merge^" | git patch-id --verbatim | cut -d' ' -f1)
+  # --verbatim keeps whitespace, which --stable would let an edit hide in.
   [ -n "$ours" ] && [ "$ours" = "$theirs" ] || return 1
   echo "$n"
 }
