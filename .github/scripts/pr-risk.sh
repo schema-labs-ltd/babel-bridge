@@ -244,11 +244,11 @@ selftest() {
   echo "risk rules self-test passed"
 }
 
-# Prints N when the PR's head branch is revert/pr-N and its diff exactly undoes
-# merged PR N's commit on the default branch, so a revert of a high-risk PR
+# Prints N when the PR's head branch is revert/pr-N and its tree is exactly what
+# reverting merged PR N's commit gives, so a revert of a high-risk PR
 # can merge without waiting for /approve. Needs the full default-branch history.
 clean_revert_of() {
-  local ref n merge base ours theirs
+  local ref n merge base expected
   ref=$(jq -r .head.ref "$WORK/pr.json")
   [[ $ref =~ ^revert/pr-([0-9]+)$ ]] || return 1
   n=${BASH_REMATCH[1]}
@@ -261,10 +261,11 @@ clean_revert_of() {
     fetch -q --no-tags origin "$HEAD_SHA" || return 1
   git merge-base --is-ancestor "$merge" "$base" || return 1
   base=$(git merge-base "$base" "$HEAD_SHA") || return 1
-  ours=$(git diff --binary "$base" "$HEAD_SHA" | git patch-id --verbatim | cut -d' ' -f1)
-  theirs=$(git diff --binary "$merge" "$merge^" | git patch-id --verbatim | cut -d' ' -f1)
-  # --verbatim keeps whitespace, which --stable would let an edit hide in.
-  [ -n "$ours" ] && [ "$ours" = "$theirs" ] || return 1
+  # Revert N's commit onto the branch point and require the PR's tree to be
+  # exactly that result. A patch-id match is not enough: it ignores line
+  # numbers, so the same edit at another spot would pass.
+  expected=$(git merge-tree --write-tree --merge-base="$merge" "$base" "$merge^" | head -n 1) || return 1
+  [ "$expected" = "$(git rev-parse "$HEAD_SHA^{tree}")" ] || return 1
   echo "$n"
 }
 
