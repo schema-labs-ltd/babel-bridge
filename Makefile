@@ -1,6 +1,6 @@
 # One entry point for the checks CI runs.
 #
-#   make check        the `CI / test` job, step for step, in the same order
+#   make check        CI's go, rust and web jobs, step for step, in the same order
 #   make check-fast   only the parts of `check` that the diff from origin/main touches
 #   make ci           `check` plus the `CI / container-build` job (needs Docker)
 #
@@ -20,15 +20,15 @@ BASE ?= origin/main
 	check-go check-rust check-web container-check require-ffmpeg
 
 help:
-	@echo "make check        run every step of the CI test job, in CI's order"
+	@echo "make check        run every step of the CI go, rust and web jobs, in CI's order"
 	@echo "make check-fast   run only the checks for areas changed since $(BASE)"
 	@echo "make ci           check, then the production container build (needs Docker)"
-	@echo "make check-go | check-rust | check-web   one language's part of check"
+	@echo "make check-go | check-rust | check-web   one CI job"
 	@echo "make test         Go, Rust and web unit tests"
 	@echo "make lint         rustfmt, clippy, extension prettier and types"
 	@echo "make fmt          apply rustfmt and prettier to the extension sources"
 
-# Same steps, same order as the `test` job in .github/workflows/ci.yml.
+# Same steps, same order as the go, rust and web jobs in .github/workflows/ci.yml.
 check: check-go check-rust check-web
 
 check-go: go-test
@@ -54,13 +54,15 @@ fmt-check:
 	cargo fmt --check
 
 require-ffmpeg:
-	@command -v ffmpeg >/dev/null || { echo "ffmpeg is required by the Rust tests (CI installs it with apt-get)."; exit 1; }
+	@command -v ffmpeg >/dev/null || { echo "ffmpeg is required by the Rust tests (CI installs a static build)."; exit 1; }
 
+# The rust job sets SKIP_GO_BUILD: the go job tests the bridge, and no Rust
+# test runs the binary.
 rust-test: require-ffmpeg
-	cargo test
+	SKIP_GO_BUILD=1 cargo test
 
 clippy:
-	cargo clippy
+	SKIP_GO_BUILD=1 cargo clippy
 
 # CI runs `npm ci` on a clean checkout. Locally it reruns only when
 # package.json or the lock file is newer than the last install, so repeated
@@ -81,9 +83,9 @@ extension-lint: web-deps
 extension-check: extension-lint
 	cd web && npm run check:extension
 
-# CI installs Chromium with `npx playwright install --with-deps chromium`.
-# Locally this downloads the browser only when Playwright's pinned build is
-# missing; system libraries are left to the machine.
+# CI runs `npx playwright install chromium`. Locally this downloads the
+# browser only when Playwright's pinned build is missing; system libraries
+# are left to the machine.
 extension-browser: web-deps
 	@cd web && if [ -z "$${CHROMIUM_PATH:-}" ] && [ ! -x "$$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" ]; then \
 		npx playwright install chromium; \

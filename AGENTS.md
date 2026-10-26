@@ -11,7 +11,7 @@
 
 ## Checks
 
-- `make check` runs every step of the GitHub Actions `CI / test` job in the same order, and is what to run before pushing. `make check-fast` runs only the checks for the areas changed since `origin/main`. `make ci` adds the production container build, which needs Docker. `make help` lists the smaller targets.
+- `make check` runs every step of the GitHub Actions `CI` go, rust, and web jobs in the same order (`make check-go`, `check-rust`, and `check-web` run one job each), and is what to run before pushing. `make check-fast` runs only the checks for the areas changed since `origin/main`. `make ci` adds the production container build, which needs Docker. `make help` lists the smaller targets.
 - The Rust tests need `ffmpeg` on the path. The Go bridge needs the Go toolchain that `wa-bridge/go.mod` pins, which `go` downloads on first use.
 - The Apple targets are checked only by the `apple / apple` workflow on macOS. The Apple rules below say how to work with it.
 
