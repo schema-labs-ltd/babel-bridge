@@ -1,0 +1,8 @@
+# Files written by tools rather than by hand. The pre-commit file-size check
+# (scripts/check-file-size.sh) skips anything marked linguist-generated.
+Cargo.lock linguist-generated
+web/package-lock.json linguist-generated
+wa-bridge/go.sum linguist-generated
+web/extensions/dist/** linguist-generated
+*.pbxproj linguist-generated
+*.xcassets/** linguist-generated

@@ -1,0 +1,9 @@
+# Git hooks, managed by Lefthook (https://lefthook.dev).
+# Install once per clone: `npx lefthook install` (or `lefthook install`).
+
+pre-commit:
+  commands:
+    file-size:
+      # Blocks hand-written files over 5,000 tokens (bytes / 4). Binary and
+      # `linguist-generated` files (.gitattributes) are skipped.
+      run: scripts/check-file-size.sh {staged_files}
