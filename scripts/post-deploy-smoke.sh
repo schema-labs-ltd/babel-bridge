@@ -150,7 +150,8 @@ while :; do
       exit 1
     fi
   fi
-  if [ "$SECONDS" -ge "$deadline" ]; then
+  # Past the deadline, keep polling until the server answers again or misses too many polls.
+  if [ "$SECONDS" -ge "$deadline" ] && [ "$missed" -eq 0 ]; then
     break
   fi
   sleep "$POLL_SECONDS"
