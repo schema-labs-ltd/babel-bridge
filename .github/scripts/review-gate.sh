@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Posts the `review-gate` commit status. It passes once Copilot has reviewed
-# the PR's head commit and Codex has reviewed the PR, commented on it, or left
-# a +1 reaction on it.
+# the PR's head commit and Codex has reviewed the PR, finished a review that it
+# reported in a comment, or left a +1 reaction on it.
 #
 #   review-gate.sh selftest   check the rules against sample API responses
 #   review-gate.sh run        evaluate PR_NUMBER in REPO, or every open PR
@@ -16,6 +16,13 @@ set -euo pipefail
 COPILOT=copilot-pull-request-reviewer[bot]
 CODEX=chatgpt-codex-connector[bot]
 
+# Codex posts a summary comment as soon as a review starts and edits it when
+# the review completes, so only a completed summary or a receipt counts.
+CODEX_DONE='any(.[]; .user.login == $bot and ((.body // "") as $b
+  | ($b | contains("<!-- codex-review-receipt"))
+    or ((($b | capture("codex-review-state:v1 (?<s>\\{.*\\}) -->"))? // {s: "{}"}).s
+        | (fromjson? // {}) | .code_review.status == "completed")))'
+
 # Reads reviews, reactions and comments JSON arrays and prints "pass" or what
 # the gate is still waiting for.
 evaluate() {
@@ -26,7 +33,7 @@ evaluate() {
   fi
   if ! jq -e --arg bot "$CODEX" 'any(.[]; .user.login == $bot)' "$reviews" > /dev/null &&
     ! jq -e --arg bot "$CODEX" 'any(.[]; .user.login == $bot and .content == "+1")' "$reactions" > /dev/null &&
-    ! jq -e --arg bot "$CODEX" 'any(.[]; .user.login == $bot)' "$comments" > /dev/null; then
+    ! jq -e --arg bot "$CODEX" "$CODEX_DONE" "$comments" > /dev/null; then
     waiting+=("Codex")
   fi
   if [ "${#waiting[@]}" -eq 0 ]; then
@@ -56,12 +63,22 @@ selftest() {
   local codex_review="{\"user\":{\"login\":\"$CODEX\"},\"commit_id\":\"fedcba9876543210fedcba9876543210fedcba98\"}"
   local codex_up="{\"user\":{\"login\":\"$CODEX\"},\"content\":\"+1\"}"
   local codex_eyes="{\"user\":{\"login\":\"$CODEX\"},\"content\":\"eyes\"}"
-  local codex_comment="{\"user\":{\"login\":\"$CODEX\"}}"
+  local codex_receipt codex_running codex_completed
+  codex_receipt=$(jq -cn --arg bot "$CODEX" \
+    '{user: {login: $bot}, body: "<!-- codex-review-receipt:v1 -->\n\nCodex Review: Didn\u0027t find any major issues."}')
+  codex_summary() {
+    jq -cn --arg bot "$CODEX" --arg status "$1" '{user: {login: $bot}, body: ("<!-- codex-review-state:v1 "
+      + ({code_review: {commit_sha: "abc", status: $status}} | tojson) + " -->\n\n## Codex Review Summary")}'
+  }
+  codex_running=$(codex_summary running)
+  codex_completed=$(codex_summary completed)
   local human_up='{"user":{"login":"vultuk"},"content":"+1"}'
   expect "nothing yet" '[]' '[]' '[]' "Waiting for Copilot on 0123456 and Codex"
   expect "copilot and codex review" "[$copilot,$codex_review]" '[]' '[]' pass
   expect "copilot and codex +1" "[$copilot]" "[$codex_up]" '[]' pass
-  expect "copilot and codex comment" "[$copilot]" '[]' "[$codex_comment]" pass
+  expect "copilot and codex receipt" "[$copilot]" '[]' "[$codex_receipt]" pass
+  expect "copilot and codex summary done" "[$copilot]" '[]' "[$codex_completed]" pass
+  expect "codex summary still running" "[$copilot]" '[]' "[$codex_running]" "Waiting for Codex"
   expect "codex still looking" "[$copilot]" "[$codex_eyes]" '[]' "Waiting for Codex"
   expect "someone else's +1" "[$copilot]" "[$human_up]" '[]' "Waiting for Codex"
   expect "copilot on an old commit" "[$copilot_old]" "[$codex_up]" '[]' "Waiting for Copilot on 0123456"

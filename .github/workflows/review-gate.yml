@@ -1,6 +1,7 @@
 # Posts the `review-gate` commit status, which branch protection requires, so
 # auto-merge waits for the bot reviews. It passes once Copilot has reviewed the
-# head commit and Codex has reviewed, commented on or +1'd the PR. The rules
+# head commit and Codex has reviewed the PR, reported a finished review in a
+# comment, or +1'd it. The rules
 # and their self-test are in .github/scripts/review-gate.sh.
 #
 # A new head polls for up to 15 minutes. A submitted review re-checks at once.

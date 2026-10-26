@@ -48,7 +48,7 @@ CI fails when these drift from their sources, so regenerate them in the same cha
 
 ## Merge gates
 
-- Two commit statuses gate merges besides CI. `review-gate` passes once Copilot has reviewed the head commit and Codex has reviewed, commented on, or +1'd the PR. `risk` labels the PR `risk:low`, `risk:standard` or `risk:high` from the paths it changes, using the rules in `.github/scripts/pr-risk.sh`, and fails on high risk until the owner approves.
+- Two commit statuses gate merges besides CI. `review-gate` passes once Copilot has reviewed the head commit and Codex has reviewed the PR, reported a finished review in a comment, or +1'd it. `risk` labels the PR `risk:low`, `risk:standard` or `risk:high` from the paths it changes, using the rules in `.github/scripts/pr-risk.sh`, and fails on high risk until the owner approves.
 - The owner approves a high-risk PR by commenting `/approve <head sha>` by hand. Agents must never post `/approve`; a comment posted through an app, as agents acting for `vultuk` do, or an edited comment does not count. A new push changes the head, so it needs a new `/approve`.
 - When a PR is high risk, say so in its description and the handoff, with the head SHA to approve. Do not split or reshape a change to lower its tier. To change the tiers, edit `pr-risk.sh` and its `expect_tier` self-test together.
 
