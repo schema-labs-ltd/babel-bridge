@@ -4,8 +4,9 @@
 #
 # post-deploy-smoke.yml calls it when a deploy goes bad.
 #
-# Set the `REVERT_TOKEN` secret (a fine-grained token with Contents and Pull
-# requests write on this repo) so the revert PR runs CI. Without it the
+# Set the `REVERT_TOKEN` secret (a fine-grained token with Contents, Pull
+# requests and Workflows write on this repo; Workflows lets it revert changes
+# under .github/workflows/) so the revert PR runs CI. Without it the
 # workflow uses GITHUB_TOKEN, and GitHub does not run workflows for PRs that
 # GITHUB_TOKEN opens, so required checks stay pending until someone pushes.
 name: revert

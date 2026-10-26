@@ -116,8 +116,11 @@ while :; do
     if [ "$(jq -r '.commit // empty' <<<"$diagnostics")" = "$EXPECTED_SHA" ]; then
       break
     fi
-    # Still the old deploy, so keep its connection state as the baseline.
-    was_connected="$(jq -r '.connected' <<<"$diagnostics")"
+    # Still the old deploy. Once it has been seen connected, a drop during
+    # the handover must not lower the bar for the new deploy.
+    if [ "$(jq -r '.connected' <<<"$diagnostics")" = "true" ]; then
+      was_connected=true
+    fi
   fi
   if [ "$SECONDS" -ge "$deadline" ]; then
     log "the server never reported $EXPECTED_SHA within ${DEPLOY_TIMEOUT}s"
