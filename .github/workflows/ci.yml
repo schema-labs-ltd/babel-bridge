@@ -60,6 +60,20 @@ jobs:
           go-version-file: wa-bridge/go.mod
           cache-dependency-path: wa-bridge/go.sum
 
+      - name: Check Go formatting
+        working-directory: wa-bridge
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "error: run gofmt -w on these files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet Go bridge
+        working-directory: wa-bridge
+        run: go vet ./...
+
       - name: Test Go bridge
         working-directory: wa-bridge
         run: go test ./...
@@ -123,7 +137,7 @@ jobs:
         run: cargo test
 
       - name: Run Rust clippy
-        run: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
 
   web:
     runs-on: ubuntu-latest
@@ -147,9 +161,9 @@ jobs:
         working-directory: web
         run: npm test
 
-      - name: Check Extension types and committed resource
+      - name: Check formatting, Extension types and committed resource
         working-directory: web
-        run: npm run lint:extension && npm run typecheck:extension && npm run check:extension
+        run: npm run lint && npm run typecheck:extension && npm run check:extension
 
       - name: Read Playwright version
         id: playwright
