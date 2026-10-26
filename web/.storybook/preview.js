@@ -1,6 +1,15 @@
 import { INITIAL_VIEWPORTS } from 'storybook/viewport';
 
-import '../public/styles.css';
+// styles.css only @imports these with cache-busting queries, which Vite
+// does not bundle, so load them directly in their cascade order.
+import '../public/styles-base.css';
+import '../public/styles-contacts.css';
+import '../public/styles-messages.css';
+import '../public/styles-simplified.css';
+import '../public/styles-responsive.css';
+import '../public/styles-menus.css';
+import '../public/styles-workspace.css';
+import '../public/styles-features.css';
 import './storybook.css';
 
 /** @type { import('@storybook/html-vite').Preview } */
