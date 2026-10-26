@@ -103,7 +103,7 @@ container-check:
 # (Makefile, CI config, Dockerfile) runs the full `check`.
 check-fast:
 	@base=$$(git merge-base HEAD $(BASE) 2>/dev/null) || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }; \
-	changed=$$(git diff --name-only "$$base"); \
+	changed=$$(git diff --name-only --no-renames "$$base"); \
 	files=$$( { printf '%s\n' "$$changed"; git ls-files --others --exclude-standard; } | sed '/^$$/d' | sort -u ); \
 	if [ -z "$$files" ]; then echo "No changes since $(BASE)."; exit 0; fi; \
 	go=0; rust=0; web=0; ext=0; full=0; apple=0; \
