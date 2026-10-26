@@ -1,0 +1,9 @@
+{
+  "type": "send",
+  "request_id": 1,
+  "to": "447700900001@s.whatsapp.net",
+  "text": "Olá",
+  "reply_to": "3EB0QUOTED",
+  "reply_to_sender": "447700900002@s.whatsapp.net",
+  "reply_to_text": "Are you coming?"
+}

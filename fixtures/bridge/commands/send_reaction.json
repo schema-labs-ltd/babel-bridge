@@ -1,0 +1,8 @@
+{
+  "type": "send_reaction",
+  "request_id": 8,
+  "to": "120363000000000001@g.us",
+  "message_id": "3EB0IMAGE",
+  "sender_jid": "447700900001@s.whatsapp.net",
+  "emoji": "👍"
+}

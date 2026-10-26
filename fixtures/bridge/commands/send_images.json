@@ -1,0 +1,17 @@
+{
+  "type": "send_images",
+  "request_id": 6,
+  "progress_id": "progress-1",
+  "to": "120363000000000001@g.us",
+  "images": [
+    {
+      "media_data": "/9j/4AAQ",
+      "mime_type": "image/jpeg"
+    },
+    {
+      "media_data": "iVBORw0K",
+      "mime_type": "image/png"
+    }
+  ],
+  "caption": "Holiday"
+}

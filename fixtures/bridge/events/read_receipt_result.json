@@ -1,0 +1,6 @@
+{
+  "type": "read_receipt_result",
+  "message_id": "3EB0TEXT",
+  "success": false,
+  "error": "not connected"
+}

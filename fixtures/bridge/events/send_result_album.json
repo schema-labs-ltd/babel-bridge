@@ -1,0 +1,15 @@
+{
+  "type": "send_result",
+  "request_id": 6,
+  "success": true,
+  "message_id": "3EB0ALBUM1",
+  "timestamp": 1767225600,
+  "message_ids": [
+    "3EB0ALBUM1",
+    "3EB0ALBUM2"
+  ],
+  "timestamps": [
+    1767225600,
+    1767225601
+  ]
+}

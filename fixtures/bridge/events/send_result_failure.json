@@ -1,0 +1,6 @@
+{
+  "type": "send_result",
+  "request_id": 5,
+  "success": false,
+  "error": "not connected"
+}
