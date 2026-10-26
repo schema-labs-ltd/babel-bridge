@@ -22,6 +22,10 @@ const fakeSelfJID = "447700900000@s.whatsapp.net"
 
 var fakeMessageCounter atomic.Int64
 
+// fakeRunID makes live and outgoing IDs unique across restarts, so a reused
+// data directory still sees them as new messages. History IDs stay fixed.
+var fakeRunID = time.Now().UnixMilli()
+
 func fakeContact(phone, name string) Contact {
 	return Contact{JID: phone + "@s.whatsapp.net", Phone: phone, Name: name}
 }
@@ -76,7 +80,7 @@ func fakeHistory(now time.Time) []Message {
 func fakeLiveMessage(now time.Time) Message {
 	lucia := fakeContact("34600000001", "Lucía")
 	return fakeTextMessage(
-		"FAKE-L4",
+		fmt.Sprintf("FAKE-LIVE-%d", fakeRunID),
 		lucia,
 		Chat{Type: "private", JID: lucia.JID, Name: lucia.Name},
 		"Te espero en la estación a las ocho.",
@@ -86,7 +90,7 @@ func fakeLiveMessage(now time.Time) Message {
 }
 
 func nextFakeMessageID() string {
-	return fmt.Sprintf("FAKE-OUT-%d", fakeMessageCounter.Add(1))
+	return fmt.Sprintf("FAKE-OUT-%d-%d", fakeRunID, fakeMessageCounter.Add(1))
 }
 
 func runFakeBridge(ctx context.Context, cancel context.CancelFunc, mode string) {

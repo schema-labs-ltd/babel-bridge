@@ -12,6 +12,8 @@ use tracing::{debug, info, warn};
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/responses";
 const OPENAI_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const OPENAI_MAX_ATTEMPTS: usize = 3;
+/// What WA_FAKE_AI returns for any free-text request.
+const FAKE_AI_TEXT: &str = "[fake AI] This is placeholder text.";
 const TOPIC_MAX_OUTPUT_TOKENS: u32 = 16384;
 
 #[derive(Clone, Copy)]
@@ -859,6 +861,22 @@ impl TranslationService {
         body: Value,
         policy: RequestPolicy,
     ) -> Result<(Value, bool)> {
+        if self.fake_ai {
+            // Every caller (style analysis included) goes through here, so
+            // WA_FAKE_AI never reaches OpenAI. Plain-text callers get the
+            // placeholder; callers that parse JSON from it fail as they would
+            // on a bad reply.
+            return Ok((
+                json!({
+                    "status": "completed",
+                    "output": [{
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": FAKE_AI_TEXT}],
+                    }],
+                }),
+                false,
+            ));
+        }
         if let Some(auth) = self.chatgpt.as_ref().filter(|auth| auth.is_signed_in()) {
             if auth.model().is_none() {
                 // Sign-in lists the account's models; retry if that failed, so
@@ -1104,10 +1122,7 @@ impl TranslationService {
                 !json_mode,
                 "WA_FAKE_AI does not produce structured output for this request"
             );
-            return Ok((
-                "[fake AI] This is placeholder text.".to_string(),
-                UsageInfo::default(),
-            ));
+            return Ok((FAKE_AI_TEXT.to_string(), UsageInfo::default()));
         }
         let overrides = self.runtime_settings.read().unwrap().clone();
         let model = overrides.model.as_deref().unwrap_or(model);
@@ -2032,6 +2047,17 @@ mod tests {
             .classify_topics(serde_json::json!([]))
             .await
             .is_err());
+        // Callers that build their own request, like style analysis, get the
+        // placeholder from the shared transport instead of a network call.
+        let (response, plan) = service
+            .post_responses(serde_json::json!({}), super::RequestPolicy::Interactive)
+            .await
+            .unwrap();
+        assert!(!plan);
+        assert_eq!(
+            response["output"][0]["content"][0]["text"],
+            super::FAKE_AI_TEXT
+        );
     }
 
     #[tokio::test]
