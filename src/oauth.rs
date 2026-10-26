@@ -9,39 +9,6 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// OAuth 2.0 Authorization Server Metadata (RFC 8414)
-#[derive(Debug, Clone, Serialize)]
-pub struct OAuthMetadata {
-    pub issuer: String,
-    pub authorization_endpoint: String,
-    pub token_endpoint: String,
-    pub revocation_endpoint: Option<String>,
-    pub response_types_supported: Vec<String>,
-    pub grant_types_supported: Vec<String>,
-    pub code_challenge_methods_supported: Vec<String>,
-    pub token_endpoint_auth_methods_supported: Vec<String>,
-    pub scopes_supported: Vec<String>,
-}
-
-impl OAuthMetadata {
-    pub fn new(base_url: &str) -> Self {
-        Self {
-            issuer: base_url.to_string(),
-            authorization_endpoint: format!("{}/oauth/authorize", base_url),
-            token_endpoint: format!("{}/oauth/token", base_url),
-            revocation_endpoint: Some(format!("{}/oauth/revoke", base_url)),
-            response_types_supported: vec!["code".to_string()],
-            grant_types_supported: vec![
-                "authorization_code".to_string(),
-                "refresh_token".to_string(),
-            ],
-            code_challenge_methods_supported: vec!["S256".to_string()],
-            token_endpoint_auth_methods_supported: vec!["none".to_string()], // Public clients
-            scopes_supported: vec!["whatsapp.read".to_string(), "whatsapp.send".to_string()],
-        }
-    }
-}
-
 /// Registered public OAuth client for MCP access.
 #[derive(Debug, Clone, Serialize)]
 pub struct OAuthClientRegistration {
@@ -67,15 +34,6 @@ pub struct AuthorizationCode {
 }
 
 impl AuthorizationCode {
-    /// Check if the code has expired
-    pub fn is_expired(&self) -> bool {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        now > self.expires_at
-    }
-
     /// Verify the code_verifier against the stored code_challenge (PKCE)
     pub fn verify_pkce(&self, code_verifier: &str) -> bool {
         if self.code_challenge_method != "S256" {
@@ -108,16 +66,6 @@ pub struct AccessToken {
     pub refresh_token: Option<String>,
 }
 
-impl AccessToken {
-    pub fn is_expired(&self) -> bool {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        now > self.expires_at
-    }
-}
-
 /// Refresh token stored in the database
 #[derive(Debug, Clone)]
 pub struct RefreshToken {
@@ -126,16 +74,6 @@ pub struct RefreshToken {
     pub scope: String,
     pub created_at: i64,
     pub expires_at: i64,
-}
-
-impl RefreshToken {
-    pub fn is_expired(&self) -> bool {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        now > self.expires_at
-    }
 }
 
 /// Pending authorization request (before user approves)
@@ -150,16 +88,6 @@ pub struct PendingAuthorization {
     pub state: Option<String>,
     pub created_at: i64,
     pub expires_at: i64,
-}
-
-impl PendingAuthorization {
-    pub fn is_expired(&self) -> bool {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        now > self.expires_at
-    }
 }
 
 /// Generate a cryptographically secure random token
@@ -204,9 +132,7 @@ pub enum OAuthError {
     InvalidRequest,
     InvalidClient,
     InvalidGrant,
-    UnauthorizedClient,
     UnsupportedGrantType,
-    InvalidScope,
     AccessDenied,
     ServerError,
 }
@@ -217,9 +143,7 @@ impl OAuthError {
             OAuthError::InvalidRequest => "invalid_request",
             OAuthError::InvalidClient => "invalid_client",
             OAuthError::InvalidGrant => "invalid_grant",
-            OAuthError::UnauthorizedClient => "unauthorized_client",
             OAuthError::UnsupportedGrantType => "unsupported_grant_type",
-            OAuthError::InvalidScope => "invalid_scope",
             OAuthError::AccessDenied => "access_denied",
             OAuthError::ServerError => "server_error",
         }
@@ -232,9 +156,7 @@ impl OAuthError {
             OAuthError::InvalidGrant => {
                 "The authorization code or refresh token is invalid or expired"
             }
-            OAuthError::UnauthorizedClient => "The client is not authorized",
             OAuthError::UnsupportedGrantType => "The grant type is not supported",
-            OAuthError::InvalidScope => "The requested scope is invalid",
             OAuthError::AccessDenied => "The resource owner denied the request",
             OAuthError::ServerError => "An unexpected error occurred",
         }
@@ -296,14 +218,8 @@ pub struct TokenRequest {
 #[derive(Debug, Deserialize)]
 pub struct RevokeRequest {
     pub token: String,
+    #[allow(dead_code)] // RFC 7009 field; every token type is looked up anyway.
     pub token_type_hint: Option<String>,
-}
-
-/// Approval form submission
-#[derive(Debug, Deserialize)]
-pub struct ApprovalRequest {
-    pub session_key: String,
-    pub approved: bool,
 }
 
 #[cfg(test)]

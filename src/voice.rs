@@ -1104,22 +1104,19 @@ mod integration_tests {
         let reopened = MessageStore::new(&dir.0).unwrap();
         assert_eq!(reopened.voice_setting("outgoing").unwrap(), "masculine");
         assert!(!reopened.claim_voice_send(&note.id).unwrap());
-        assert_eq!(
-            json_response(
-                send(
-                    State(state),
-                    Json(SendRequest {
-                        preparation_id: note.id
-                    })
-                )
-                .await
+        assert!(json_response(
+            send(
+                State(state),
+                Json(SendRequest {
+                    preparation_id: note.id
+                })
             )
-            .await["error"]
-                .as_str()
-                .unwrap()
-                .contains("awaiting confirmation"),
-            true
-        );
+            .await
+        )
+        .await["error"]
+            .as_str()
+            .unwrap()
+            .contains("awaiting confirmation"));
     }
     #[tokio::test]
     async fn reviewed_voice_sends_translation_then_original_and_retries_do_not_resend() {
@@ -1402,7 +1399,7 @@ mod integration_tests {
             .parse()
             .unwrap();
         assert!(
-            seconds >= 245.0 && seconds < 246.0,
+            (245.0..246.0).contains(&seconds),
             "full recording must survive: {seconds}"
         );
         assert!(playable_audio(&B64.encode([0_u8; 64])).await.is_err());

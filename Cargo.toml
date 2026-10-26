@@ -67,6 +67,11 @@ sha2 = "0.10"
 base64 = "0.22"
 jsonwebtoken = "9"
 
+[lints.clippy]
+# Clippy 1.88 (the pinned toolchain) warns on this by default; the code
+# uses positional format arguments throughout.
+uninlined_format_args = "allow"
+
 [build-dependencies]
 # For compiling Go bridge at build time
 

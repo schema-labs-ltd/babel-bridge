@@ -82,7 +82,7 @@ pub fn render_qr_code(data: &str) -> Result<()> {
             let actual_y_top = y.checked_sub(1);
             let actual_y_bottom = y;
 
-            let top_dark = actual_y_top.map_or(false, |yt| yt < size && get_module(x, yt));
+            let top_dark = actual_y_top.is_some_and(|yt| yt < size && get_module(x, yt));
             let bottom_dark = actual_y_bottom < size && get_module(x, actual_y_bottom);
 
             // Use half-block character to represent two vertical modules

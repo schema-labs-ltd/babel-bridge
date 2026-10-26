@@ -170,14 +170,12 @@ pub struct StyleProfile {
     pub updated_at: i64,
 }
 
+/// A stored voice note: `(payload, status, result, created_at)`.
+pub type VoiceNoteRow = (String, String, Option<String>, i64);
+
 impl StyleProfile {
     /// The special contact ID used for the global style profile
     pub const GLOBAL_ID: &'static str = "__global__";
-
-    /// Check if this is the global profile
-    pub fn is_global(&self) -> bool {
-        self.contact_id == Self::GLOBAL_ID
-    }
 }
 
 /// Thread-safe message store backed by SQLite

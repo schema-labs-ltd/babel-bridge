@@ -450,16 +450,6 @@ impl Chat {
     pub fn is_group(&self) -> bool {
         matches!(self, Chat::Group { .. })
     }
-
-    /// Get the display name of the chat
-    pub fn display_name(&self) -> String {
-        match self {
-            Chat::Private { name, jid } => name.clone().unwrap_or_else(|| extract_phone(jid)),
-            Chat::Group { name, jid, .. } => name.clone().unwrap_or_else(|| extract_phone(jid)),
-            Chat::Broadcast { jid } => format!("Broadcast: {}", extract_phone(jid)),
-            Chat::Status { .. } => "Status".to_string(),
-        }
-    }
 }
 
 impl Contact {
@@ -491,11 +481,6 @@ impl MessageContent {
             MessageContent::Unknown { .. } => "Unknown",
         }
     }
-}
-
-/// Extract phone number from JID
-fn extract_phone(jid: &str) -> String {
-    jid.split('@').next().unwrap_or(jid).to_string()
 }
 
 #[cfg(test)]

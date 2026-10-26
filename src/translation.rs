@@ -1080,6 +1080,7 @@ impl TranslationService {
         ).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn request_text_output(
         &self,
         model: &str,
@@ -1105,6 +1106,7 @@ impl TranslationService {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn request_text_output_with_policy(
         &self,
         model: &str,
@@ -2496,7 +2498,7 @@ mod tests {
                 status: "400 Bad Request",
                 body: serde_json::json!({"error": {"code": "subscription_sharing_unsupported_capability", "param": "reasoning.effort"}}).to_string(),
             },
-            MockResponse { status: "200 OK", body: sse(&[detect.clone()]) },
+            MockResponse { status: "200 OK", body: sse(std::slice::from_ref(&detect)) },
             MockResponse { status: "200 OK", body: sse(&[detect]) },
         ]);
         let (service, dir) = chatgpt_service(url, &["gpt-6.1-sol"]);

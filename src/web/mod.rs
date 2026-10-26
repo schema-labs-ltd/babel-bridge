@@ -218,6 +218,9 @@ pub enum WebSocketEvent {
     },
     Resync,
     TopicsUpdated,
+    // Part of the pinned client contract (fixtures/api); clients handle it
+    // even though the server does not send it today.
+    #[allow(dead_code)]
     Heartbeat,
     Typing {
         chat_id: String,
@@ -250,6 +253,8 @@ pub enum WebSocketEvent {
         timestamp: Option<i64>,
         error: Option<String>,
     },
+    // Part of the pinned client contract (fixtures/api).
+    #[allow(dead_code)]
     Error {
         error: String,
     },
@@ -459,6 +464,7 @@ pub struct MarkReadRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslateMessageRequest {
+    #[allow(dead_code)] // Sent by clients; the server translates the stored text.
     pub text: String,
     pub message_id: String,
     #[serde(deserialize_with = "crate::identity::deserialize_contact_id")]

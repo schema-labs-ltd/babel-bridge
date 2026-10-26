@@ -74,6 +74,7 @@ impl MessageStore {
     }
 
     /// Increment unread count for a contact
+    #[cfg(test)]
     pub fn increment_unread(&self, contact_id: &str) -> Result<()> {
         let contact_id = canonical_chat_id(contact_id);
         let contact_id = contact_id.as_ref();

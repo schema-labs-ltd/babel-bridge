@@ -1,0 +1,8 @@
+{
+  "overrides": [
+    {
+      "files": ["public/**/*.js", "tests/**/*.js", "*.test.js"],
+      "options": { "singleQuote": true }
+    }
+  ]
+}
