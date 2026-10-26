@@ -1,0 +1,18 @@
+{
+  "topics": [
+    {
+      "contactId": "447700900123@s.whatsapp.net",
+      "messageId": "ana-hello",
+      "revision": 0,
+      "state": "assigned",
+      "title": "Catching up"
+    },
+    {
+      "contactId": "447700900123@s.whatsapp.net",
+      "messageId": "me-reply",
+      "revision": 1767225700000,
+      "state": "assigned",
+      "title": "Catching up"
+    }
+  ]
+}

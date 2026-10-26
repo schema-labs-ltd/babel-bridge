@@ -1,0 +1,22 @@
+{
+  "available": false,
+  "settings": [
+    {
+      "contactId": "447700900123@s.whatsapp.net",
+      "enabled": true,
+      "failedCount": 0,
+      "pendingCount": 0
+    }
+  ],
+  "topics": [
+    {
+      "categoryId": "category:Y2F0Y2hpbmcgdXA",
+      "contactId": "447700900123@s.whatsapp.net",
+      "contactName": "Ana",
+      "id": "topic-catching-up",
+      "lastMessageTime": 1767225660000,
+      "messageCount": 2,
+      "title": "Catching up"
+    }
+  ]
+}

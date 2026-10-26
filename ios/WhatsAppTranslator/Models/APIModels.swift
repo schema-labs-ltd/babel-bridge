@@ -2,6 +2,18 @@ import Foundation
 
 struct AuthCheckResponse: Decodable, Sendable { let required: Bool }
 
+struct HealthResponse: Decodable, Sendable { let ok: Bool }
+struct SuccessResponse: Decodable, Sendable { let success: Bool }
+struct ErrorResponse: Decodable, Sendable { let error: String }
+
+struct PinResponse: Decodable, Sendable {
+    let success: Bool
+    let pinned: Bool
+}
+
+struct ViewedMessagesRequest: Encodable, Sendable { let messageIds: [String] }
+struct ViewedMessagesResponse: Decodable, Sendable { let success: Bool; let unreadCount: Int }
+
 struct AuthResponse: Decodable, Sendable {
     let success: Bool
     let token: String?
