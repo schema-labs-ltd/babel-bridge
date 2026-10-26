@@ -244,6 +244,8 @@ pub enum MessageContent {
         mime_type: String,
         file_size: u64,
         duration_seconds: Option<u32>,
+        /// The bridge omits this when false (ordinary audio).
+        #[serde(default)]
         is_voice_note: bool,
         /// Base64 encoded audio data
         media_data: Option<String>,

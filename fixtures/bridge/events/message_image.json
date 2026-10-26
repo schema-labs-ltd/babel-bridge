@@ -1,0 +1,31 @@
+{
+  "chat": {
+    "type": "group",
+    "jid": "120363000000000001@g.us",
+    "name": "Family",
+    "participant_count": 3
+  },
+  "content": {
+    "type": "image",
+    "caption": "Beach",
+    "mime_type": "image/jpeg",
+    "file_size": 2048,
+    "file_hash": "aGFzaA==",
+    "width": 1280,
+    "height": 960,
+    "album_id": "3EB0ALBUM",
+    "album_index": 1
+  },
+  "from": {
+    "jid": "447700900001@s.whatsapp.net",
+    "phone": "447700900001",
+    "name": "Ana"
+  },
+  "id": "3EB0IMAGE",
+  "is_forwarded": false,
+  "is_from_me": false,
+  "is_history": false,
+  "push_name": "Ana",
+  "timestamp": 1767225600,
+  "type": "message"
+}

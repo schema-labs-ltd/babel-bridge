@@ -1,0 +1,26 @@
+{
+  "chat": {
+    "type": "group",
+    "jid": "120363000000000001@g.us",
+    "name": "Family",
+    "participant_count": 3
+  },
+  "content": {
+    "type": "reaction",
+    "emoji": "👍",
+    "target_message_id": "3EB0IMAGE",
+    "sender_timestamp_ms": 1767225601000
+  },
+  "from": {
+    "jid": "447700900001@s.whatsapp.net",
+    "phone": "447700900001",
+    "name": "Ana"
+  },
+  "id": "3EB0REACTION",
+  "is_forwarded": false,
+  "is_from_me": false,
+  "is_history": false,
+  "push_name": "Ana",
+  "timestamp": 1767225600,
+  "type": "message"
+}

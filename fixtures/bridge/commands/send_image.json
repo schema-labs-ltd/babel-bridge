@@ -1,0 +1,8 @@
+{
+  "type": "send_image",
+  "request_id": 4,
+  "to": "120363000000000001@g.us",
+  "media_data": "/9j/4AAQ",
+  "mime_type": "image/jpeg",
+  "caption": "Beach"
+}

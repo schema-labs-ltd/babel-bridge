@@ -1,0 +1,35 @@
+{
+  "chat": {
+    "type": "private",
+    "jid": "447700900001@s.whatsapp.net",
+    "name": "Ana"
+  },
+  "content": {
+    "type": "text",
+    "body": "Olá @447700900002",
+    "mentions": [
+      {
+        "jid": "447700900002@s.whatsapp.net",
+        "phone": "447700900002",
+        "name": "Ben"
+      }
+    ]
+  },
+  "from": {
+    "jid": "447700900001@s.whatsapp.net",
+    "phone": "447700900001",
+    "name": "Ana"
+  },
+  "id": "3EB0TEXT",
+  "is_forwarded": false,
+  "is_from_me": false,
+  "is_history": false,
+  "push_name": "Ana",
+  "reply_context": {
+    "messageId": "3EB0QUOTED",
+    "senderName": "Ben",
+    "text": "Are you coming?"
+  },
+  "timestamp": 1767225600,
+  "type": "message"
+}

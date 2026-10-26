@@ -1,0 +1,26 @@
+{
+  "chat": {
+    "type": "private",
+    "jid": "447700900001@s.whatsapp.net",
+    "name": "Ana"
+  },
+  "content": {
+    "type": "audio",
+    "mime_type": "audio/mpeg",
+    "file_size": 5,
+    "media_data": "YXVkaW8=",
+    "duration_seconds": 7
+  },
+  "from": {
+    "jid": "447700900001@s.whatsapp.net",
+    "phone": "447700900001",
+    "name": "Ana"
+  },
+  "id": "3EB0AUDIO",
+  "is_forwarded": false,
+  "is_from_me": false,
+  "is_history": false,
+  "push_name": "Ana",
+  "timestamp": 1767225600,
+  "type": "message"
+}

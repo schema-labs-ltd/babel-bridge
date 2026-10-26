@@ -1,0 +1,8 @@
+{
+  "type": "send_progress",
+  "request_id": 6,
+  "progress_id": "progress-1",
+  "stage": "uploading",
+  "completed": 1,
+  "total": 2
+}

@@ -1,0 +1,13 @@
+{
+  "type": "send_media",
+  "request_id": 3,
+  "to": "447700900001@s.whatsapp.net",
+  "media_data": "JVBERi0=",
+  "mime_type": "application/pdf",
+  "media_kind": "document",
+  "file_name": "menu.pdf",
+  "caption": "Menu",
+  "reply_to": null,
+  "reply_to_sender": null,
+  "reply_to_text": null
+}

@@ -1,0 +1,5 @@
+{
+  "type": "error",
+  "code": "connection_failed",
+  "message": "could not reach WhatsApp"
+}
