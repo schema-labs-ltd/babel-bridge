@@ -41,3 +41,6 @@ ios/TestFlight/
 
 # Local fake-mode data (see .env.example)
 /.data/
+
+# Nx
+.nx/

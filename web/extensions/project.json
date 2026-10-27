@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "extension",
+  "projectType": "application",
+  "targets": {
+    "lint": {
+      "command": "npm run lint:extension",
+      "options": { "cwd": "web" },
+      "inputs": ["node", "{projectRoot}/**/*"]
+    },
+    "typecheck": {
+      "command": "npm run typecheck:extension",
+      "options": { "cwd": "web" },
+      "inputs": ["node", "{projectRoot}/**/*"]
+    },
+    "build": {
+      "command": "npm run build:extension",
+      "options": { "cwd": "web" },
+      "inputs": ["node", "{projectRoot}/**/*", "!{projectRoot}/dist/**/*"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "check": {
+      "command": "npm run check:extension",
+      "options": { "cwd": "web" },
+      "dependsOn": ["lint", "typecheck"],
+      "inputs": ["node", "{projectRoot}/**/*"]
+    },
+    "e2e": {
+      "command": "if [ -z \"${CHROMIUM_PATH:-}\" ]; then CHROMIUM_PATH=\"$(node -e 'process.stdout.write(require(\"playwright\").chromium.executablePath())')\"; [ -x \"$CHROMIUM_PATH\" ] || npx playwright install chromium; export CHROMIUM_PATH; fi; npm run test:extension",
+      "options": { "cwd": "web" },
+      "inputs": ["node", "{projectRoot}/**/*"],
+      "outputs": ["{workspaceRoot}/output/playwright/extensions"]
+    }
+  }
+}

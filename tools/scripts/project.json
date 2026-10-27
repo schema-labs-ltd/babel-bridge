@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "tools-scripts",
+  "projectType": "library",
+  "targets": {
+    "test": {
+      "command": "node --test tools/scripts/*.spec.ts",
+      "inputs": [
+        "sharedGlobals",
+        "{projectRoot}/**/*",
+        { "runtime": "node --version" }
+      ]
+    },
+    "lint": {
+      "command": "npm run lint:scripts",
+      "options": { "cwd": "web" },
+      "inputs": ["node", "{projectRoot}/**/*"]
+    }
+  }
+}

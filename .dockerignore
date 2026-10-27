@@ -36,8 +36,9 @@ Thumbs.db
 Dockerfile
 .dockerignore
 
-# Node modules (not needed for Rust/Go build)
-web/node_modules/
+# Node modules and Nx workspace data (not needed for Rust/Go build)
+**/node_modules/
+.nx/
 
 # Documentation
 *.md

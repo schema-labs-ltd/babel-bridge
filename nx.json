@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "origin/main",
+  "neverConnectToCloud": true,
+  "analytics": false,
+  "useInferencePlugins": false,
+  "parallel": 3,
+  "namedInputs": {
+    "sharedGlobals": [
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/package-lock.json",
+      "{workspaceRoot}/Makefile",
+      "{workspaceRoot}/.github/workflows/ci.yml"
+    ],
+    "rust": [
+      "sharedGlobals",
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/build.rs",
+      "{workspaceRoot}/src/**/*",
+      "{workspaceRoot}/fixtures/**/*",
+      "{workspaceRoot}/web/public/**/*",
+      "{workspaceRoot}/web/extensions/dist/**/*",
+      { "env": "SKIP_GO_BUILD" },
+      { "runtime": "rustc --version" }
+    ],
+    "go": [
+      "sharedGlobals",
+      "{projectRoot}/**/*",
+      "!{projectRoot}/wa-bridge",
+      { "runtime": "go version" }
+    ],
+    "webDeps": [
+      "{workspaceRoot}/web/package.json",
+      "{workspaceRoot}/web/package-lock.json"
+    ],
+    "node": ["sharedGlobals", "webDeps", { "runtime": "node --version" }]
+  },
+  "targetDefaults": {
+    "format-check": { "cache": true },
+    "lint": { "cache": true },
+    "typecheck": { "cache": true },
+    "test": { "cache": true },
+    "check": { "cache": true },
+    "e2e": { "cache": true },
+    "build": { "cache": true }
+  }
+}

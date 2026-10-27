@@ -1,0 +1,32 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "web",
+  "projectType": "application",
+  "targets": {
+    "test": {
+      "command": "npm test",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": [
+        "node",
+        "{projectRoot}/public/**/*",
+        "{projectRoot}/tests/**/*",
+        "{projectRoot}/*.test.js"
+      ]
+    },
+    "lint": {
+      "command": "npm run lint:web",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": [
+        "node",
+        "{projectRoot}/public/**/*",
+        "{projectRoot}/tests/**/*",
+        "{projectRoot}/*.test.js",
+        "{workspaceRoot}/.prettierrc*"
+      ]
+    },
+    "format": {
+      "command": "npm run format",
+      "options": { "cwd": "{projectRoot}" }
+    }
+  }
+}

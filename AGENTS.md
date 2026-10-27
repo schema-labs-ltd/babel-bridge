@@ -17,7 +17,8 @@
 
 ## Checks
 
-- `make check` runs every step of the GitHub Actions `CI` go, rust, and web jobs in the same order (`make check-go`, `check-rust`, and `check-web` run one job each), and is what to run before pushing. `make check-fast` runs only the checks for the areas changed since `origin/main`. `make ci` adds the production container build, which needs Docker. `make help` lists the smaller targets.
+- Nx 24 runs every build, test, and lint task. Each project has a `project.json`: `server` (the Rust crate at the repository root), `wa-bridge`, `web`, `extension` (`web/extensions`), `tools-scripts`, and `ios` (the API contract check). `nx.json` holds the shared inputs and caching; `.nxignore` lists files no task reads. Add or change a check in the project's `project.json`, and keep `ci.yml` and the `Makefile` calling Nx targets rather than raw commands.
+- `make check` runs every project's checks through Nx, the same targets the GitHub Actions `CI` go, rust, and web jobs run (`make check-go`, `check-rust`, and `check-web` run one job each), and is what to run before pushing. `make check-fast` runs `nx affected` against `origin/main`. Nx caches results; `npx nx run <project>:<target> --skip-nx-cache` forces a rerun. `make ci` adds the production container build, which needs Docker. `make help` lists the smaller targets.
 - The Rust tests need `ffmpeg` on the path. The Go bridge needs the Go toolchain that `wa-bridge/go.mod` pins, which `go` downloads on first use.
 - The Apple targets are checked only by the `apple / apple` workflow on macOS. The Apple rules below say how to work with it.
 

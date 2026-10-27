@@ -1,6 +1,6 @@
 #!/bin/bash
 # Prepares a Claude Code cloud session so `make check` runs without first-use
-# downloads: ffmpeg for the Rust tests, web/ dependencies, Playwright's
+# downloads: ffmpeg for the Rust tests, Nx and web/ dependencies, Playwright's
 # Chromium, crates, and the Go toolchain and modules that wa-bridge/go.mod
 # pins. Local sessions are left alone.
 set -euo pipefail
@@ -18,7 +18,7 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
     || echo "warning: could not install ffmpeg; cargo test will fail until it is installed" >&2
 fi
 
-echo "Installing web/ dependencies"
+echo "Installing Nx and web/ dependencies"
 make --no-print-directory web-deps
 make --no-print-directory extension-browser \
   || echo "warning: Playwright Chromium is missing; make extension-test will try again" >&2

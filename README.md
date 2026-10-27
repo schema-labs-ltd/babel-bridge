@@ -161,15 +161,17 @@ cargo run
 
 ## Tests
 
-CI runs the Go, Rust and web checks on every pull request (`.github/workflows/ci.yml`), and the `apple` workflow builds and tests the Apple apps when `ios/` changes. Run the same steps locally with:
+[Nx](https://nx.dev) runs the builds, tests and lint for every part of the repository, and caches the results so a rerun with unchanged inputs finishes in seconds. Each part is an Nx project with its own `project.json`: `server` (the Rust crate at the root), `wa-bridge`, `web`, `extension` (`web/extensions`), `tools-scripts` and `ios` (the API contract check). CI runs the Go, Rust and web checks through Nx on every pull request (`.github/workflows/ci.yml`), and the `apple` workflow builds and tests the Apple apps when `ios/` changes. Run the same steps locally with:
 
 ```bash
-make check        # every step of CI's go, rust and web jobs
-make check-fast   # only the checks for what changed since origin/main
-make lint         # formatting, vet and clippy only
+make check             # every project's checks, as CI's go, rust and web jobs run them
+make check-fast        # only the projects changed since origin/main (nx affected)
+make lint              # formatting, vet, clippy, prettier and types only
+npx nx test server     # one task: npx nx run <project>:<target>
+npx nx graph           # the project graph
 ```
 
-`make help` lists the rest. The Rust targets set `SKIP_GO_BUILD=1`, which stops `build.rs` from rebuilding the bridge when only Rust changed.
+The targets are `format-check`, `lint`, `typecheck`, `test`, `check` (the committed `chats.html` drift check), `e2e` and `build`. `make help` lists the rest. The Rust targets set `SKIP_GO_BUILD=1`, which stops `build.rs` from rebuilding the bridge when only Rust changed.
 
 ## Deploy on Railway
 

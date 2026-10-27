@@ -27,5 +27,11 @@
     "prettier": "3.9.4",
     "storybook": "^10.3.5",
     "typescript": "5.9.3"
+  },
+  "nx": {
+    "includedScripts": [
+      "storybook",
+      "build-storybook"
+    ]
   }
 }

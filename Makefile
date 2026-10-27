@@ -1,11 +1,13 @@
-# One entry point for the checks CI runs.
+# One entry point for the checks CI runs. Nx runs every task (see nx.json and
+# each project's project.json) and caches results in .nx/, so a rerun with
+# unchanged inputs replays the stored output instead of running again.
 #
-#   make check        CI's go, rust and web jobs, step for step, in the same order
-#   make check-fast   only the parts of `check` that the diff from origin/main touches
+#   make check        CI's go, rust and web jobs: every project's checks
+#   make check-fast   only the checks for projects changed since origin/main (nx affected)
 #   make ci           `check` plus the `CI / container-build` job (needs Docker)
 #
 # The Apple check (`apple / apple`) needs macOS and Xcode, so it is not here.
-# See AGENTS.md and ios/README.md. Keep these recipes in step with
+# See AGENTS.md and ios/README.md. Keep the project.json targets in step with
 # .github/workflows/ci.yml when that file changes.
 
 SHELL := /bin/bash
@@ -13,93 +15,117 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 BASE ?= origin/main
+NX := npx --no-install nx
 
-.PHONY: help check check-fast ci test fmt lint \
+# The targets `check` runs. ios:api-contract needs a Swift toolchain, so it
+# runs in its own CI job and through `make api-contract`.
+CHECK_TARGETS := format-check lint typecheck test check e2e
+CHECK_FLAGS := --exclude=ios --outputStyle=stream
+
+.PHONY: help check check-fast ci test fmt lint nx-deps \
 	go-fmt-check go-vet go-test fmt-check rust-test clippy web-deps web-test web-lint \
 	extension-lint extension-check extension-browser extension-test \
-	check-go check-rust check-web container-check require-ffmpeg scripts-test scripts-lint
+	check-go check-rust check-web container-check require-ffmpeg scripts-test scripts-lint \
+	api-contract graph
 
 help:
-	@echo "make check        run every step of the CI go, rust and web jobs, in CI's order"
-	@echo "make check-fast   run only the checks for areas changed since $(BASE)"
+	@echo "make check        run every project's checks through Nx (CI's go, rust and web jobs)"
+	@echo "make check-fast   run only the checks for projects changed since $(BASE) (nx affected)"
 	@echo "make ci           check, then the production container build (needs Docker)"
 	@echo "make check-go | check-rust | check-web   one CI job"
 	@echo "make test         Go, Rust, web and tools/scripts unit tests"
 	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier (web, extension, tools/scripts) and extension types"
 	@echo "make fmt          apply gofmt, rustfmt and prettier"
+	@echo "make graph        open the Nx project graph"
+	@echo "Any task also runs directly: npx nx run <project>:<target>, e.g. npx nx test server"
 
-# Same steps, same order as the go, rust and web jobs in .github/workflows/ci.yml.
-check: check-go check-rust check-web
+check: web-deps extension-browser require-ffmpeg
+	$(NX) run-many -t $(CHECK_TARGETS) $(CHECK_FLAGS)
 
-check-go: go-fmt-check go-vet go-test
+check-go: nx-deps
+	$(NX) run-many -t format-check lint test -p wa-bridge --outputStyle=stream
 
-check-rust: fmt-check rust-test clippy
+check-rust: nx-deps require-ffmpeg
+	$(NX) run-many -t format-check test lint -p server --outputStyle=stream
 
-check-web: web-deps web-test scripts-test web-lint extension-check scripts-lint extension-test
+check-web: web-deps extension-browser
+	$(NX) run-many -t $(CHECK_TARGETS) -p web extension tools-scripts --outputStyle=stream
 
 ci: check container-check
 
-test: go-test rust-test web-test scripts-test
+test: web-deps require-ffmpeg
+	$(NX) run-many -t test $(CHECK_FLAGS)
 
-lint: go-fmt-check go-vet fmt-check clippy web-lint extension-lint scripts-lint
+lint: web-deps
+	$(NX) run-many -t format-check lint typecheck $(CHECK_FLAGS)
 
 fmt: web-deps
 	cd wa-bridge && gofmt -w .
 	cargo fmt
 	cd web && npm run format
 
-go-fmt-check:
-	@cd wa-bridge && unformatted="$$(gofmt -l .)" && if [ -n "$$unformatted" ]; then echo "error: run gofmt -w on these files:"; echo "$$unformatted"; exit 1; fi
+graph: nx-deps
+	$(NX) graph
 
-go-vet:
-	cd wa-bridge && go vet ./...
+go-fmt-check: nx-deps
+	$(NX) run wa-bridge:format-check
 
-go-test:
-	cd wa-bridge && go test ./...
+go-vet: nx-deps
+	$(NX) run wa-bridge:lint
 
-fmt-check:
-	cargo fmt --check
+go-test: nx-deps
+	$(NX) run wa-bridge:test
+
+fmt-check: nx-deps
+	$(NX) run server:format-check
 
 require-ffmpeg:
 	@command -v ffmpeg >/dev/null || { echo "ffmpeg is required by the Rust tests (CI installs a static build)."; exit 1; }
 
-# The rust job sets SKIP_GO_BUILD: the go job tests the bridge, and no Rust
-# test runs the binary.
-rust-test: require-ffmpeg
-	SKIP_GO_BUILD=1 cargo test
+# server:test and server:lint set SKIP_GO_BUILD: wa-bridge:test covers the
+# bridge, and no Rust test runs the binary.
+rust-test: nx-deps require-ffmpeg
+	$(NX) run server:test
 
-clippy:
-	SKIP_GO_BUILD=1 cargo clippy --all-targets -- -D warnings
+clippy: nx-deps
+	$(NX) run server:lint
+
+# Nx itself, from the root package.json. Reinstalled only when the manifest or
+# lock file is newer than the last install.
+nx-deps: node_modules/.make-npm-ci
+
+node_modules/.make-npm-ci: package.json package-lock.json
+	npm ci
+	touch $@
 
 # CI runs `npm ci` on a clean checkout. Locally it reruns only when
 # package.json or the lock file is newer than the last install, so repeated
 # checks stay fast.
-web-deps: web/node_modules/.make-npm-ci
+web-deps: nx-deps web/node_modules/.make-npm-ci
 
 web/node_modules/.make-npm-ci: web/package.json web/package-lock.json
 	cd web && npm ci
 	touch $@
 
 web-test: web-deps
-	cd web && npm test
+	$(NX) run web:test
 
 # The risk tier and merge health scripts in tools/scripts (CI's web job).
-scripts-test:
-	node --test tools/scripts/*.spec.ts
+scripts-test: nx-deps
+	$(NX) run tools-scripts:test
 
 scripts-lint: web-deps
-	cd web && npm run lint:scripts
+	$(NX) run tools-scripts:lint
 
-# The web job's lint step also runs lint:extension, via extension-check.
 web-lint: web-deps
-	cd web && npm run lint:web
+	$(NX) run web:lint
 
 extension-lint: web-deps
-	cd web && npm run lint:extension && npm run typecheck:extension
+	$(NX) run-many -t lint typecheck -p extension
 
-# One CI step: prettier, tsc, and the committed chats.html drift check.
-extension-check: extension-lint
-	cd web && npm run check:extension
+# prettier, tsc, and the committed chats.html drift check.
+extension-check: web-deps
+	$(NX) run extension:check
 
 # CI runs `npx playwright install chromium`. Locally this downloads the
 # browser only when Playwright's pinned build is missing; system libraries
@@ -110,40 +136,18 @@ extension-browser: web-deps
 	fi
 
 extension-test: extension-browser
-	cd web && CHROMIUM_PATH="$${CHROMIUM_PATH:-$$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')}" npm run test:extension
+	$(NX) run extension:e2e
 
-container-check:
-	docker build --target rust-builder --tag whatsapp-translator:rust-build-check .
+api-contract: nx-deps
+	$(NX) run ios:api-contract
 
-# Map changed paths to the checks that cover them, then run those checks in
-# CI's order. The Rust tests read web/public and embed the extension's
-# chats.html, so web changes also run them. Anything outside the known areas
-# (Makefile, CI config, Dockerfile) runs the full `check`.
-check-fast:
-	@base=$$(git merge-base HEAD $(BASE) 2>/dev/null) || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }; \
-	changed=$$(git diff --name-only --no-renames "$$base"); \
-	files=$$( { printf '%s\n' "$$changed"; git ls-files --others --exclude-standard; } | sed '/^$$/d' | sort -u ); \
-	if [ -z "$$files" ]; then echo "No changes since $(BASE)."; exit 0; fi; \
-	go=0; rust=0; web=0; ext=0; full=0; apple=0; \
-	while IFS= read -r f; do \
-		case "$$f" in \
-			wa-bridge/*) go=1 ;; \
-			src/*|build.rs|Cargo.toml|Cargo.lock) rust=1 ;; \
-			web/extensions/*) ext=1; rust=1 ;; \
-			web/package.json|web/package-lock.json) web=1; ext=1 ;; \
-			web/*) web=1; rust=1 ;; \
-			ios/*) apple=1 ;; \
-			*.md|docs/*|assets/*|.claude/*|scripts/generate-message-tones.py|railway.toml|.gitignore|.dockerignore) ;; \
-			*) full=1 ;; \
-		esac; \
-	done <<< "$$files"; \
-	if [ "$$apple" = 1 ]; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi; \
-	if [ "$$full" = 1 ]; then echo "Shared build or CI files changed: running the full check."; exec $(MAKE) --no-print-directory check; fi; \
-	targets=""; \
-	[ "$$go" = 1 ] && targets="$$targets go-fmt-check go-vet go-test"; \
-	[ "$$rust" = 1 ] && targets="$$targets fmt-check rust-test clippy"; \
-	[ "$$web" = 1 ] && targets="$$targets web-test web-lint"; \
-	[ "$$ext" = 1 ] && targets="$$targets extension-check extension-test"; \
-	if [ -z "$$targets" ]; then echo "Nothing to check for these changes."; exit 0; fi; \
-	echo "Running:$$targets"; \
-	$(MAKE) --no-print-directory $$targets
+container-check: nx-deps
+	$(NX) run server:container-check
+
+# Nx maps changed files to projects (nx.json namedInputs, .nxignore). A change
+# to nx.json, the root lock file, this Makefile or ci.yml affects every
+# project; docs and other files no task reads affect none.
+check-fast: web-deps
+	@git merge-base HEAD $(BASE) >/dev/null 2>&1 || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }
+	@if git diff --name-only $(BASE)... -- ios | grep -q .; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi
+	$(NX) affected -t $(CHECK_TARGETS) --base=$(BASE) $(CHECK_FLAGS)

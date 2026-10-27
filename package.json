@@ -1,0 +1,19 @@
+{
+  "name": "babel-bridge",
+  "private": true,
+  "description": "Nx task runner for the Rust server, Go bridge, web app and tools in this repository",
+  "scripts": {
+    "check": "nx run-many -t format-check lint test check e2e",
+    "affected": "nx affected -t format-check lint test check e2e",
+    "graph": "nx graph"
+  },
+  "devDependencies": {
+    "nx": "24.0.2"
+  },
+  "overrides": {
+    "undici": "7.30.1"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

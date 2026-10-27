@@ -17,6 +17,10 @@ export const HIGH_RISK_PATTERNS = [
   "tools/scripts/**",
   "scripts/check-*",
   "Makefile",
+  // Nx task definitions, which hold the commands CI and `make check` run.
+  "nx.json",
+  "**/project.json",
+  ".nxignore",
   "lefthook.yml",
   ".gitattributes",
   "**/.commitlintrc*",
