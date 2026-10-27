@@ -20,8 +20,34 @@ concurrency:
   group: ${{ github.event_name == 'pull_request' && format('merge-health-pr-{0}', github.ref) || 'merge-health-publish' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Pull request runs execute the PR's own script, so they get a read-only
+# token in a job of their own and only print the report to the job summary.
+# The schedule and manual runs comment on the "Weekly merge health" issue.
 jobs:
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test the report
+        run: node --test tools/scripts/merge-health.spec.ts
+      - name: Build the report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/scripts/merge-health.mjs --dry-run
+
   report:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -37,9 +63,7 @@ jobs:
           node-version: 22
       - name: Test the report
         run: node --test tools/scripts/merge-health.spec.ts
-      # Pull requests only print the report to the job summary; the schedule
-      # and manual runs comment on the "Weekly merge health" issue.
       - name: Build and post the report
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node tools/scripts/merge-health.mjs ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
+        run: node tools/scripts/merge-health.mjs
