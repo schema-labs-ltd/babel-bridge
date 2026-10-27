@@ -15,6 +15,7 @@
       "inputs": [
         "rust",
         "^production",
+        "{workspaceRoot}/apps/ios/WhatsAppTranslator/Resources/video-playback-fixture.mp4",
         {
           "runtime": "ffmpeg -version | head -n 1"
         },
