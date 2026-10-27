@@ -59,8 +59,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: wa-bridge/go.mod
-          cache-dependency-path: wa-bridge/go.sum
+          go-version-file: apps/wa-bridge/go.mod
+          cache-dependency-path: apps/wa-bridge/go.sum
 
       # Nx runs every check below.
       - name: Set up Node

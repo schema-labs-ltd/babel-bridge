@@ -14,33 +14,62 @@
     },
     "typecheck": {
       "command": "tsc -p tsconfig.json",
-      "options": { "cwd": "{projectRoot}" },
-      "inputs": ["default", { "externalDependencies": ["typescript"] }]
+      "options": {
+        "cwd": "{projectRoot}"
+      },
+      "inputs": [
+        "default",
+        {
+          "externalDependencies": ["typescript"]
+        }
+      ]
     },
     "build": {
       "command": "node build.mjs",
-      "options": { "cwd": "{projectRoot}" },
+      "options": {
+        "cwd": "{projectRoot}"
+      },
       "inputs": [
         "production",
         "!{projectRoot}/dist/**/*",
-        { "externalDependencies": ["esbuild"] }
+        {
+          "externalDependencies": ["esbuild"]
+        }
       ],
       "outputs": ["{projectRoot}/dist"]
     },
     "check": {
       "command": "node build.mjs --check",
-      "options": { "cwd": "{projectRoot}" },
+      "options": {
+        "cwd": "{projectRoot}"
+      },
       "dependsOn": ["lint", "typecheck"],
-      "inputs": ["production", { "externalDependencies": ["esbuild"] }]
+      "inputs": [
+        "production",
+        {
+          "externalDependencies": ["esbuild"]
+        }
+      ]
     },
     "e2e": {
       "inputs": [
         "default",
-        { "externalDependencies": ["@playwright/test"] },
-        { "env": "CHROMIUM_PATH" },
-        { "env": "CI" }
+        {
+          "externalDependencies": ["@playwright/test"]
+        },
+        {
+          "env": "CHROMIUM_PATH"
+        },
+        {
+          "env": "CI"
+        }
       ],
-      "outputs": ["{workspaceRoot}/output/playwright"]
+      "outputs": ["{workspaceRoot}/output/playwright"],
+      "dependsOn": ["browser"]
+    },
+    "browser": {
+      "command": "if [ -z \"${CHROMIUM_PATH:-}\" ] && [ ! -x \"$(node -e 'process.stdout.write(require(\"playwright\").chromium.executablePath())')\" ]; then npx playwright install chromium; fi",
+      "cache": false
     }
   }
 }

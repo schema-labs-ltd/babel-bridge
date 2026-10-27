@@ -15,8 +15,12 @@
       "inputs": [
         "rust",
         "^production",
-        { "runtime": "ffmpeg -version | head -n 1" },
-        { "runtime": "ffprobe -version | head -n 1" }
+        {
+          "runtime": "ffmpeg -version | head -n 1"
+        },
+        {
+          "runtime": "ffprobe -version | head -n 1"
+        }
       ]
     },
     "lint": {
@@ -25,7 +29,8 @@
     },
     "build": {
       "command": "cargo build --release",
-      "cache": false
+      "cache": false,
+      "dependsOn": []
     },
     "container-check": {
       "command": "docker build --target rust-builder --tag whatsapp-translator:rust-build-check .",

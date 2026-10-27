@@ -7,7 +7,7 @@
 #   make ci           `check` plus the `CI / container-build` job (needs Docker)
 #
 # The Apple check (`apple / apple`) needs macOS and Xcode, so it is not here.
-# See AGENTS.md and ios/README.md. Keep the project.json targets in step with
+# See AGENTS.md and apps/ios/README.md. Keep the project.json targets in step with
 # .github/workflows/ci.yml when that file changes.
 
 SHELL := /bin/bash
@@ -120,13 +120,11 @@ extension-lint: web-deps
 extension-check: web-deps
 	$(NX) run web-extension:check
 
-# CI runs `npx playwright install chromium`. Locally this downloads the
-# browser only when Playwright's pinned build is missing; system libraries
-# are left to the machine.
+# CI runs `npx playwright install chromium`. Locally web-extension:browser
+# downloads it only when Playwright's pinned build is missing and
+# CHROMIUM_PATH is unset; system libraries are left to the machine.
 extension-browser: web-deps
-	@if [ -z "$${CHROMIUM_PATH:-}" ] && [ ! -x "$$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" ]; then \
-		npx playwright install chromium; \
-	fi
+	$(NX) run web-extension:browser
 
 extension-test: extension-browser
 	$(NX) run web-extension:e2e

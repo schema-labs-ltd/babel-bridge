@@ -5,9 +5,11 @@
   "description": "Static web frontend tooling for WhatsApp Translator",
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "test": "nx run web:test",
+    "lint": "nx run web:lint",
+    "format": "nx run web:format",
+    "storybook": "nx run web:storybook",
+    "build-storybook": "nx run web:build-storybook"
   },
   "devDependencies": {
     "@storybook/html-vite": "^10.3.5",

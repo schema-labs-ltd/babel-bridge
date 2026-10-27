@@ -11,7 +11,11 @@
       "{workspaceRoot}/Makefile",
       "{workspaceRoot}/.github/workflows/ci.yml"
     ],
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/**/*.md",
+      "sharedGlobals"
+    ],
     "production": [
       "default",
       "!{projectRoot}/tests/**/*",
@@ -24,7 +28,9 @@
     "prettier": [
       "{workspaceRoot}/.prettierrc.json",
       "{workspaceRoot}/.prettierignore",
-      { "externalDependencies": ["prettier"] }
+      {
+        "externalDependencies": ["prettier"]
+      }
     ],
     "rust": [
       "default",
@@ -32,26 +38,53 @@
       "{workspaceRoot}/Cargo.lock",
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/fixtures/**/*",
-      { "env": "SKIP_GO_BUILD" },
-      { "env": "UPDATE_FIXTURES" },
-      { "runtime": "rustc --version" }
+      {
+        "env": "SKIP_GO_BUILD"
+      },
+      {
+        "env": "UPDATE_FIXTURES"
+      },
+      {
+        "runtime": "rustc --version"
+      }
     ],
     "go": [
       "default",
       "!{projectRoot}/wa-bridge",
       "{workspaceRoot}/fixtures/bridge/**/*",
-      { "env": "UPDATE_FIXTURES" },
-      { "runtime": "go version" }
+      {
+        "env": "UPDATE_FIXTURES"
+      },
+      {
+        "runtime": "go version"
+      }
     ],
-    "node": ["default", { "runtime": "node --version" }]
+    "node": [
+      "default",
+      {
+        "runtime": "node --version"
+      }
+    ]
   },
   "targetDefaults": {
-    "format-check": { "cache": true },
-    "lint": { "cache": true },
-    "typecheck": { "cache": true },
-    "test": { "cache": true },
-    "check": { "cache": true },
-    "e2e": { "cache": true },
+    "format-check": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "typecheck": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
+    },
+    "check": {
+      "cache": true
+    },
+    "e2e": {
+      "cache": true
+    },
     "build": {
       "cache": true,
       "dependsOn": ["^build"],
@@ -61,7 +94,10 @@
   "plugins": [
     {
       "plugin": "@nx/playwright/plugin",
-      "options": { "targetName": "e2e", "ciTargetName": "e2e-ci" }
+      "options": {
+        "targetName": "e2e",
+        "ciTargetName": "e2e-ci"
+      }
     },
     {
       "plugin": "@nx/storybook/plugin",

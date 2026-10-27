@@ -65,7 +65,7 @@ test("marks ordinary product changes as medium risk", () => {
     "apps/ios/WhatsAppTranslator/App/AppSession.swift",
     "apps/ios/APIContract/APIContractCheck.swift",
     "scripts/generate-message-tones.py",
-    "build.rs",
+    "apps/server/build.rs",
   ]) {
     assert.equal(classify([file]).tier, "medium", file);
   }

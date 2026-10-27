@@ -19,8 +19,9 @@ fi
 
 OUT_DIR="$REPO/apps/ios/TestFlight"
 OUT_FILE="$OUT_DIR/WhatToTest.en-US.txt"
-# Same paths that start the Main – TestFlight (internal) workflow.
-APP_PATHS="apps/ios apps/web/public/sounds"
+# Same paths that start the Main – TestFlight (internal) workflow, plus their
+# locations before the move to apps/, so earlier changes stay in the notes.
+APP_PATHS="apps/ios apps/web/public/sounds ios web/public/sounds"
 EARLIER_COUNT=4
 # TestFlight accepts up to 4000 characters.
 MAX_BYTES=3900
