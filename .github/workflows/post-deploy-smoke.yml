@@ -4,7 +4,7 @@
 #
 # Needs two repository secrets, and skips cleanly without them:
 #   SMOKE_URL       the server's public base URL
-#   SMOKE_PASSWORD  the server's WEB_PASSWORD, used to sign in to /api/diagnostics
+#   SMOKE_PASSWORD  the server's WA_PASSWORD, used to sign in to /api/diagnostics
 # Optional repository variables:
 #   SMOKE_IGNORE_ERRORS  extended regex of ERROR lines that are not regressions
 #   SMOKE_AUTO_REVERT    set to "false" to report bad deploys without opening a revert PR

@@ -10,7 +10,7 @@
 #
 # Environment:
 #   SMOKE_URL        base URL of the server, e.g. https://example.up.railway.app
-#   SMOKE_PASSWORD   the server's web password (WEB_PASSWORD); empty if none
+#   SMOKE_PASSWORD   the server's web password (WA_PASSWORD); empty if none
 #   EXPECTED_SHA     commit the new deploy must report
 #   DEPLOY_TIMEOUT   seconds to wait for the commit to appear (default 2700)
 #   WATCH_SECONDS    seconds to watch the new deploy (default 600)
