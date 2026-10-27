@@ -17,15 +17,15 @@ BASE ?= origin/main
 .PHONY: help check check-fast ci test fmt lint \
 	go-fmt-check go-vet go-test fmt-check rust-test clippy web-deps web-test web-lint \
 	extension-lint extension-check extension-browser extension-test \
-	check-go check-rust check-web container-check require-ffmpeg
+	check-go check-rust check-web container-check require-ffmpeg scripts-test scripts-lint
 
 help:
 	@echo "make check        run every step of the CI go, rust and web jobs, in CI's order"
 	@echo "make check-fast   run only the checks for areas changed since $(BASE)"
 	@echo "make ci           check, then the production container build (needs Docker)"
 	@echo "make check-go | check-rust | check-web   one CI job"
-	@echo "make test         Go, Rust and web unit tests"
-	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier and extension types"
+	@echo "make test         Go, Rust, web and tools/scripts unit tests"
+	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier (web, extension, tools/scripts) and extension types"
 	@echo "make fmt          apply gofmt, rustfmt and prettier"
 
 # Same steps, same order as the go, rust and web jobs in .github/workflows/ci.yml.
@@ -35,13 +35,13 @@ check-go: go-fmt-check go-vet go-test
 
 check-rust: fmt-check rust-test clippy
 
-check-web: web-deps web-test web-lint extension-check extension-test
+check-web: web-deps web-test scripts-test web-lint extension-check scripts-lint extension-test
 
 ci: check container-check
 
-test: go-test rust-test web-test
+test: go-test rust-test web-test scripts-test
 
-lint: go-fmt-check go-vet fmt-check clippy web-lint extension-lint
+lint: go-fmt-check go-vet fmt-check clippy web-lint extension-lint scripts-lint
 
 fmt: web-deps
 	cd wa-bridge && gofmt -w .
@@ -82,6 +82,13 @@ web/node_modules/.make-npm-ci: web/package.json web/package-lock.json
 
 web-test: web-deps
 	cd web && npm test
+
+# The risk tier and merge health scripts in tools/scripts (CI's web job).
+scripts-test:
+	node --test tools/scripts/*.spec.ts
+
+scripts-lint: web-deps
+	cd web && npm run lint:scripts
 
 # The web job's lint step also runs lint:extension, via extension-check.
 web-lint: web-deps

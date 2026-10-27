@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "lint": "npm run lint:web && npm run lint:extension",
+    "lint": "npm run lint:web && npm run lint:extension && npm run lint:scripts",
     "lint:web": "prettier --check \"public/**/*.{js,css,html,json}\" \"tests/**/*.js\" \"*.test.js\"",
     "format": "prettier --write \"public/**/*.{js,css,html,json}\" \"tests/**/*.js\" \"*.test.js\" \"extensions/src/**/*\" \"extensions/*.mjs\" \"extensions/*.ts\" \"extensions/*.json\" \"extensions/tests/**/*\"",
     "storybook": "storybook dev -p 6006",
@@ -14,6 +14,7 @@
     "check:extension": "node extensions/build.mjs --check",
     "typecheck:extension": "tsc -p extensions/tsconfig.json",
     "test:extension": "playwright test -c extensions/playwright.config.ts",
+    "lint:scripts": "prettier --check \"../tools/scripts/**\"",
     "lint:extension": "prettier --check \"extensions/src/**/*\" \"extensions/*.mjs\" \"extensions/*.ts\" \"extensions/*.json\" \"extensions/tests/**/*\""
   },
   "devDependencies": {

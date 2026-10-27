@@ -1,22 +1,25 @@
-## What changed
+<!-- Fill in every section. AGENTS.md ("Risk Tiers & Merging") explains the tiers. -->
 
-<!-- One or two sentences on the user-visible or developer-visible change, and why. -->
+## Problem
 
-## How verified
+<!-- What is wrong or missing, with issue links. -->
 
-<!-- Which checks you ran (for example `cargo test`, `go test ./...`, `npm test`, the extension tests),
-     and for UI changes which screen, demo launch flag (such as `-demo -demoConversation`) or screenshot shows it. -->
+## Change
 
-- [ ] Rust (`cargo fmt --check`, `cargo test`, `cargo clippy --all-targets`)
-- [ ] Go bridge (`go test ./...` in `wa-bridge/`)
-- [ ] Web (`npm test` in `web/`, extension checks if `web/extensions/` changed)
-- [ ] Apple (`apple / apple` check, or Xcode locally)
+<!-- What behaves differently after this PR. -->
 
-## Apple impact
+## Risk
 
-<!-- Does this change ios/, web/public/sounds/ or anything the apps call?
-     Say whether a TestFlight build is expected on merge, and whether it was checked on a device. -->
+<!-- low, medium or high, and why. The risk-gate label is a floor: raise it, never lower it. Name anything that touches sign-in, OAuth or MCP permissions, message content in logs or diagnostics, the storage schema, push, the API fixtures the apps decode, Apple signing or release, or CI. -->
 
-- [ ] No Apple changes; no TestFlight build expected
-- [ ] Apple changes; TestFlight build expected from Xcode Cloud on merge
-- [ ] Checked on a device or simulator
+## Testing
+
+<!-- Commands you ran (for example `make check`, `cargo test`, `go test ./...`, `npm test` in web/) and their real output or a summary of it. Name any check you skipped and why. For Apple changes, rely on the `apple / apple` check and say whether a TestFlight build is expected on merge. Include screenshots, free of message content and phone numbers, for visual changes. -->
+
+## How to revert
+
+<!-- Usually "Revert this PR". Say what else is needed, such as a schema migration that does not roll back, an API change the shipped apps already depend on, or a setting or secret to undo. -->
+
+## Migration and configuration
+
+<!-- Storage migrations, environment variables, secrets or Railway settings to set. "None" if there are none. -->

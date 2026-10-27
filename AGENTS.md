@@ -1,5 +1,11 @@
 # WhatsApp Translator Operating Rules
 
+## Working Contract
+
+- Carry an implementation request through investigation, scoped changes, and verification. Make routine, reversible decisions using repository conventions; do not stop at a plan or ask again for authorization already given.
+- Opening a PR needs no separate request: when implementation work is complete and verified, push the branch, open a PR, and keep it moving through CI and review. Merge it as **Risk Tiers & Merging** describes; merging a PR that way also authorizes the Railway deploy of `main` and the Xcode Cloud TestFlight build that follow it. Closing or force-pushing a PR still needs explicit authorization.
+- In a PR description, fill in [the PR template](.github/pull_request_template.md): the problem, resulting behavior, risk tier, verification with real command output, how to revert, and migration or configuration implications.
+
 ## Repository map
 
 - `src/`: Rust server (axum). `web/` holds the HTTP and WebSocket routes, `storage.rs` and `storage/` the SQLite store, `translation.rs` and `chatgpt.rs` the translation providers, `mcp.rs` the MCP server, `push.rs` APNs, and `bridge/` the process and JSON protocol for the Go bridge.
@@ -46,11 +52,25 @@ CI fails when these drift from their sources, so regenerate them in the same cha
 - After an intended API change, run `UPDATE_FIXTURES=1 cargo test api_contract`, review the fixture diff, update `ios/WhatsAppTranslator/Models/APIModels.swift`, then run `scripts/check-api-contract.sh`. That script builds `APIModels.swift` with `ios/APIContract/APIContractCheck.swift` and decodes every fixture; it runs on Linux with a Swift 6 toolchain, and the `CI / api-contract` job runs it on every pull request.
 - Keep `APIModels.swift` and `MessageTone.swift` free of Apple-only frameworks so the check keeps building on Linux. A new fixture needs a matching check in `APIContractCheck.swift`, or the script fails.
 
-## Merge gates
+## Risk Tiers & Merging
 
-- Two commit statuses gate merges besides CI. `review-gate` passes once Copilot has reviewed the head commit and Codex has reviewed the PR, reported a finished review in a comment, or +1'd it. `risk` labels the PR `risk:low`, `risk:standard` or `risk:high` from the paths it changes, using the rules in `.github/scripts/pr-risk.sh`, and fails on high risk until the owner approves.
-- The owner approves a high-risk PR by commenting `/approve <head sha>` by hand. Agents must never post `/approve`; a comment posted through an app, as agents acting for `vultuk` do, or an edited comment does not count. A new push changes the head, so it needs a new `/approve`.
-- When a PR is high risk, say so in its description and the handoff, with the head SHA to approve. Do not split or reshape a change to lower its tier. To change the tiers, edit `pr-risk.sh` and its `expect_tier` self-test together.
+The change sets the tier, not the author. `.github/workflows/risk-gate.yml` labels every PR `risk:low`, `risk:medium`, or `risk:high` from the files it changes, using the path lists in `tools/scripts/risk-tier.mjs`.
+
+| Tier   | Typical change | Needs before merge |
+| ------ | -------------- | ------------------ |
+| Low    | Docs, the website in `docs/`, tests, screenshots | Checks green, Codex and Copilot reviews answered |
+| Medium | Ordinary server, bridge, web app and Apple app changes | The above, plus a fresh-context review before the PR opens |
+| High   | CI, agent rules and hooks, dependencies and toolchains, deploy config, storage schema and migrations, sign-in, OAuth and MCP permissions, log redaction, APNs push, the API fixtures the apps decode, Apple signing and release | The above, plus `/security-review`, plus a person approving the `Human approval` check |
+
+- The label is a floor. Raise the tier, and say why in the PR's **Risk** section, when a change can leak message content, phone numbers or tokens, let a request skip sign-in, lose stored messages, or break the shipped apps outside the listed paths. Never lower it. A PR you raise to high does not get the `Human approval` check, so leave auto-merge off and ask the requester to merge it.
+- Before opening a medium or high PR, review the diff with fresh context: use the `code-review` skill, or a reviewer subagent given only the request and the diff. For high, also run the `security-review` skill. Fix each finding or record why not. Delegating these reviews is requested here, so it counts as permitted.
+- Wait until Codex and Copilot have reviewed the latest commit and every review thread is fixed, or answered with a reason, and resolved. Then enable auto-merge (squash) with the GitHub `enable_pr_auto_merge` tool instead of merging directly. GitHub merges through the merge queue once the required checks pass.
+- Before pushing another commit to a PR with auto-merge on, disable auto-merge, and enable it again once the new commit has been reviewed.
+- A high PR stays open until a person approves its `Human approval` run in the Actions tab; each new push or edit to the PR (title, description, base) needs a fresh approval, so finish the description before asking. Tell the requester in one line that it is waiting on them. Never approve that environment yourself, and never change rulesets, branch protection, environments, `risk-gate.yml`, or `risk-tier.mjs` to get a PR through.
+- Cap review rounds at three. A round is a push that answers review findings. If findings remain after the third, stop pushing and ask the requester whether to change the approach, listing what is still open.
+- When a finding is real, fix every instance of that class of bug in the diff, not only the line flagged. Move a comment that keeps recurring into `AGENTS.md`, `REVIEW.md`, a lint rule, or a test.
+- If a merged PR breaks `main` or production, open a revert PR (`git revert`) first and fix forward afterwards. The revert follows the same tier as the original PR.
+- Do not split or reshape a change to lower its tier. To change the tiers, edit the path lists in `risk-tier.mjs` and `risk-tier.spec.ts` together; `node --test tools/scripts/*.spec.ts` (or `make scripts-test`) runs the specs.
 
 ## File size limit
 
@@ -58,3 +78,7 @@ CI fails when these drift from their sources, so regenerate them in the same cha
 - It checks only staged files, so an existing oversized file blocks the commit only when it is edited. When that happens, split the file as the hook's message describes, in the same commit; do not bypass the hook with `--no-verify` or trim content to fit.
 - Binary files and files marked `linguist-generated` in `.gitattributes` (lockfiles, `web/extensions/dist/`, Xcode project and asset catalog files) are skipped. Mark new generated files there.
 - Run `scripts/check-file-size.sh $(git ls-files)` to list every file currently over the limit.
+
+## Review guidelines
+
+When reviewing a pull request, follow [REVIEW.md](REVIEW.md): what failure looks like here, severity tags, the nit cap, paths to skip, and the summary format.
