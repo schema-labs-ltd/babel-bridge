@@ -31,6 +31,8 @@ WATCH_SECONDS="${WATCH_SECONDS:-600}"
 POLL_SECONDS="${POLL_SECONDS:-30}"
 IGNORE_ERRORS="${IGNORE_ERRORS:-}"
 MAX_MISSED_POLLS=3
+# Polls in a row that may reach the old instance before the new one counts as gone.
+MAX_STALE_POLLS=10
 
 # An invalid pattern would otherwise hide every error.
 if [ -n "$IGNORE_ERRORS" ]; then
@@ -131,17 +133,27 @@ done
 log "deploy is live; watching it for ${WATCH_SECONDS}s"
 
 missed=0
+stale=0
 ours="$diagnostics"
 deadline=$((SECONDS + WATCH_SECONDS))
 while :; do
   if fetch_diagnostics; then
     missed=0
     commit="$(jq -r '.commit // empty' <<<"$diagnostics")"
-    # During a rolling handover the old instance can still answer. A newer
-    # push cancels this run, so another commit here is never a verdict.
+    # During a rolling handover the old instance can still answer for a
+    # while; a newer push cancels this run. Only a fresh answer from the
+    # new deploy counts, and if the old one keeps answering, the new one
+    # has gone (Railway rolled it back or it stopped serving).
     if [ "$commit" != "$EXPECTED_SHA" ]; then
-      log "this poll reached $commit, not $EXPECTED_SHA; ignoring it"
+      stale=$((stale + 1))
+      log "this poll reached $commit, not $EXPECTED_SHA ($stale in a row)"
+      if [ "$stale" -ge "$MAX_STALE_POLLS" ]; then
+        log "the new deploy stopped serving"
+        exit 1
+      fi
       diagnostics="$ours"
+    else
+      stale=0
     fi
     ours="$diagnostics"
     errors="$(error_lines)"
@@ -157,8 +169,8 @@ while :; do
       exit 1
     fi
   fi
-  # Past the deadline, keep polling until the server answers again or misses too many polls.
-  if [ "$SECONDS" -ge "$deadline" ] && [ "$missed" -eq 0 ]; then
+  # Past the deadline, keep polling until the new deploy answers again or fails a limit.
+  if [ "$SECONDS" -ge "$deadline" ] && [ "$missed" -eq 0 ] && [ "$stale" -eq 0 ]; then
     break
   fi
   sleep "$POLL_SECONDS"
