@@ -23,6 +23,7 @@ on:
       - "src/mcp.rs"
       - "src/mcp/**"
       - "src/bridge/**"
+      - "src/storage.rs"
       - "src/storage/schema.rs"
       - "src/storage/schema/**"
       - "src/storage/oauth.rs"

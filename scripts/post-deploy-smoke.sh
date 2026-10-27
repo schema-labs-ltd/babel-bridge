@@ -67,7 +67,9 @@ sign_in() {
 }
 
 # Sets $diagnostics. Signs in again on 401, because session tokens live in
-# memory and every deploy starts with none.
+# memory and every deploy starts with none. Returns 2 when the server still
+# answers 401, which during a handover means sign-in and diagnostics reached
+# different instances.
 fetch_diagnostics() {
   local attempt status body
   body="$(mktemp)"
@@ -88,6 +90,7 @@ fetch_diagnostics() {
   done
   rm -f "$body"
   log "diagnostics answered HTTP $status"
+  [ "$status" != "401" ] || return 2
   return 1
 }
 
@@ -137,7 +140,16 @@ stale=0
 ours="$diagnostics"
 deadline=$((SECONDS + WATCH_SECONDS))
 while :; do
-  if fetch_diagnostics; then
+  status=0
+  fetch_diagnostics || status=$?
+  if [ "$status" -eq 2 ]; then
+    # A sign-in that landed on the other instance; judge it like a stale poll.
+    stale=$((stale + 1))
+    if [ "$stale" -ge "$MAX_STALE_POLLS" ]; then
+      log "the new deploy kept refusing a fresh sign-in"
+      exit 1
+    fi
+  elif [ "$status" -eq 0 ]; then
     missed=0
     commit="$(jq -r '.commit // empty' <<<"$diagnostics")"
     # During a rolling handover the old instance can still answer for a
