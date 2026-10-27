@@ -131,15 +131,19 @@ done
 log "deploy is live; watching it for ${WATCH_SECONDS}s"
 
 missed=0
+ours="$diagnostics"
 deadline=$((SECONDS + WATCH_SECONDS))
 while :; do
   if fetch_diagnostics; then
     missed=0
     commit="$(jq -r '.commit // empty' <<<"$diagnostics")"
+    # During a rolling handover the old instance can still answer. A newer
+    # push cancels this run, so another commit here is never a verdict.
     if [ "$commit" != "$EXPECTED_SHA" ]; then
-      log "the server now reports $commit, so a later deploy replaced this one"
-      exit 0
+      log "this poll reached $commit, not $EXPECTED_SHA; ignoring it"
+      diagnostics="$ours"
     fi
+    ours="$diagnostics"
     errors="$(error_lines)"
     if [ -n "$errors" ]; then
       log "the new deploy logged errors:"

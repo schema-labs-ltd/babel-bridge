@@ -79,7 +79,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          existing="$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty')"
+          # Only this repo's own branch counts; a fork can open a PR with the same head name.
+          existing="$(gh pr list --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" --state open \
+            --json url,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].url // empty')"
           if [ -n "$existing" ]; then
             echo "A revert PR for #$PR_NUMBER is already open: $existing"
             echo "url=$existing" >> "$GITHUB_OUTPUT"
