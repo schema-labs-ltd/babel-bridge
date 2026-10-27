@@ -4,16 +4,14 @@
 # comment, or +1'd it. The rules and their self-test are in
 # .github/scripts/review-gate.sh.
 #
-# A new head polls for up to 15 minutes. A submitted review re-checks at once.
-# Reactions trigger nothing, so the schedule re-checks open PRs for a late
-# Codex +1. Every run uses the script from the default branch.
+# A new head polls for up to 15 minutes. The schedule catches later reviews
+# and reactions. Only default-branch workflows can access the merge-gates
+# environment's App key; see docs/merge-gates.md for the required settings.
 name: review-gate
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_review:
-    types: [submitted]
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
@@ -28,13 +26,10 @@ permissions:
 jobs:
   evaluate:
     name: evaluate
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    permissions:
-      contents: read
-      issues: read
-      pull-requests: read
-      statuses: write
+    environment: merge-gates
     concurrency:
       group: review-gate-${{ github.event_name }}-${{ github.event.pull_request.number || inputs.pr || 'all' }}
       cancel-in-progress: true
@@ -46,22 +41,23 @@ jobs:
           persist-credentials: false
 
       - name: Self-test review rules
-        id: selftest
-        run: |
-          # pull_request_review runs the PR's copy of this file, which can
-          # reach a default branch that does not have the script yet.
-          if [ ! -f .github/scripts/review-gate.sh ]; then
-            echo "The default branch has no review-gate script yet."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          .github/scripts/review-gate.sh selftest
-          echo "ready=true" >> "$GITHUB_OUTPUT"
+        run: .github/scripts/review-gate.sh selftest
+
+      - name: Create gate App token
+        id: gate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.MERGE_GATES_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MERGE_GATES_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-statuses: write
 
       - name: Evaluate and post the review-gate status
-        if: steps.selftest.outputs.ready == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.gate-token.outputs.token }}
+          STATUS_CREATOR: ${{ steps.gate-token.outputs.app-slug }}[bot]
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
           POLL_SECONDS: ${{ github.event_name == 'pull_request_target' && '900' || '0' }}
