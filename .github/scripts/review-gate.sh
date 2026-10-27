@@ -91,7 +91,12 @@ selftest() {
 
 current_status() {
   gh api "repos/$REPO/commits/$1/statuses?per_page=100" |
-    jq -r '[.[] | select(.context == "review-gate")][0] | "\(.state // "")\t\(.description // "")"'
+    # Only the latest status can suppress a write, and only if our App posted
+    # it. A same-text status from another producer must be replaced by ours.
+    jq -r --arg creator "${STATUS_CREATOR:?}" \
+      '[.[] | select(.context == "review-gate")][0]
+       | select(.creator.login == $creator)
+       | "\(.state // "")\t\(.description // "")"'
 }
 
 post_status() {
@@ -143,7 +148,7 @@ check_pr() {
 }
 
 run() {
-  : "${REPO:?}"
+  : "${REPO:?}" "${STATUS_CREATOR:?}"
   if [ -n "${PR_NUMBER:-}" ]; then
     check_pr "$PR_NUMBER"
     return 0
