@@ -105,7 +105,8 @@ jobs:
             exit 0
           fi
           # Never revert a revert: that would bring the bad change back.
-          if jq -e '.head | startswith("revert/")' <<<"$pr" >/dev/null ||
+          # revert.yml uses revert/pr-N; GitHub's Revert button uses revert-N-branch.
+          if jq -e '.head | startswith("revert/") or startswith("revert-")' <<<"$pr" >/dev/null ||
             jq -e '.labels | index("regression")' <<<"$pr" >/dev/null; then
             echo "::warning::#$number is itself a revert or fix, so it is left for a person to look at."
             exit 0

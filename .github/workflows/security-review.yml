@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "src/web/auth.rs"
+      - "src/web/server.rs"
       - "src/web/oauth.rs"
       - "src/web/oauth/**"
       - "src/web/mcp_http.rs"
