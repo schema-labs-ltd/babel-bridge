@@ -10,7 +10,15 @@
     },
     "test": {
       "command": "command -v ffmpeg >/dev/null || { echo 'ffmpeg is required by the Rust tests (CI installs a static build).'; exit 1; }; SKIP_GO_BUILD=1 cargo test",
-      "inputs": ["rust", { "runtime": "ffmpeg -version | head -n 1" }]
+      "inputs": [
+        "rust",
+        {
+          "runtime": "ffmpeg -version | head -n 1"
+        },
+        {
+          "runtime": "ffprobe -version | head -n 1"
+        }
+      ]
     },
     "lint": {
       "command": "SKIP_GO_BUILD=1 cargo clippy --all-targets -- -D warnings",
@@ -23,6 +31,9 @@
     "container-check": {
       "command": "docker build --target rust-builder --tag whatsapp-translator:rust-build-check .",
       "cache": false
+    },
+    "format": {
+      "command": "cargo fmt"
     }
   }
 }

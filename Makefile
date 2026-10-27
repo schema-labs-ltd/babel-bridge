@@ -60,9 +60,7 @@ lint: web-deps
 	$(NX) run-many -t format-check lint typecheck $(CHECK_FLAGS)
 
 fmt: web-deps
-	cd wa-bridge && gofmt -w .
-	cargo fmt
-	cd web && npm run format
+	$(NX) run-many -t format $(CHECK_FLAGS)
 
 graph: nx-deps
 	$(NX) graph
@@ -149,5 +147,5 @@ container-check: nx-deps
 # project; docs and other files no task reads affect none.
 check-fast: web-deps
 	@git merge-base HEAD $(BASE) >/dev/null 2>&1 || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }
-	@if git diff --name-only $(BASE)... -- ios | grep -q .; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi
+	@if { git diff --name-only $(BASE)...; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '^ios/' >/dev/null; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi
 	$(NX) affected -t $(CHECK_TARGETS) --base=$(BASE) $(CHECK_FLAGS)

@@ -5,7 +5,9 @@
   "targets": {
     "test": {
       "command": "npm test",
-      "options": { "cwd": "{projectRoot}" },
+      "options": {
+        "cwd": "{projectRoot}"
+      },
       "inputs": [
         "node",
         "{projectRoot}/public/**/*",
@@ -15,18 +17,21 @@
     },
     "lint": {
       "command": "npm run lint:web",
-      "options": { "cwd": "{projectRoot}" },
+      "options": {
+        "cwd": "{projectRoot}"
+      },
       "inputs": [
         "node",
         "{projectRoot}/public/**/*",
         "{projectRoot}/tests/**/*",
-        "{projectRoot}/*.test.js",
-        "{workspaceRoot}/.prettierrc*"
+        "{projectRoot}/*.test.js"
       ]
     },
     "format": {
       "command": "npm run format",
-      "options": { "cwd": "{projectRoot}" }
+      "options": {
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

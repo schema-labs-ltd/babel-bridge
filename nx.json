@@ -22,28 +22,59 @@
       "{workspaceRoot}/fixtures/**/*",
       "{workspaceRoot}/web/public/**/*",
       "{workspaceRoot}/web/extensions/dist/**/*",
-      { "env": "SKIP_GO_BUILD" },
-      { "runtime": "rustc --version" }
+      {
+        "env": "SKIP_GO_BUILD"
+      },
+      {
+        "env": "UPDATE_FIXTURES"
+      },
+      {
+        "runtime": "rustc --version"
+      }
     ],
     "go": [
       "sharedGlobals",
       "{projectRoot}/**/*",
       "!{projectRoot}/wa-bridge",
-      { "runtime": "go version" }
+      {
+        "runtime": "go version"
+      }
     ],
     "webDeps": [
       "{workspaceRoot}/web/package.json",
-      "{workspaceRoot}/web/package-lock.json"
+      "{workspaceRoot}/web/package-lock.json",
+      "{workspaceRoot}/web/.prettierrc.json",
+      "{workspaceRoot}/web/.prettierignore"
     ],
-    "node": ["sharedGlobals", "webDeps", { "runtime": "node --version" }]
+    "node": [
+      "sharedGlobals",
+      "webDeps",
+      {
+        "runtime": "node --version"
+      }
+    ]
   },
   "targetDefaults": {
-    "format-check": { "cache": true },
-    "lint": { "cache": true },
-    "typecheck": { "cache": true },
-    "test": { "cache": true },
-    "check": { "cache": true },
-    "e2e": { "cache": true },
-    "build": { "cache": true }
+    "format-check": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "typecheck": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
+    },
+    "check": {
+      "cache": true
+    },
+    "e2e": {
+      "cache": true
+    },
+    "build": {
+      "cache": true
+    }
   }
 }
