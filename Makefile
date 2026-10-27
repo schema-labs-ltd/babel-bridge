@@ -24,8 +24,8 @@ help:
 	@echo "make check-fast   run only the checks for areas changed since $(BASE)"
 	@echo "make ci           check, then the production container build (needs Docker)"
 	@echo "make check-go | check-rust | check-web   one CI job"
-	@echo "make test         Go, Rust and web unit tests"
-	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier and extension types"
+	@echo "make test         Go, Rust, web and tools/scripts unit tests"
+	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier (web, extension, tools/scripts) and extension types"
 	@echo "make fmt          apply gofmt, rustfmt and prettier"
 
 # Same steps, same order as the go, rust and web jobs in .github/workflows/ci.yml.
@@ -35,7 +35,7 @@ check-go: go-fmt-check go-vet go-test
 
 check-rust: fmt-check rust-test clippy
 
-check-web: web-deps web-test scripts-test web-lint scripts-lint extension-check extension-test
+check-web: web-deps web-test scripts-test web-lint extension-check scripts-lint extension-test
 
 ci: check container-check
 

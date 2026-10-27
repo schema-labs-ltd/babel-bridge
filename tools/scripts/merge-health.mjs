@@ -17,7 +17,11 @@ export const ISSUE_TITLE = "Weekly merge health";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function riskOf(labels) {
-  const names = labels.map((label) => label.name ?? label);
+  // risk:standard is the medium label of the risk workflow risk-gate.yml
+  // replaced, so PRs labelled before the switch still count as medium.
+  const names = labels
+    .map((label) => label.name ?? label)
+    .map((name) => (name === "risk:standard" ? "risk:medium" : name));
   // A PR carrying several risk labels counts at its highest.
   return (
     [...RISK_LABELS].reverse().find((risk) => names.includes(risk)) ?? null

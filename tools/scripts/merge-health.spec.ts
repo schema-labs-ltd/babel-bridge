@@ -51,6 +51,7 @@ test("reads the risk label and prefers the highest when several are set", () => 
     "risk:high",
   );
   assert.equal(riskOf([{ name: "bug" }]), null);
+  assert.equal(riskOf([{ name: "risk:standard" }]), "risk:medium");
 });
 
 test("spots reverts by their title", () => {
