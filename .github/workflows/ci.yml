@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  # The merge queue runs CI on the queued merge before it lands.
+  merge_group:
   push:
     branches:
       - main
@@ -161,6 +163,9 @@ jobs:
       - name: Test frontend
         working-directory: web
         run: npm test
+
+      - name: Test the risk tier and merge health scripts
+        run: node --test tools/scripts/*.spec.ts
 
       - name: Check formatting, Extension types and committed resource
         working-directory: web

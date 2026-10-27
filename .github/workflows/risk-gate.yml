@@ -1,0 +1,104 @@
+name: Risk gate
+
+# Classifies each PR as low, medium or high risk from the files it changes
+# (tools/scripts/risk-tier.mjs) and labels it. A high-risk PR then waits on
+# the human-approval environment, so it cannot merge until a required
+# reviewer approves that run. Low and medium PRs skip the approval job, which
+# GitHub counts as passing. See "Risk Tiers & Merging" in AGENTS.md.
+#
+# pull_request_target runs this file and the classifier from the base branch,
+# so a PR cannot loosen the rules that classify it. It never checks out or
+# runs the PR's code; it only reads the list of changed files.
+#
+# `edited` reruns the gate when a PR is retargeted, since that changes its
+# diff. Any edit, including a title or description change, restarts the
+# approval on a high-risk PR, because a skipped run would count as passing.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+
+# A new push cancels the pending approval, so each approval covers one commit.
+concurrency:
+  group: risk-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  classify:
+    name: Classify risk
+    # The queue only merges PRs that already passed this gate.
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tier: ${{ steps.tier.outputs.tier }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+    steps:
+      - name: Check out the base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: List changed files
+        # Renames list the old path too, so moving a file out of a high-risk
+        # path still counts.
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+            --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' > files.tsv
+          tr '\t' '\n' < files.tsv | sed '/^$/d' > changed-files.txt
+          echo "Listed $(wc -l < files.tsv) of $CHANGED_FILES changed files"
+      - name: Classify
+        id: tier
+        # The API lists at most 3,000 files, so an incomplete list is
+        # treated as high risk rather than classified.
+        run: |
+          listed=$(wc -l < files.tsv)
+          if [ "$listed" -ne "$CHANGED_FILES" ]; then
+            printf 'tier=high\nhigh-risk: only %s of %s changed files could be listed\n' "$listed" "$CHANGED_FILES" > risk.txt
+          else
+            node tools/scripts/risk-tier.mjs changed-files.txt > risk.txt
+          fi
+          cat risk.txt
+          grep '^tier=' risk.txt >> "$GITHUB_OUTPUT"
+          {
+            echo "## Risk tier: $(sed -n 's/^tier=//p' risk.txt)"
+            sed -n 's/^high-risk: \(.*\)/- `\1`/p' risk.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Label the PR
+        env:
+          TIER: ${{ steps.tier.outputs.tier }}
+        run: |
+          gh label create "risk:low" --repo "$GITHUB_REPOSITORY" --color 0e8a16 --description "Merges once checks and reviews pass" --force
+          gh label create "risk:medium" --repo "$GITHUB_REPOSITORY" --color fbca04 --description "Merges after a fresh-context review" --force
+          gh label create "risk:high" --repo "$GITHUB_REPOSITORY" --color b60205 --description "Waits for human approval" --force
+          # risk:standard is the medium label of the risk workflow this replaced.
+          for tier in low medium high standard; do
+            if [ "$tier" != "$TIER" ]; then
+              gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label "risk:$tier" || true
+            fi
+          done
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label "risk:$TIER"
+
+  human-approval:
+    name: Human approval
+    needs: classify
+    if: needs.classify.outputs.tier == 'high'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Its required reviewers approve this run in the Actions tab.
+    environment: human-approval
+    steps:
+      - name: Record the approval
+        run: echo "A required reviewer approved this high-risk PR at ${{ github.event.pull_request.head.sha }}."
