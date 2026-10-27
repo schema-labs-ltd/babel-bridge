@@ -90,7 +90,8 @@ export const LOW_RISK_PATTERNS = [
 ];
 
 // Turns a glob into a RegExp. `**/` matches any number of directories, `**`
-// anything, and `*` anything within one path segment.
+// anything, and `*` anything within one path segment. The `s` flag lets
+// both match line terminators such as U+2028, which paths may contain.
 export function globToRegExp(glob) {
   let source = "";
   for (let i = 0; i < glob.length; i++) {
@@ -107,7 +108,7 @@ export function globToRegExp(glob) {
       source += char.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
     }
   }
-  return new RegExp(`^${source}$`);
+  return new RegExp(`^${source}$`, "s");
 }
 
 const matcher = (patterns) => {

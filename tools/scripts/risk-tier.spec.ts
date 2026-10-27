@@ -161,6 +161,17 @@ test("does not count tests in high-risk paths as high risk", () => {
   assert.ok(LOW_RISK_PATTERNS.includes(TEST_PATTERNS[0]));
 });
 
+test("matches paths that contain line terminators", () => {
+  for (const file of [
+    ".github/workflows/\u2028publish.yml",
+    "src/web/oauth/\u2029tokens.rs",
+    ".github/\rci.yml",
+  ]) {
+    assert.equal(classify([file]).tier, "high", JSON.stringify(file));
+  }
+  assert.equal(globToRegExp("docs/*").test("docs/a\u2028b"), true);
+});
+
 test("treats an empty file list as medium risk", () => {
   assert.equal(classify([]).tier, "medium");
 });
