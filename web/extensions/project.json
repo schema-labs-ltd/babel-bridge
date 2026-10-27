@@ -45,7 +45,7 @@
           "env": "CHROMIUM_PATH"
         }
       ],
-      "outputs": ["{workspaceRoot}/output/playwright/extensions"]
+      "outputs": ["{workspaceRoot}/output/playwright"]
     }
   }
 }

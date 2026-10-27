@@ -4,7 +4,7 @@
   "projectType": "application",
   "targets": {
     "format-check": {
-      "command": "unformatted=\"$(gofmt -l .)\"; if [ -n \"$unformatted\" ]; then echo 'error: run gofmt -w on these files:'; echo \"$unformatted\"; exit 1; fi",
+      "command": "unformatted=\"$(gofmt -l .)\" && if [ -n \"$unformatted\" ]; then echo 'error: run gofmt -w on these files:'; echo \"$unformatted\"; exit 1; fi",
       "options": {
         "cwd": "{projectRoot}"
       },

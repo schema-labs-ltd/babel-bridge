@@ -36,6 +36,10 @@
       "sharedGlobals",
       "{projectRoot}/**/*",
       "!{projectRoot}/wa-bridge",
+      "{workspaceRoot}/fixtures/bridge/**/*",
+      {
+        "env": "UPDATE_FIXTURES"
+      },
       {
         "runtime": "go version"
       }
