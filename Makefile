@@ -49,7 +49,7 @@ check-rust: nx-deps require-ffmpeg
 	$(NX) run-many -t format-check test lint -p server --outputStyle=stream
 
 check-web: web-deps extension-browser
-	$(NX) run-many -t $(CHECK_TARGETS) -p web extension tools-scripts --outputStyle=stream
+	$(NX) run-many -t $(CHECK_TARGETS) -p web web-extension tools-scripts --outputStyle=stream
 
 ci: check container-check
 
@@ -88,22 +88,17 @@ rust-test: nx-deps require-ffmpeg
 clippy: nx-deps
 	$(NX) run server:lint
 
-# Nx itself, from the root package.json. Reinstalled only when the manifest or
-# lock file is newer than the last install.
+# Nx and every npm workspace (apps/web, libs/web-extension) install from the
+# root lock file. CI runs `npm ci` on a clean checkout; locally it reruns only
+# when a manifest or the lock file is newer than the last install.
 nx-deps: node_modules/.make-npm-ci
 
-node_modules/.make-npm-ci: package.json package-lock.json
+node_modules/.make-npm-ci: package.json package-lock.json apps/web/package.json libs/web-extension/package.json
 	npm ci
 	touch $@
 
-# CI runs `npm ci` on a clean checkout. Locally it reruns only when
-# package.json or the lock file is newer than the last install, so repeated
-# checks stay fast.
-web-deps: nx-deps web/node_modules/.make-npm-ci
-
-web/node_modules/.make-npm-ci: web/package.json web/package-lock.json
-	cd web && npm ci
-	touch $@
+# Kept as an alias: the web app and extension share the root install.
+web-deps: nx-deps
 
 web-test: web-deps
 	$(NX) run web:test
@@ -119,22 +114,22 @@ web-lint: web-deps
 	$(NX) run web:lint
 
 extension-lint: web-deps
-	$(NX) run-many -t lint typecheck -p extension
+	$(NX) run-many -t lint typecheck -p web-extension
 
 # prettier, tsc, and the committed chats.html drift check.
 extension-check: web-deps
-	$(NX) run extension:check
+	$(NX) run web-extension:check
 
 # CI runs `npx playwright install chromium`. Locally this downloads the
 # browser only when Playwright's pinned build is missing; system libraries
 # are left to the machine.
 extension-browser: web-deps
-	@cd web && if [ -z "$${CHROMIUM_PATH:-}" ] && [ ! -x "$$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" ]; then \
+	@if [ -z "$${CHROMIUM_PATH:-}" ] && [ ! -x "$$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" ]; then \
 		npx playwright install chromium; \
 	fi
 
 extension-test: extension-browser
-	$(NX) run extension:e2e
+	$(NX) run web-extension:e2e
 
 api-contract: nx-deps
 	$(NX) run ios:api-contract
@@ -142,10 +137,10 @@ api-contract: nx-deps
 container-check: nx-deps
 	$(NX) run server:container-check
 
-# Nx maps changed files to projects (nx.json namedInputs, .nxignore). A change
+# Nx maps changed files to projects (project roots and nx.json namedInputs). A change
 # to nx.json, the root lock file, this Makefile or ci.yml affects every
-# project; docs and other files no task reads affect none.
+# project; docs and other files outside apps/, libs/ and tools/ affect none.
 check-fast: web-deps
 	@git merge-base HEAD $(BASE) >/dev/null 2>&1 || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }
-	@if { git diff --name-only $(BASE)...; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '^ios/' >/dev/null; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi
+	@if { git diff --name-only $(BASE)...; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '^apps/ios/' >/dev/null; then echo "Apple paths changed: only the apple / apple CI check covers them."; fi
 	$(NX) affected -t $(CHECK_TARGETS) --base=$(BASE) $(CHECK_FLAGS)

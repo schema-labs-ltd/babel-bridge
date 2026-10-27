@@ -62,7 +62,7 @@ jobs:
           go-version-file: wa-bridge/go.mod
           cache-dependency-path: wa-bridge/go.sum
 
-      # Nx runs every check below; it is the only package in the root manifest.
+      # Nx runs every check below.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -98,7 +98,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      # Nx runs every check below; it is the only package in the root manifest.
+      # Nx runs every check below.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -167,12 +167,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web/package-lock.json
+          cache-dependency-path: package-lock.json
 
+      # One install for Nx and every npm workspace (apps/web, libs/web-extension).
       - name: Install Nx and frontend dependencies
-        run: npm ci && (cd web && npm ci)
+        run: npm ci
 
       - name: Test frontend
         run: npx nx run web:test --outputStyle=stream
@@ -180,13 +179,12 @@ jobs:
       - name: Test the risk tier and merge health scripts
         run: npx nx run tools-scripts:test --outputStyle=stream
 
-      # extension:check runs extension:lint and extension:typecheck first.
+      # web-extension:check runs web-extension:lint and :typecheck first.
       - name: Check formatting, Extension types and committed resource
-        run: npx nx run-many -t lint check -p web tools-scripts extension --outputStyle=stream
+        run: npx nx run-many -t lint check -p web tools-scripts web-extension --outputStyle=stream
 
       - name: Read Playwright version
         id: playwright
-        working-directory: web
         run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
@@ -199,7 +197,6 @@ jobs:
       # `--with-deps` apt step (which has stalled for 15+ min) only runs if
       # the Chromium binary is missing a shared library.
       - name: Install Extension browser
-        working-directory: web
         run: |
           set -eu
           npx playwright install chromium
@@ -212,7 +209,7 @@ jobs:
           echo "CHROMIUM_PATH=$chromium" >> "$GITHUB_ENV"
 
       - name: Test Extension host bridge and UI
-        run: npx nx run extension:e2e --outputStyle=stream
+        run: npx nx run web-extension:e2e --outputStyle=stream
 
       - name: Upload Extension screenshots
         if: always()

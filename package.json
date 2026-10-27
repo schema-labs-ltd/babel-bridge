@@ -1,12 +1,19 @@
 {
-  "name": "babel-bridge",
+  "name": "@babel-bridge/source",
   "private": true,
-  "description": "Nx task runner for the Rust server, Go bridge, web app and tools in this repository",
+  "description": "Nx workspace for the Rust server, Go bridge, web app, MCP Apps extension and Apple apps",
+  "workspaces": [
+    "apps/web",
+    "libs/web-extension"
+  ],
   "scripts": {
     "graph": "nx graph"
   },
   "devDependencies": {
-    "nx": "24.0.2"
+    "@nx/playwright": "24.0.2",
+    "@nx/storybook": "24.0.2",
+    "nx": "24.0.2",
+    "prettier": "3.9.4"
   },
   "overrides": {
     "undici": "7.30.1"

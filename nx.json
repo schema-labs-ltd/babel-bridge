@@ -3,7 +3,6 @@
   "defaultBase": "origin/main",
   "neverConnectToCloud": true,
   "analytics": false,
-  "useInferencePlugins": false,
   "parallel": 3,
   "namedInputs": {
     "sharedGlobals": [
@@ -12,73 +11,66 @@
       "{workspaceRoot}/Makefile",
       "{workspaceRoot}/.github/workflows/ci.yml"
     ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/tests/**/*",
+      "!{projectRoot}/**/*.test.js",
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/**/*_test.go",
+      "!{projectRoot}/.storybook/**/*",
+      "!{projectRoot}/src/stories/**/*"
+    ],
+    "prettier": [
+      "{workspaceRoot}/.prettierrc.json",
+      "{workspaceRoot}/.prettierignore",
+      { "externalDependencies": ["prettier"] }
+    ],
     "rust": [
-      "sharedGlobals",
+      "default",
       "{workspaceRoot}/Cargo.toml",
       "{workspaceRoot}/Cargo.lock",
       "{workspaceRoot}/rust-toolchain.toml",
-      "{workspaceRoot}/build.rs",
-      "{workspaceRoot}/src/**/*",
       "{workspaceRoot}/fixtures/**/*",
-      "{workspaceRoot}/web/public/**/*",
-      "{workspaceRoot}/web/extensions/dist/**/*",
-      {
-        "env": "SKIP_GO_BUILD"
-      },
-      {
-        "env": "UPDATE_FIXTURES"
-      },
-      {
-        "runtime": "rustc --version"
-      }
+      { "env": "SKIP_GO_BUILD" },
+      { "env": "UPDATE_FIXTURES" },
+      { "runtime": "rustc --version" }
     ],
     "go": [
-      "sharedGlobals",
-      "{projectRoot}/**/*",
+      "default",
       "!{projectRoot}/wa-bridge",
       "{workspaceRoot}/fixtures/bridge/**/*",
-      {
-        "env": "UPDATE_FIXTURES"
-      },
-      {
-        "runtime": "go version"
-      }
+      { "env": "UPDATE_FIXTURES" },
+      { "runtime": "go version" }
     ],
-    "webDeps": [
-      "{workspaceRoot}/web/package.json",
-      "{workspaceRoot}/web/package-lock.json",
-      "{workspaceRoot}/web/.prettierrc.json",
-      "{workspaceRoot}/web/.prettierignore"
-    ],
-    "node": [
-      "sharedGlobals",
-      "webDeps",
-      {
-        "runtime": "node --version"
-      }
-    ]
+    "node": ["default", { "runtime": "node --version" }]
   },
   "targetDefaults": {
-    "format-check": {
-      "cache": true
-    },
-    "lint": {
-      "cache": true
-    },
-    "typecheck": {
-      "cache": true
-    },
-    "test": {
-      "cache": true
-    },
-    "check": {
-      "cache": true
-    },
-    "e2e": {
-      "cache": true
-    },
+    "format-check": { "cache": true },
+    "lint": { "cache": true },
+    "typecheck": { "cache": true },
+    "test": { "cache": true },
+    "check": { "cache": true },
+    "e2e": { "cache": true },
     "build": {
-      "cache": true
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
     }
-  }
+  },
+  "plugins": [
+    {
+      "plugin": "@nx/playwright/plugin",
+      "options": { "targetName": "e2e", "ciTargetName": "e2e-ci" }
+    },
+    {
+      "plugin": "@nx/storybook/plugin",
+      "options": {
+        "serveStorybookTargetName": "storybook",
+        "buildStorybookTargetName": "build-storybook",
+        "testStorybookTargetName": "test-storybook",
+        "staticStorybookTargetName": "static-storybook"
+      }
+    }
+  ]
 }

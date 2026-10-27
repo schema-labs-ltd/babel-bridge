@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "ios",
+  "projectType": "application",
+  "tags": ["type:app", "lang:swift"],
+  "targets": {
+    "api-contract": {
+      "command": "scripts/check-api-contract.sh",
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/scripts/check-api-contract.sh",
+        "{workspaceRoot}/fixtures/api/**/*",
+        "{projectRoot}/WhatsAppTranslator/Models/APIModels*.swift",
+        "{projectRoot}/WhatsAppTranslator/Models/MessageTone.swift",
+        "{projectRoot}/APIContract/**/*",
+        { "runtime": "swiftc --version" }
+      ]
+    }
+  }
+}

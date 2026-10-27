@@ -2,8 +2,7 @@
 # (scripts/check-file-size.sh) skips anything marked linguist-generated.
 Cargo.lock linguist-generated
 package-lock.json linguist-generated
-web/package-lock.json linguist-generated
-wa-bridge/go.sum linguist-generated
-web/extensions/dist/** linguist-generated
+apps/wa-bridge/go.sum linguist-generated
+libs/web-extension/dist/** linguist-generated
 *.pbxproj linguist-generated
 *.xcassets/** linguist-generated

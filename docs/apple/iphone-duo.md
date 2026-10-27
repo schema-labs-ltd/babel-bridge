@@ -1,6 +1,6 @@
 # iPhone Duo
 
-See the [Apple platforms README](../../ios/README.md) for building, testing and releasing the apps.
+See the [Apple platforms README](../../apps/ios/README.md) for building, testing and releasing the apps.
 
 Babel Bridge follows Apple's [Designing for iPhone Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo)
 guidance and the [Preparing your app for iPhone Duo](https://developer.apple.com/documentation/technologyoverviews/preparing-your-app-for-iphone-duo)

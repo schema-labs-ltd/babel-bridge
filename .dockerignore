@@ -2,7 +2,7 @@
 /target/
 
 # Go build artifacts
-wa-bridge/wa-bridge
+apps/wa-bridge/wa-bridge
 
 # IDE
 .idea/

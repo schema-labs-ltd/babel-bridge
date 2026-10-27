@@ -1,0 +1,19 @@
+{
+  "name": "@babel-bridge/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static web frontend tooling for WhatsApp Translator",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "devDependencies": {
+    "@storybook/html-vite": "^10.3.5",
+    "storybook": "^10.3.5"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "server",
+  "projectType": "application",
+  "sourceRoot": "apps/server/src",
+  "tags": ["type:app", "lang:rust"],
+  "implicitDependencies": ["web", "web-extension"],
+  "targets": {
+    "format-check": {
+      "command": "cargo fmt --check",
+      "inputs": ["rust"]
+    },
+    "test": {
+      "command": "command -v ffmpeg >/dev/null || { echo 'ffmpeg is required by the Rust tests (CI installs a static build).'; exit 1; }; SKIP_GO_BUILD=1 cargo test",
+      "inputs": [
+        "rust",
+        "^production",
+        { "runtime": "ffmpeg -version | head -n 1" },
+        { "runtime": "ffprobe -version | head -n 1" }
+      ]
+    },
+    "lint": {
+      "command": "SKIP_GO_BUILD=1 cargo clippy --all-targets -- -D warnings",
+      "inputs": ["rust", "^production"]
+    },
+    "build": {
+      "command": "cargo build --release",
+      "cache": false
+    },
+    "container-check": {
+      "command": "docker build --target rust-builder --tag whatsapp-translator:rust-build-check .",
+      "cache": false
+    },
+    "format": {
+      "command": "cargo fmt"
+    }
+  }
+}

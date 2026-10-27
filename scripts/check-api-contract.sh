@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decodes fixtures/api with the app's APIModels*.swift. Needs a Swift 6 toolchain
 # (Xcode on macOS, or swift.org's Linux release). The Rust test `api_contract`
-# writes the response fixtures; see src/api_contract.rs.
+# writes the response fixtures; see apps/server/src/api_contract.rs.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,10 +12,10 @@ fi
 
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
-models="$root/ios/WhatsAppTranslator/Models"
+models="$root/apps/ios/WhatsAppTranslator/Models"
 swiftc -swift-version 6 -parse-as-library \
   "$models"/APIModels*.swift \
   "$models/MessageTone.swift" \
-  "$root/ios/APIContract/APIContractCheck.swift" \
+  "$root/apps/ios/APIContract/APIContractCheck.swift" \
   -o "$build/api-contract-check"
 "$build/api-contract-check" "$root/fixtures/api"

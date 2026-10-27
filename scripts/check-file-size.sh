@@ -81,23 +81,27 @@ How to split:
 
 By language in this repo:
 
-  Rust (src/)      Turn foo.rs into a module directory: keep foo.rs (or
+  Rust (apps/server/src/)
+                   Turn foo.rs into a module directory: keep foo.rs (or
                    foo/mod.rs) for the shared types and \`mod\` declarations,
                    and move each group into foo/<group>.rs. Re-export with
                    \`pub use\` so callers keep using crate::foo::Thing. Move
                    #[cfg(test)] mod tests into foo/tests.rs (or a
-                   foo/tests/ directory). src/storage/ and src/web/ follow
-                   this pattern.
-  Swift (ios/)     Move each group into an extension in its own file named
+                   foo/tests/ directory). apps/server/src/storage/ and
+                   apps/server/src/web/ follow this pattern.
+  Swift (apps/ios/)
+                   Move each group into an extension in its own file named
                    Type+Feature.swift next to the original. The Xcode project
                    does not pick up new files by itself: add each new file to
                    the same targets as the original in
-                   ios/WhatsAppTranslator.xcodeproj.
+                   apps/ios/WhatsAppTranslator.xcodeproj.
   JavaScript/TS    Move each group into its own ES module beside the file
-  (web/)           and import it from the original with a relative import,
-                   the way web/public/app.js imports ./voice-notes.js. Move
-                   the matching tests in web/tests alongside.
-  Go (wa-bridge/)  Move each group into a new .go file in the same directory
+  (apps/web/,      and import it from the original with a relative import,
+  libs/)
+                   the way apps/web/public/app.js imports ./voice-notes.js. Move
+                   the matching tests in apps/web/tests alongside.
+  Go (apps/wa-bridge/)
+                   Move each group into a new .go file in the same directory
                    and package. No import changes are needed.
   CSS              Split by component or screen into separate files and link
                    or @import each one.

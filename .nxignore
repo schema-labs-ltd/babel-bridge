@@ -1,8 +1,0 @@
-# Files no Nx task reads. Ignoring them keeps `nx affected` from running the
-# server checks for a docs-only change (the server project owns the repo root).
-docs/
-assets/
-*.md
-.claude/
-railway.toml
-scripts/generate-message-tones.py

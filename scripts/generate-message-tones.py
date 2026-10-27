@@ -11,7 +11,7 @@ import struct
 import wave
 
 RATE = 44100
-OUTPUT = Path(__file__).resolve().parents[1] / "web/public/sounds"
+OUTPUT = Path(__file__).resolve().parents[1] / "apps/web/public/sounds"
 
 
 def render(name, duration, notes, harmonics, decay, bend=0):

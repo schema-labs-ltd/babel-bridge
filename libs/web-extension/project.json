@@ -1,0 +1,46 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "web-extension",
+  "projectType": "library",
+  "sourceRoot": "libs/web-extension/src",
+  "tags": ["type:ui", "lang:ts"],
+  "targets": {
+    "lint": {
+      "command": "prettier --check \"libs/web-extension/src/**/*\" \"libs/web-extension/*.{mjs,ts,json}\" \"libs/web-extension/tests/**/*\"",
+      "inputs": ["default", "prettier"]
+    },
+    "format": {
+      "command": "prettier --write \"libs/web-extension/src/**/*\" \"libs/web-extension/*.{mjs,ts,json}\" \"libs/web-extension/tests/**/*\""
+    },
+    "typecheck": {
+      "command": "tsc -p tsconfig.json",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": ["default", { "externalDependencies": ["typescript"] }]
+    },
+    "build": {
+      "command": "node build.mjs",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": [
+        "production",
+        "!{projectRoot}/dist/**/*",
+        { "externalDependencies": ["esbuild"] }
+      ],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "check": {
+      "command": "node build.mjs --check",
+      "options": { "cwd": "{projectRoot}" },
+      "dependsOn": ["lint", "typecheck"],
+      "inputs": ["production", { "externalDependencies": ["esbuild"] }]
+    },
+    "e2e": {
+      "inputs": [
+        "default",
+        { "externalDependencies": ["@playwright/test"] },
+        { "env": "CHROMIUM_PATH" },
+        { "env": "CI" }
+      ],
+      "outputs": ["{workspaceRoot}/output/playwright"]
+    }
+  }
+}
