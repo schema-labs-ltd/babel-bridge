@@ -5,7 +5,7 @@
 node_modules/
 
 # Go
-wa-bridge/wa-bridge
+apps/wa-bridge/wa-bridge
 
 # IDE
 .idea/
@@ -37,7 +37,10 @@ output/playwright/
 storybook-static
 
 # Xcode Cloud TestFlight notes, generated per build
-ios/TestFlight/
+apps/ios/TestFlight/
 
 # Local fake-mode data (see .env.example)
 /.data/
+
+# Nx
+.nx/

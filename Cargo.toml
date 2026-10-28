@@ -1,79 +1,8 @@
-[package]
-name = "whatsapp-translator"
-version = "0.1.0"
-edition = "2021"
-description = "Self-hosted WhatsApp client with translation, AI replies, native apps and MCP access"
-license = "MIT"
-
-[dependencies]
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# CLI argument parsing
-clap = { version = "4", features = ["derive", "env"] }
-
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-# Terminal UI
-crossterm = "0.27"
-qrcode = "0.14"
-
-# Time handling
-chrono = { version = "0.4", features = ["serde"] }
-
-# Error handling
-anyhow = "1"
-thiserror = "1"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Platform directories
-dirs = "5"
-
-# Async channels
-futures = "0.3"
-
-# HTTP server for web frontend
-axum = { version = "0.7", features = ["ws"] }
-tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.5", features = ["fs"] }
-
-# HTTP client for OpenAI Responses API and link previews
-reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
-
-# SQLite database
-rusqlite = { version = "0.31", features = ["bundled", "backup"] }
-
-# UUID generation for message IDs
-uuid = { version = "1", features = ["v4"] }
-
-# URL encoding/decoding
-urlencoding = "2"
-
-# Regex for URL extraction
-regex = "1"
-
-# MCP (Model Context Protocol) server
-rmcp = { version = "0.13", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }
-schemars = "1"
-async-trait = "0.1"
-
-# OAuth 2.0 / PKCE support
-sha2 = "0.10"
-base64 = "0.22"
-jsonwebtoken = "9"
-
-[lints.clippy]
-# Clippy 1.88 (the pinned toolchain) warns on this by default; the code
-# uses positional format arguments throughout.
-uninlined_format_args = "allow"
-
-[build-dependencies]
-# For compiling Go bridge at build time
+# Cargo workspace for the Nx monorepo. The server crate lives in apps/server;
+# the lock file, target/ and the release profile stay here at the root.
+[workspace]
+resolver = "2"
+members = ["apps/server"]
 
 [profile.release]
 lto = true

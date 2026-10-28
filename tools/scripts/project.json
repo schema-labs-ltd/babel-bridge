@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "tools-scripts",
+  "projectType": "library",
+  "tags": ["type:tooling", "lang:js"],
+  "targets": {
+    "test": {
+      "command": "node --test tools/scripts/*.spec.ts",
+      "inputs": ["node"]
+    },
+    "lint": {
+      "command": "prettier --check \"tools/scripts/**\"",
+      "inputs": ["default", "prettier"]
+    },
+    "format": {
+      "command": "prettier --write \"tools/scripts/**\""
+    }
+  }
+}

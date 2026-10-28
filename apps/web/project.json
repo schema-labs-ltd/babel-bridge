@@ -1,0 +1,21 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "web",
+  "projectType": "application",
+  "sourceRoot": "apps/web/public",
+  "tags": ["type:app", "lang:js"],
+  "targets": {
+    "test": {
+      "command": "node --test",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": ["node"]
+    },
+    "lint": {
+      "command": "prettier --check \"apps/web/public/**/*.{js,css,html,json}\" \"apps/web/tests/**/*.js\" \"apps/web/*.test.js\"",
+      "inputs": ["default", "prettier"]
+    },
+    "format": {
+      "command": "prettier --write \"apps/web/public/**/*.{js,css,html,json}\" \"apps/web/tests/**/*.js\" \"apps/web/*.test.js\""
+    }
+  }
+}

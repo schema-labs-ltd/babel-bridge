@@ -1,6 +1,6 @@
 # Messages and media on Apple platforms
 
-See the [Apple platforms README](../../ios/README.md) for building, testing and releasing the apps.
+See the [Apple platforms README](../../apps/ios/README.md) for building, testing and releasing the apps.
 
 ## Unified Messages view
 

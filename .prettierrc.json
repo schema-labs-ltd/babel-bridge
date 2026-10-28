@@ -1,0 +1,12 @@
+{
+  "overrides": [
+    {
+      "files": [
+        "apps/web/public/**/*.js",
+        "apps/web/tests/**/*.js",
+        "apps/web/*.test.js"
+      ],
+      "options": { "singleQuote": true }
+    }
+  ]
+}

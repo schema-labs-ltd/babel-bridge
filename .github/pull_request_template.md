@@ -14,7 +14,7 @@
 
 ## Testing
 
-<!-- Commands you ran (for example `make check`, `cargo test`, `go test ./...`, `npm test` in web/) and their real output or a summary of it. Name any check you skipped and why. For Apple changes, rely on the `apple / apple` check and say whether a TestFlight build is expected on merge. Include screenshots, free of message content and phone numbers, for visual changes. -->
+<!-- Commands you ran (for example `make check`, `cargo test`, `go test ./...`, `npx nx test web`) and their real output or a summary of it. Name any check you skipped and why. For Apple changes, rely on the `apple / apple` check and say whether a TestFlight build is expected on merge. Include screenshots, free of message content and phone numbers, for visual changes. -->
 
 ## How to revert
 

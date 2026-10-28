@@ -59,26 +59,28 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: wa-bridge/go.mod
-          cache-dependency-path: wa-bridge/go.sum
+          go-version-file: apps/wa-bridge/go.mod
+          cache-dependency-path: apps/wa-bridge/go.sum
+
+      # Nx runs every check below.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
 
       - name: Check Go formatting
-        working-directory: wa-bridge
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "error: run gofmt -w on these files:"
-            echo "$unformatted"
-            exit 1
-          fi
+        run: npx nx run wa-bridge:format-check --outputStyle=stream
 
       - name: Vet Go bridge
-        working-directory: wa-bridge
-        run: go vet ./...
+        run: npx nx run wa-bridge:lint --outputStyle=stream
 
       - name: Test Go bridge
-        working-directory: wa-bridge
-        run: go test ./...
+        run: npx nx run wa-bridge:test --outputStyle=stream
 
   rust:
     runs-on: ubuntu-latest
@@ -96,8 +98,19 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Nx runs every check below.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
       - name: Check Rust formatting
-        run: cargo fmt --check
+        run: npx nx run server:format-check --outputStyle=stream
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -137,10 +150,10 @@ jobs:
           done
 
       - name: Test Rust backend
-        run: cargo test
+        run: npx nx run server:test --outputStyle=stream
 
       - name: Run Rust clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: npx nx run server:lint --outputStyle=stream
 
   web:
     runs-on: ubuntu-latest
@@ -154,26 +167,24 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: web
+      # One install for Nx and every npm workspace (apps/web, libs/web-extension).
+      - name: Install Nx and frontend dependencies
         run: npm ci
 
       - name: Test frontend
-        working-directory: web
-        run: npm test
+        run: npx nx run web:test --outputStyle=stream
 
       - name: Test the risk tier and merge health scripts
-        run: node --test tools/scripts/*.spec.ts
+        run: npx nx run tools-scripts:test --outputStyle=stream
 
+      # web-extension:check runs web-extension:lint and :typecheck first.
       - name: Check formatting, Extension types and committed resource
-        working-directory: web
-        run: npm run lint && npm run typecheck:extension && npm run check:extension
+        run: npx nx run-many -t lint check -p web tools-scripts web-extension --outputStyle=stream
 
       - name: Read Playwright version
         id: playwright
-        working-directory: web
         run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
@@ -186,7 +197,6 @@ jobs:
       # `--with-deps` apt step (which has stalled for 15+ min) only runs if
       # the Chromium binary is missing a shared library.
       - name: Install Extension browser
-        working-directory: web
         run: |
           set -eu
           npx playwright install chromium
@@ -199,8 +209,7 @@ jobs:
           echo "CHROMIUM_PATH=$chromium" >> "$GITHUB_ENV"
 
       - name: Test Extension host bridge and UI
-        working-directory: web
-        run: npm run test:extension
+        run: npx nx run web-extension:e2e --outputStyle=stream
 
       - name: Upload Extension screenshots
         if: always()

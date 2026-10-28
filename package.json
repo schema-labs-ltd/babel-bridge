@@ -1,0 +1,24 @@
+{
+  "name": "@babel-bridge/source",
+  "private": true,
+  "description": "Nx workspace for the Rust server, Go bridge, web app, MCP Apps extension and Apple apps",
+  "workspaces": [
+    "apps/web",
+    "libs/web-extension"
+  ],
+  "scripts": {
+    "graph": "nx graph"
+  },
+  "devDependencies": {
+    "@nx/playwright": "24.0.2",
+    "@nx/storybook": "24.0.2",
+    "nx": "24.0.2",
+    "prettier": "3.9.4"
+  },
+  "overrides": {
+    "undici": "7.30.1"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

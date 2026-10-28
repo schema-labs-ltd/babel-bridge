@@ -1,6 +1,6 @@
 # Native Mac app
 
-See the [Apple platforms README](../../ios/README.md) for building, testing and releasing the apps.
+See the [Apple platforms README](../../apps/ios/README.md) for building, testing and releasing the apps.
 
 The Mac app provides a resizable two-column conversation window, native menu
 bar and Settings scene, Command-R refresh, Command-F conversation search,

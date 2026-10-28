@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY wa-bridge/ ./
+COPY apps/wa-bridge/ ./
 RUN go mod download && \
     CGO_ENABLED=1 go build -ldflags="-s -w" -o wa-bridge .
 
@@ -19,9 +19,9 @@ FROM rust:1.88-bookworm AS rust-builder
 
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
-COPY src/ ./src/
-COPY build.rs ./
-COPY web/extensions/dist/chats.html ./web/extensions/dist/chats.html
+COPY apps/server/Cargo.toml apps/server/build.rs ./apps/server/
+COPY apps/server/src/ ./apps/server/src/
+COPY libs/web-extension/dist/chats.html ./libs/web-extension/dist/chats.html
 
 # Skip Go build in Rust build script (we build it separately)
 ENV SKIP_GO_BUILD=1
@@ -49,7 +49,7 @@ COPY --from=go-builder /build/wa-bridge /app/wa-bridge
 COPY --from=rust-builder /build/target/release/whatsapp-translator /app/whatsapp-translator
 
 # Copy web frontend
-COPY web/public/ /app/web/public/
+COPY apps/web/public/ /app/web/public/
 
 # Make binaries executable
 RUN chmod +x /app/wa-bridge /app/whatsapp-translator

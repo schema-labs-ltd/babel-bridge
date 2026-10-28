@@ -1,0 +1,112 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "origin/main",
+  "neverConnectToCloud": true,
+  "analytics": false,
+  "parallel": 3,
+  "namedInputs": {
+    "sharedGlobals": [
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/package-lock.json",
+      "{workspaceRoot}/Makefile",
+      "{workspaceRoot}/.github/workflows/ci.yml"
+    ],
+    "default": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/**/*.md",
+      "sharedGlobals"
+    ],
+    "production": [
+      "default",
+      "!{projectRoot}/tests/**/*",
+      "!{projectRoot}/**/*.test.js",
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/**/*_test.go",
+      "!{projectRoot}/.storybook/**/*",
+      "!{projectRoot}/src/stories/**/*"
+    ],
+    "prettier": [
+      "{workspaceRoot}/.prettierrc.json",
+      "{workspaceRoot}/.prettierignore",
+      {
+        "externalDependencies": ["prettier"]
+      }
+    ],
+    "rust": [
+      "default",
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/fixtures/**/*",
+      {
+        "env": "SKIP_GO_BUILD"
+      },
+      {
+        "env": "UPDATE_FIXTURES"
+      },
+      {
+        "runtime": "rustc --version"
+      }
+    ],
+    "go": [
+      "default",
+      "!{projectRoot}/wa-bridge",
+      "{workspaceRoot}/fixtures/bridge/**/*",
+      {
+        "env": "UPDATE_FIXTURES"
+      },
+      {
+        "runtime": "go version"
+      }
+    ],
+    "node": [
+      "default",
+      {
+        "runtime": "node --version"
+      }
+    ]
+  },
+  "targetDefaults": {
+    "format-check": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "typecheck": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
+    },
+    "check": {
+      "cache": true
+    },
+    "e2e": {
+      "cache": true
+    },
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
+    }
+  },
+  "plugins": [
+    {
+      "plugin": "@nx/playwright/plugin",
+      "options": {
+        "targetName": "e2e",
+        "ciTargetName": "e2e-ci"
+      }
+    },
+    {
+      "plugin": "@nx/storybook/plugin",
+      "options": {
+        "serveStorybookTargetName": "storybook",
+        "buildStorybookTargetName": "build-storybook",
+        "testStorybookTargetName": "test-storybook",
+        "staticStorybookTargetName": "static-storybook"
+      }
+    }
+  ]
+}

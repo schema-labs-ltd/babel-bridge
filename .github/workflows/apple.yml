@@ -43,7 +43,7 @@ jobs:
           set -eu
           matches_apple() {
             case "$1" in
-              ios/*|web/public/sounds/*|.github/workflows/apple.yml) return 0 ;;
+              apps/ios/*|apps/web/public/sounds/*|.github/workflows/apple.yml) return 0 ;;
               *) return 1 ;;
             esac
           }
@@ -58,12 +58,12 @@ jobs:
               exit 1
             fi
           }
-          expect_match "ios/project.yml" yes
-          expect_match "ios/WhatsAppTranslator/App/AppSession.swift" yes
-          expect_match "web/public/sounds/tone.wav" yes
+          expect_match "apps/ios/project.yml" yes
+          expect_match "apps/ios/WhatsAppTranslator/App/AppSession.swift" yes
+          expect_match "apps/web/public/sounds/tone.wav" yes
           expect_match ".github/workflows/apple.yml" yes
-          expect_match "src/main.rs" no
-          expect_match "web/src/App.tsx" no
+          expect_match "apps/server/src/main.rs" no
+          expect_match "apps/web/src/App.tsx" no
           expect_match "AGENTS.md" no
           expect_match ".github/workflows/ci.yml" no
 
@@ -231,7 +231,7 @@ jobs:
             .deriveddata
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
-          key: derived-${{ matrix.platform }}-${{ runner.os }}-xcode-26.6-${{ hashFiles('ios/**', 'web/public/sounds/**') }}
+          key: derived-${{ matrix.platform }}-${{ runner.os }}-xcode-26.6-${{ hashFiles('apps/ios/**', 'apps/web/public/sounds/**') }}
           restore-keys: |
             derived-${{ matrix.platform }}-${{ runner.os }}-xcode-26.6-
 
@@ -239,7 +239,7 @@ jobs:
         id: generate
         run: |
           set -eu
-          cd "$GITHUB_WORKSPACE/ios"
+          cd "$GITHUB_WORKSPACE/apps/ios"
           "$XCODEGEN_BIN" generate
           if ! git diff --quiet -- WhatsAppTranslator.xcodeproj; then
             echo "error: committed WhatsAppTranslator.xcodeproj differs from XcodeGen 2.45.4"
@@ -254,7 +254,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: xcodeproj-${{ matrix.platform }}
-          path: ios/WhatsAppTranslator.xcodeproj
+          path: apps/ios/WhatsAppTranslator.xcodeproj
           if-no-files-found: ignore
 
       - name: Check destination
@@ -287,7 +287,7 @@ jobs:
           derived="${GITHUB_WORKSPACE}/.deriveddata/${PLATFORM}"
           mkdir -p "$derived"
           logfile="${RUNNER_TEMP}/xcodebuild-${PLATFORM}-build.log"
-          cd "$GITHUB_WORKSPACE/ios"
+          cd "$GITHUB_WORKSPACE/apps/ios"
           args=(
             build
             -project WhatsAppTranslator.xcodeproj
@@ -341,7 +341,7 @@ jobs:
           rm -rf "$result_bundle"
           echo "RESULT_BUNDLE=${result_bundle}" >> "$GITHUB_ENV"
           echo "TEST_LOG=${logfile}" >> "$GITHUB_ENV"
-          cd "$GITHUB_WORKSPACE/ios"
+          cd "$GITHUB_WORKSPACE/apps/ios"
           args=(
             test
             -project WhatsAppTranslator.xcodeproj

@@ -1,0 +1,25 @@
+{
+  "name": "@babel-bridge/web-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP Apps chat UI, bundled into dist/chats.html for the server to embed",
+  "type": "module",
+  "scripts": {
+    "build": "nx run web-extension:build",
+    "check": "nx run web-extension:check",
+    "lint": "nx run web-extension:lint",
+    "typecheck": "nx run web-extension:typecheck",
+    "e2e": "nx run web-extension:e2e"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@openai/mcp-extensions": "0.1.0",
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

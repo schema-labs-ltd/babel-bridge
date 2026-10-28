@@ -237,10 +237,12 @@ cargo run --release</code></pre>
             <div class="code-panel">
               <p class="panel-label">Repository layout</p>
               <pre><code>.
-├── src/         Rust app, web server, storage, translation, MCP
-├── wa-bridge/   Go bridge that speaks WhatsApp Web
-├── web/         Static frontend and Storybook stories
-└── docs/        GitHub Pages site for the project</code></pre>
+├── apps/server/          Rust app, web server, storage, translation, MCP
+├── apps/wa-bridge/       Go bridge that speaks WhatsApp Web
+├── apps/web/             Static frontend and Storybook stories
+├── apps/ios/             SwiftUI apps for iPhone, iPad, Mac and Watch
+├── libs/web-extension/   MCP Apps chat UI the server embeds
+└── docs/                 GitHub Pages site for the project</code></pre>
             </div>
 
             <dl class="signal-list">
