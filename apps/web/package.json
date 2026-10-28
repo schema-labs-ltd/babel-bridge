@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@storybook/html-vite": "^10.3.5",
-    "storybook": "^10.3.5"
+    "storybook": "^10.6.5"
   },
   "nx": {
     "includedScripts": []
