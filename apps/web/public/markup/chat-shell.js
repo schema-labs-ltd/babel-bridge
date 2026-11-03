@@ -133,6 +133,13 @@ export default `
                       accept="image/*"
                       style="display: none"
                     />
+                    <input
+                      type="file"
+                      id="camera-input"
+                      accept="image/*"
+                      capture="environment"
+                      style="display: none"
+                    />
                     <div class="emoji-button-container">
                       <button
                         id="emoji-button"
@@ -231,6 +238,19 @@ export default `
                         <path
                           fill="currentColor"
                           d="M16.5 6.5v8.25a4.25 4.25 0 1 1-8.5 0V5.75a2.75 2.75 0 1 1 5.5 0v8.5a1.25 1.25 0 1 1-2.5 0V7h-1.5v7.25a2.75 2.75 0 0 0 5.5 0v-8.5a4.25 4.25 0 1 0-8.5 0v9a5.75 5.75 0 1 0 11.5 0V6.5z"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      id="camera-button"
+                      class="attach-button camera-button"
+                      title="Take photo"
+                      aria-label="Take photo"
+                    >
+                      <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path
+                          fill="currentColor"
+                          d="M9 3 7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
                         />
                       </svg>
                     </button>

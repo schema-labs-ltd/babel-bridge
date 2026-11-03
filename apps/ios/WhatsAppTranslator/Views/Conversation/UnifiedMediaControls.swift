@@ -19,6 +19,7 @@ struct UnifiedMediaControls: View {
     @State private var context: UnifiedMediaContext?
     @State private var choices = false
     @State private var photosPresented = false
+    @State private var cameraPresented = false
     @State private var videoPresented = false
     @State private var filesPresented = false
     @State private var voicePresented = false
@@ -65,6 +66,9 @@ struct UnifiedMediaControls: View {
         #else
         .confirmationDialog(context.map { "Send to \($0.destination)" } ?? "Add attachment", isPresented: $choices, titleVisibility: .visible) {
             Button("Photos") { photosPresented = true }
+            if CameraCapture.isAvailable {
+                Button("Take Photo") { cameraPresented = true }
+            }
             Button("Video") { videoPresented = true }
             Button("File") { filesPresented = true }
             Button("Voice note") { voicePresented = true }
@@ -72,6 +76,12 @@ struct UnifiedMediaControls: View {
         }
         #endif
         .photosPicker(isPresented: $photosPresented, selection: $selectedPhotos, maxSelectionCount: 30, matching: .images)
+        .cameraCapture(isPresented: $cameraPresented) { photo in
+            guard context != nil else { return }
+            pendingPhotos = PendingPhotoSelection(photos: [photo])
+        } onFailure: {
+            error = "The photo couldn’t be captured. Please try again."
+        }
         .photosPicker(isPresented: $videoPresented, selection: $selectedVideo, matching: .videos)
         .fileImporter(isPresented: $filesPresented, allowedContentTypes: [.item]) { result in
             switch result {

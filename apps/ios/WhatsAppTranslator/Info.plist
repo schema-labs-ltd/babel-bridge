@@ -29,6 +29,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos to send in your conversations.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connect to your self-hosted Babel Bridge backend.</string>
 	<key>NSMicrophoneUsageDescription</key>

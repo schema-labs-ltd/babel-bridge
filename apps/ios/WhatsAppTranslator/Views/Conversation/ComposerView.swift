@@ -19,6 +19,8 @@ struct ComposerView: View {
     @State private var showVoiceComposer = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingPhotos: PendingPhotoSelection?
+    @State private var photoLibraryPresented = false
+    @State private var cameraPresented = false
     @State private var pickerError: String?
     @State private var imagePaste = ImagePasteController()
     @State private var focused = false
@@ -58,10 +60,23 @@ struct ComposerView: View {
 
             ComposerGlassGroup {
                 HStack(alignment: .center, spacing: 7) {
+                    #if os(iOS)
+                    Menu {
+                        Button("Photo Library", systemImage: "photo.on.rectangle") { photoLibraryPresented = true }
+                        if CameraCapture.isAvailable {
+                            Button("Take Photo", systemImage: "camera") { cameraPresented = true }
+                        }
+                    } label: {
+                        addImageLabel
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    #else
                     PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 30, matching: .images) {
                         addImageLabel
                     }
                     .buttonStyle(.plain)
+                    #endif
                     .disabled(isSending)
                     .accessibilityLabel("Send photos")
                     .translatorGlassControl(in: Circle())
@@ -110,6 +125,12 @@ struct ComposerView: View {
                 pendingPhotos = PendingPhotoSelection(photos: prepared)
             }
         }
+        .photosPicker(isPresented: $photoLibraryPresented, selection: $selectedPhotos, maxSelectionCount: 30, matching: .images)
+        .cameraCapture(isPresented: $cameraPresented) { photo in
+            pendingPhotos = PendingPhotoSelection(photos: [photo])
+        } onFailure: {
+            pickerError = "The photo couldn’t be captured. Please try again."
+        }
         .sheet(isPresented: $showVoiceComposer) {
             VoiceComposerView(contactID: contactID, reply: reply, onSent: cancelReply)
         }
@@ -139,7 +160,7 @@ struct ComposerView: View {
 
     private var composerInput: some View {
         MessageComposerTextInput(text: $text, focus: $focused, allowsImagePaste: !isSending && !imagePaste.isLoading) { providers in
-            guard !isSending, pendingPhotos == nil, !showVoiceComposer else { return }
+            guard !isSending, pendingPhotos == nil, !showVoiceComposer, !cameraPresented else { return }
             focused = false
             imagePaste.begin(providers, reply: reply, send: sendImages)
         }

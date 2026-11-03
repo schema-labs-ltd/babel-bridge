@@ -57,6 +57,7 @@ export const composerAssistMethods = {
       'message-input',
       'send-button',
       'attach-button',
+      'camera-button',
       'voice-record-button',
     ]) {
       const control = document.getElementById(id);

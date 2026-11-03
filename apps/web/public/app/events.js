@@ -198,15 +198,27 @@ export const eventsMethods = {
       }
     });
 
-    // Handle image selection
-    imageInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (file && this.currentContactId) {
-        await this.sendImage(file);
+    // Camera button: opens the device camera directly on phones and tablets
+    const cameraButton = document.getElementById('camera-button');
+    const cameraInput = document.getElementById('camera-input');
+
+    cameraButton?.addEventListener('click', () => {
+      if (this.currentContactId) {
+        cameraInput?.click();
       }
-      // Reset input so the same file can be selected again
-      imageInput.value = '';
     });
+
+    // Handle image selection from the library or the camera
+    for (const input of [imageInput, cameraInput]) {
+      input?.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file && this.currentContactId) {
+          await this.sendImage(file);
+        }
+        // Reset input so the same file can be selected again
+        input.value = '';
+      });
+    }
 
     this.startViewedMessageTracking();
 

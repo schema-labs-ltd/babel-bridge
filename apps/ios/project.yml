@@ -68,6 +68,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        NSCameraUsageDescription: Take photos to send in your conversations.
         NSMicrophoneUsageDescription: Record voice notes to translate and send in the conversation language.
         NSLocalNetworkUsageDescription: Connect to your self-hosted Babel Bridge backend.
         NSSiriUsageDescription: Send and read translated messages with Siri, Apple Watch, and CarPlay.
