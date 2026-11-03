@@ -621,6 +621,9 @@ test('buildVisitorDashboard summarizes focus work, reminders, drafts, and open t
 test('tidyServerPreview writes media labels the way WhatsApp does', async () => {
   const { tidyServerPreview } = await import('../public/app-state.js');
   assert.equal(tidyServerPreview('[ Image ] Beach day'), '📷 Beach day');
+  assert.equal(tidyServerPreview('constructor'), 'constructor');
+  assert.equal(tidyServerPreview('__proto__'), '__proto__');
+  assert.equal(tidyServerPreview('Ana: toString'), 'Ana: toString');
   assert.equal(tidyServerPreview('You: [ Image ]'), 'You: 📷 Photo');
   assert.equal(tidyServerPreview('[ Voice Note ]'), '🎤 Voice message');
   assert.equal(tidyServerPreview('[ Document: menu.pdf ]'), '📄 menu.pdf');

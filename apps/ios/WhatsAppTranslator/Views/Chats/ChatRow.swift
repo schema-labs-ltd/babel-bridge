@@ -149,10 +149,16 @@ enum ChatListPreview {
     /// Uses the newest loaded message when it is the one the server summarised, since it carries
     /// the sender and the delivery state; otherwise tidies the server's own preview.
     static func line(for contact: Contact, latest: ChatMessage?) -> Line {
+        let serverLine = Line(text: tidy(contact.lastMessagePreview ?? "No messages yet"))
         guard let latest, !latest.isReaction, latest.timestamp >= contact.lastMessageTime else {
-            return Line(text: tidy(contact.lastMessagePreview ?? "No messages yet"))
+            return serverLine
         }
         let body = label(for: latest)
+        // Timestamps are only to the second, so a different message can share one. Trust the cached
+        // message then only when the server's preview ends with the same words.
+        if latest.timestamp == contact.lastMessageTime, !serverLine.text.hasSuffix(body) {
+            return serverLine
+        }
         if latest.isFromMe {
             switch latest.deliveryState {
             case .sending, .sent, .delivered, .read:
