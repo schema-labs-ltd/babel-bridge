@@ -16,7 +16,10 @@ extension AppSession {
             return settings
         }
         let revision = conversationSettingsRevision
+        let epoch = topicAccountEpoch
         let settings = try await api.conversationSettings(contactID: contactID)
+        // A server switched to meanwhile must not get the old server's settings cached.
+        guard epoch == topicAccountEpoch else { throw CancellationError() }
         if revision != conversationSettingsRevision, let current = savedConversationSettings[contactID] { return current }
         savedConversationSettings[contactID] = settings
         return settings
@@ -44,7 +47,9 @@ extension AppSession {
     }
 
     func saveConversationSettings(_ settings: ConversationSettings, for contactID: String) async throws {
+        let epoch = topicAccountEpoch
         if !demoMode { try await api.updateConversationSettings(contactID: contactID, settings: settings) }
+        guard epoch == topicAccountEpoch else { return }
         conversationSettingsRevision += 1
         savedConversationSettings[contactID] = settings
     }

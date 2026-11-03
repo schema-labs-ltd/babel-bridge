@@ -149,12 +149,18 @@ struct ConversationView: View {
     }
 
     func toggleTranslation() {
+        // Apply what the button offered when tapped, even if the settings were still loading, and
+        // never carry one server's settings over to another picked meanwhile.
+        let enable = !translationOn
+        let epoch = session.topicAccountEpoch
         Task {
             do {
                 var settings = try await session.conversationSettings(for: contact.id)
-                settings.translationEnabled.toggle()
+                guard session.topicAccountEpoch == epoch, settings.translationEnabled != enable else { return }
+                settings.translationEnabled = enable
                 try await session.saveConversationSettings(settings, for: contact.id)
             } catch {
+                guard session.topicAccountEpoch == epoch, !AppSession.isExpectedCancellation(error) else { return }
                 session.presentError("Couldn’t change translation", error)
             }
         }

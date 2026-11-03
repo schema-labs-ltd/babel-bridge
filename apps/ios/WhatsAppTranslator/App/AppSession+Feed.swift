@@ -124,8 +124,8 @@ extension AppSession {
         // The cache can miss messages that arrived while the app was closed, or not reach back to the
         // oldest unread one, so fetch the newest pages until they cover the unread count. Each page is
         // merged into the cache as it stands after the request, so live arrivals are kept.
-        let stale = (messages[contact.id]?.last?.timestamp ?? 0) < contact.lastMessageTime
-        if !demoMode, stale || unread().count < contact.unreadCount {
+        // Always fetch: a live arrival can make the cache look current while hiding an offline gap.
+        if !demoMode {
             var oldestFetched: ChatMessage?
             var fetchedUnread = 0
             do {
