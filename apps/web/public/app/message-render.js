@@ -1,6 +1,6 @@
 // Rendering a single message bubble.
 
-import { isMessageStarred } from '../app-state.js?v=20260912-conversation-translation';
+import { isMessageStarred } from '../app-state.js?v=20261103-chat-list';
 
 export const messageRenderMethods = {
   // Render a single message

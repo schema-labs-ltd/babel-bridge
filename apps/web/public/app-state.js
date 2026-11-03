@@ -27,9 +27,11 @@ export {
 } from './app-state-core.js';
 export {
   buildVisitorDashboard,
+  describeMessageForPreview,
   getContactActionSnapshot,
   getVisibleContacts,
-} from './app-state-contacts.js';
+  tidyServerPreview,
+} from './app-state-contacts.js?v=20261103-chat-list';
 export { createDemoWorkspace, suggestDemoReply } from './app-state-demo.js';
 export {
   countMatchingMessages,

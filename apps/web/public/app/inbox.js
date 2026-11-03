@@ -8,7 +8,7 @@ import {
   getDraftText,
   getReminderStatus,
   getVisibleContacts,
-} from '../app-state.js?v=20260912-conversation-translation';
+} from '../app-state.js?v=20261103-chat-list';
 
 export const inboxMethods = {
   syncInboxControls() {
@@ -31,8 +31,25 @@ export const inboxMethods = {
 
     document.querySelectorAll('[data-inbox-filter]').forEach((button) => {
       const key = button.dataset.inboxFilter;
-      button.classList.toggle('active', Boolean(this.contactFilters[key]));
+      const active = Boolean(this.contactFilters[key]);
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     });
+    const noFilter = !Object.values(this.contactFilters).some(Boolean);
+    document.querySelectorAll('[data-inbox-all]').forEach((button) => {
+      button.classList.toggle('active', noFilter);
+      button.setAttribute('aria-pressed', String(noFilter));
+    });
+  },
+
+  // WhatsApp's chips are a single choice: All, Unread or Groups.
+  selectInboxChip(filterName) {
+    for (const key of Object.keys(this.contactFilters)) {
+      this.contactFilters[key] = key === filterName;
+    }
+    this.persistInboxPreferences();
+    this.syncInboxControls();
+    this.renderContacts();
   },
 
   inboxFilterControlsAvailable() {

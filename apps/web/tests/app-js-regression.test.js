@@ -277,11 +277,15 @@ test('composer send controls require a live bridge connection', () => {
   );
 });
 
-test('contact previews prefer translated message text when available', () => {
-  const getMessagePreview = new Function(
+test('contact previews prefer translated message text when available', async () => {
+  const { describeMessageForPreview } = await import('../public/app-state.js');
+  const preview = new Function(
     'message',
+    'describeMessageForPreview',
     extractMethodBody(appJs, 'getMessagePreview'),
   );
+  const getMessagePreview = (message) =>
+    preview(message, describeMessageForPreview);
 
   assert.equal(
     getMessagePreview({

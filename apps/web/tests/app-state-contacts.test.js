@@ -617,3 +617,31 @@ test('buildVisitorDashboard summarizes focus work, reminders, drafts, and open t
   );
   assert.equal(dashboard.snoozedContacts, 1);
 });
+
+test('tidyServerPreview writes media labels the way WhatsApp does', async () => {
+  const { tidyServerPreview } = await import('../public/app-state.js');
+  assert.equal(tidyServerPreview('[ Image ] Beach day'), '📷 Beach day');
+  assert.equal(tidyServerPreview('You: [ Image ]'), 'You: 📷 Photo');
+  assert.equal(tidyServerPreview('[ Voice Note ]'), '🎤 Voice message');
+  assert.equal(tidyServerPreview('[ Document: menu.pdf ]'), '📄 menu.pdf');
+  assert.equal(tidyServerPreview('[ Poll: Dinner? ]'), '📊 Dinner?');
+  assert.equal(tidyServerPreview('Line one\nline two'), 'Line one line two');
+  assert.equal(tidyServerPreview('Plain [ text ]'), 'Plain [ text ]');
+});
+
+test('describeMessageForPreview keeps whole text and labels media', async () => {
+  const { describeMessageForPreview } = await import('../public/app-state.js');
+  const long =
+    'Good morning, I just wanted to send a quick message about tomorrow';
+  assert.equal(describeMessageForPreview({ type: 'text' }, long), long);
+  assert.equal(describeMessageForPreview({ type: 'image' }, ''), '📷 Photo');
+  assert.equal(describeMessageForPreview({ type: 'image' }, 'Look'), '📷 Look');
+  assert.equal(
+    describeMessageForPreview({ type: 'audio', isVoiceNote: true }),
+    '🎤 Voice message',
+  );
+  assert.equal(
+    describeMessageForPreview({ type: 'revoked' }),
+    '🚫 This message was deleted',
+  );
+});

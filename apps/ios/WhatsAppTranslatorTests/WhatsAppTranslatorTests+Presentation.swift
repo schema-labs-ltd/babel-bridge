@@ -162,4 +162,34 @@ extension WhatsAppTranslatorTests {
             ]
         )
     }
+
+    func testChatListPreviewTidiesServerLabelsLikeWhatsApp() {
+        XCTAssertEqual(ChatListPreview.tidy("[ Image ] Beach day"), "📷 Beach day")
+        XCTAssertEqual(ChatListPreview.tidy("You: [ Image ]"), "You: 📷 Photo")
+        XCTAssertEqual(ChatListPreview.tidy("[ Voice Note ]"), "🎤 Voice message")
+        XCTAssertEqual(ChatListPreview.tidy("[ Document: menu.pdf ]"), "📄 menu.pdf")
+        XCTAssertEqual(ChatListPreview.tidy("[ Poll: Dinner? ]"), "📊 Dinner?")
+        XCTAssertEqual(ChatListPreview.tidy("[ Message deleted ]"), "🚫 This message was deleted")
+        XCTAssertEqual(ChatListPreview.tidy("Line one\nline two"), "Line one line two")
+        XCTAssertEqual(ChatListPreview.tidy("Plain [ text ]"), "Plain [ text ]")
+    }
+
+    func testChatListPreviewNamesGroupSendersAndShowsTicksForOwnMessages() throws {
+        let group = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+                            unreadCount: 0, pinnedAt: nil, lastMessagePreview: "Szia")
+        let incoming = try decodeMessage(id: "m1", contentType: "text", content: #"{"type":"text","body":"Szia"}"#)
+        XCTAssertEqual(ChatListPreview.line(for: group, latest: incoming), .init(text: "Virag: Szia"))
+
+        let photo = try decodeMessage(id: "m2", contentType: "image", content: #"{"type":"image"}"#)
+        XCTAssertEqual(ChatListPreview.line(for: group, latest: photo).text, "Virag: 📷 Photo")
+
+        var own = try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"m3","contactId":"chat@g.us","timestamp":1700000000000,"isFromMe":true,"isForwarded":false,"senderName":null,"senderPhone":null,"contactName":"Family","contactPhone":null,"chatType":"group","contentType":"text","content":{"type":"text","body":"On my way"},"originalText":null,"translatedText":null,"sourceLanguage":null,"isTranslated":false}"#.utf8))
+        own.deliveryStatus = "read"
+        XCTAssertEqual(ChatListPreview.line(for: group, latest: own), .init(text: "On my way", delivery: .read))
+
+        // An older loaded message never replaces a newer server preview.
+        let newer = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_100_000,
+                            unreadCount: 1, pinnedAt: nil, lastMessagePreview: "[ Sticker ]")
+        XCTAssertEqual(ChatListPreview.line(for: newer, latest: incoming), .init(text: "Sticker"))
+    }
 }

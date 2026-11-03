@@ -350,3 +350,28 @@ fn replace_message_id_removes_pending_duplicate_when_real_message_exists() {
 
     let _ = std::fs::remove_dir_all(data_dir);
 }
+
+#[test]
+fn long_previews_end_on_a_word_with_an_ellipsis() {
+    let body = "Good morning, I just wanted to send a quick message to say the plumber is coming at ten tomorrow and he will need the side gate left open please";
+    let content = serde_json::json!({"type": "text", "body": format!("{body} {body}")}).to_string();
+    let preview = MessageStore::generate_message_preview(Some(&content), Some("text"), false, None)
+        .expect("preview");
+    assert!(preview.ends_with('…'), "{preview}");
+    assert!(preview.chars().count() <= 161, "{preview}");
+    assert!(preview.starts_with("Good morning, I just wanted to send a quick message"));
+    assert!(!preview.trim_end_matches('…').ends_with(' '));
+
+    let short = serde_json::json!({"type": "text", "body": "  See you soon  "}).to_string();
+    assert_eq!(
+        MessageStore::generate_message_preview(Some(&short), Some("text"), true, None).as_deref(),
+        Some("You: See you soon")
+    );
+
+    let caption = serde_json::json!({"type": "image", "caption": "x".repeat(200)}).to_string();
+    let preview =
+        MessageStore::generate_message_preview(Some(&caption), Some("image"), false, None)
+            .expect("image preview");
+    assert!(preview.starts_with("[ Image ] xxx"));
+    assert!(preview.ends_with('…'));
+}
