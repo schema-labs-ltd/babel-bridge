@@ -245,14 +245,19 @@ enum TimelineGrouping {
         var start = 0
         for index in items.indices where index > 0 {
             if !calendar.isDate(items[index - 1].date, inSameDayAs: items[index].date) {
-                days.append(Day(id: items[start].id, date: items[start].date, indices: start..<index))
+                days.append(Day(id: dayID(items[start].date, calendar), date: items[start].date, indices: start..<index))
                 start = index
             }
         }
         if !items.isEmpty {
-            days.append(Day(id: items[start].id, date: items[start].date, indices: start..<items.count))
+            days.append(Day(id: dayID(items[start].date, calendar), date: items[start].date, indices: start..<items.count))
         }
         return days
+    }
+
+    /// Keyed by the day itself, so loading older messages into a day doesn't rebuild its rows.
+    private static func dayID(_ date: Date, _ calendar: Calendar) -> String {
+        String(Int(calendar.startOfDay(for: date).timeIntervalSince1970))
     }
 
     /// Whether the item begins a run: the first of the day, or from a different sender than the one before.
@@ -277,4 +282,10 @@ enum TimelineGrouping {
         }
         return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
+}
+
+/// A tap on a reply quote. Each tap is new, so tapping the same quote twice still scrolls.
+struct ReplyJump: Equatable {
+    let itemID: String
+    let nonce = UUID()
 }

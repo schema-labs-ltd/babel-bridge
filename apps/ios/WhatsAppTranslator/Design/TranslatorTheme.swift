@@ -249,9 +249,9 @@ enum ComposerLayout {
 /// colour so busy groups are easier to follow. The same sender gets the same colour on every launch.
 enum SenderNameColor {
     private static let pairs: [(light: String, dark: String)] = [
-        ("D6336C", "FF7A99"), ("C2621A", "FFA05C"), ("1F6FD1", "53A6FD"), ("008069", "25D366"),
+        ("C2255C", "FF7A99"), ("A8551A", "FFA05C"), ("1F6FD1", "53A6FD"), ("008069", "25D366"),
         ("7B4FC9", "B794F6"), ("AD1F5C", "F06292"), ("2E7D32", "81C784"), ("8A5A2B", "D7A86E"),
-        ("00838F", "4DD0E1"), ("5C6BC0", "9FA8DA"),
+        ("00727C", "4DD0E1"), ("5C6BC0", "9FA8DA"),
     ]
 
     static func index(for key: String) -> Int {
