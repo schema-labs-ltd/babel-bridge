@@ -261,6 +261,10 @@ pub(in crate::web) async fn send_images(
         stored_ids.push(message_id.clone());
     }
 
+    if let Some(last) = stored_ids.last() {
+        // Stored only after WhatsApp confirmed the album, so read the chat here.
+        state.read_chat_before_reply(last);
+    }
     let last_timestamp = send_result.timestamps.last().copied().unwrap_or(now);
     if let Err(error) = state.store.upsert_contact(
         &req.contact_id,

@@ -71,6 +71,7 @@ func fixtureEvents() map[string]interface{} {
 		"receipt":              NewReceiptEvent([]types.MessageID{"3EB0SENT"}, types.ReceiptTypeRead),
 		"read_receipt_result":  ReadReceiptResultEvent{Type: "read_receipt_result", MessageID: "3EB0TEXT", Success: false, Error: "not connected"},
 		"mark_as_read":         NewMarkAsReadEvent("447700900001@s.whatsapp.net"),
+		"messages_read":        MessagesReadEvent{Type: "messages_read", ChatID: "447700900001@s.whatsapp.net", MessageIDs: []types.MessageID{"3EB0TEXT"}},
 		"error":                NewErrorEvent("connection_failed", "could not reach WhatsApp"),
 		"log":                  NewLogEvent("info", "Connected"),
 		"logged_out":           NewLoggedOutEvent("device removed"),

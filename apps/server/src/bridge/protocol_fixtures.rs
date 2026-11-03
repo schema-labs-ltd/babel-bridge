@@ -61,6 +61,7 @@ fn server_reads_every_bridge_event_fixture() {
         "message_reaction",
         "message_text",
         "message_voice_note",
+        "messages_read",
         "profile_picture",
         "qr",
         "read_receipt_result",
@@ -219,6 +220,11 @@ fn server_reads_every_bridge_event_fixture() {
     assert!(matches!(
         event("mark_as_read"),
         BridgeEvent::MarkAsRead { chat_id } if chat_id == "447700900001@s.whatsapp.net"
+    ));
+    assert!(matches!(
+        event("messages_read"),
+        BridgeEvent::MessagesRead { chat_id, message_ids }
+            if chat_id == "447700900001@s.whatsapp.net" && message_ids == ["3EB0TEXT"]
     ));
     assert!(matches!(
         event("error"),

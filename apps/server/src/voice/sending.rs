@@ -221,6 +221,11 @@ pub(super) fn store_audio_message(
         delivery_status: Some(status.into()),
     };
     state.store.add_message(&stored)?;
+    if status == "sent" {
+        // Stored after WhatsApp confirmed it, so read the chat here. A note
+        // stored while "sending" reads it when its send result arrives.
+        state.read_chat_before_reply(&stored.id);
+    }
     if !original {
         let mut cached = note.clone();
         cached.id = format!("sent-{message_id}");

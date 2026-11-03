@@ -39,6 +39,11 @@ func (c *Client) handleEvent(evt interface{}) {
 		c.handleMessage(v)
 
 	case *events.Receipt:
+		// The user's own phone or desktop reporting what it read. Without this the
+		// chat keeps its unread badge here after everything was read on WhatsApp.
+		if event, ok := NewMessagesReadEvent(v); ok {
+			SendEvent(event)
+		}
 		if v.Type == types.ReceiptTypeDelivered || v.Type == types.ReceiptTypeRead || v.Type == types.ReceiptTypePlayed {
 			SendEvent(NewReceiptEvent(v.MessageIDs, v.Type))
 		}

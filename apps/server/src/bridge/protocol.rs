@@ -86,6 +86,12 @@ pub enum BridgeEvent {
     /// Chat marked as read from another device
     MarkAsRead { chat_id: String },
 
+    /// Incoming messages the user read on another of their own devices.
+    MessagesRead {
+        chat_id: String,
+        message_ids: Vec<String>,
+    },
+
     /// Error occurred
     Error { code: String, message: String },
 

@@ -6,6 +6,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -18,6 +19,43 @@ func TestNewReceiptEventNormalizesWhatsAppReceiptTypes(t *testing.T) {
 	read := NewReceiptEvent([]types.MessageID{"message-1", "message-2"}, types.ReceiptTypeRead)
 	if read.Status != "read" || len(read.MessageIDs) != 2 {
 		t.Fatalf("expected two read message IDs, got %#v", read)
+	}
+}
+
+func TestNewMessagesReadEventOnlyReportsTheUsersOwnReads(t *testing.T) {
+	lid := types.NewJID("123456789", types.HiddenUserServer)
+	phone := types.NewJID("447700900001", types.DefaultUserServer)
+	own := &events.Receipt{
+		MessageSource: types.MessageSource{Chat: lid, RecipientAlt: phone, IsFromMe: true},
+		MessageIDs:    []types.MessageID{"in-1", "in-2"},
+		Type:          types.ReceiptTypeRead,
+	}
+	for _, receiptType := range []types.ReceiptType{types.ReceiptTypeRead, types.ReceiptTypeReadSelf, types.ReceiptTypePlayed, types.ReceiptTypePlayedSelf} {
+		own.Type = receiptType
+		event, ok := NewMessagesReadEvent(own)
+		if !ok || event.Type != "messages_read" || event.ChatID != "447700900001@s.whatsapp.net" || len(event.MessageIDs) != 2 {
+			t.Fatalf("%s: expected a messages_read event for the phone chat, got %#v %v", receiptType, event, ok)
+		}
+	}
+	own.Type = types.ReceiptTypeDelivered
+	if _, ok := NewMessagesReadEvent(own); ok {
+		t.Fatal("a delivery receipt is not a read")
+	}
+	group := &events.Receipt{
+		MessageSource: types.MessageSource{Chat: types.NewJID("120363000000000001", types.GroupServer), IsGroup: true, IsFromMe: true},
+		MessageIDs:    []types.MessageID{"in-3"},
+		Type:          types.ReceiptTypeReadSelf,
+	}
+	if event, ok := NewMessagesReadEvent(group); !ok || event.ChatID != "120363000000000001@g.us" {
+		t.Fatalf("expected the group chat, got %#v %v", event, ok)
+	}
+	other := &events.Receipt{
+		MessageSource: types.MessageSource{Chat: phone, Sender: phone},
+		MessageIDs:    []types.MessageID{"out-1"},
+		Type:          types.ReceiptTypeRead,
+	}
+	if _, ok := NewMessagesReadEvent(other); ok {
+		t.Fatal("someone else reading the user's message is not the user reading")
 	}
 }
 

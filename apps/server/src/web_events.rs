@@ -100,6 +100,11 @@ pub(crate) async fn handle_web_event(
             if let Some(unread) = unread_count {
                 // History sync message with unread count from WhatsApp - use it directly
                 store.set_unread_count(&stored_msg.contact_id, unread)?;
+            } else if is_history && !already_stored && !stored_msg.is_from_me {
+                store.fill_history_unread(&stored_msg.contact_id)?;
+            } else if stored_msg.is_from_me && !is_history && !already_stored {
+                // A message sent from the phone or another linked device.
+                state.read_chat_before_reply(&stored_msg.id);
             }
 
             if !stored_msg.is_from_me
@@ -255,6 +260,14 @@ pub(crate) async fn handle_web_event(
             store.mark_as_read(&chat_id)?;
             // Broadcast to WebSocket clients so UI updates
             state.broadcast_mark_as_read(chat_id);
+        }
+
+        BridgeEvent::MessagesRead {
+            chat_id: _,
+            message_ids,
+        } => {
+            // Read on the user's phone or another linked device.
+            state.broadcast_read_elsewhere(store.record_read_elsewhere(&message_ids, true)?);
         }
 
         BridgeEvent::Receipt {

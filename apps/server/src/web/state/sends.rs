@@ -146,6 +146,7 @@ impl AppState {
                         );
                     }
                     let _ = self.store.set_delivery_status(confirmed_message_id, "sent");
+                    self.read_chat_before_reply(confirmed_message_id);
                 }
             } else if let Some(temp_message_id) = temp_id.as_deref() {
                 let _ = self.store.set_delivery_status(temp_message_id, "uncertain");

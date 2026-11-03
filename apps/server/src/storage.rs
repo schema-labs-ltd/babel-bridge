@@ -16,6 +16,7 @@ use crate::translation::UsageInfo;
 mod identity;
 use crate::identity::canonical_chat_id;
 mod reliability;
+pub use read_receipts::ReadElsewhere;
 pub use reliability::OutboxEntry;
 mod edits;
 mod reactions;

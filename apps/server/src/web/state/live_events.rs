@@ -129,6 +129,27 @@ impl AppState {
     }
 
     /// Broadcast a mark-as-read event (chat was read from another device)
+    /// Tell clients which chats' unread badges cleared because the user read
+    /// or answered them.
+    pub fn broadcast_read_elsewhere(&self, chats: Vec<crate::storage::ReadElsewhere>) {
+        for chat in chats {
+            let _ = self.broadcast_tx.send(WebSocketEvent::MessagesViewed {
+                chat_id: chat.chat_id,
+                message_ids: chat.message_ids,
+                unread_count: chat.unread_count,
+            });
+        }
+    }
+
+    /// The user's message `id` was sent, here or on another device, so the
+    /// chat is read up to it. A failure only leaves a badge up, so it is logged.
+    pub fn read_chat_before_reply(&self, id: &str) {
+        match self.store.record_reply(id) {
+            Ok(chats) => self.broadcast_read_elsewhere(chats),
+            Err(error) => warn!("Could not clear unread messages before a reply: {error}"),
+        }
+    }
+
     pub fn broadcast_mark_as_read(&self, chat_id: String) {
         let _ = self
             .broadcast_tx
