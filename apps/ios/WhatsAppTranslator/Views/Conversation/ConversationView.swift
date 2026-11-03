@@ -289,7 +289,7 @@ struct ConversationView: View {
             && !showSettings && !showCost && !showGallery && focusedReplyMessage == nil
     }
 
-    private var timelineItems: [ConversationTimelineItem] {
+    var timelineItems: [ConversationTimelineItem] {
         let visibleIDs = Set(visibleMessages.map(\.id))
         return ConversationTimelineBuilder.items(from: messages).flatMap { item in
             ConversationTimelineBuilder.items(from: item.messages.filter { visibleIDs.contains($0.id) })
