@@ -183,4 +183,11 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(TimelineGrouping.days(items).map(\.indices), [0..<2])
         XCTAssertEqual(SenderNameColor.index(for: "3630"), SenderNameColor.index(for: "3630"))
     }
+
+    func testUnreadBarSitsAboveTheFirstUnreadIncomingMessage() throws {
+        let messages = try ["a", "b", "c"].map { try decodeMessage(id: $0, contentType: "text", content: #"{"type":"text","body":"Hi"}"#) }
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 2), "b")
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 9), "a")
+        XCTAssertNil(UnreadMarker.firstUnreadID(in: messages, unreadCount: 0))
+    }
 }

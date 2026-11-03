@@ -14,6 +14,25 @@ extension MessageBubble {
         #endif
     }
 
+    /// The text Copy puts on the pasteboard: what the bubble shows, for text and captions.
+    var copyText: String? {
+        guard message.normalizedContentType != "revoked", message.contentText != nil || usesInlineTextContent else { return nil }
+        return showAlternate ? (message.alternateText ?? message.displayText) : message.displayText
+    }
+
+    private var usesInlineTextContent: Bool {
+        ["text", "conversation", "extendedtextmessage"].contains(message.normalizedContentType)
+    }
+
+    func copyToPasteboard(_ text: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = text
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
+
     var messageMetadata: some View {
         HStack(spacing: 6) {
             if message.isTranslated {
@@ -263,6 +282,9 @@ extension MessageBubble {
         Label(session.messageTopicLabel(for: message), systemImage: "tag")
         Divider()
         Button("Reply", systemImage: "arrowshape.turn.up.left", action: reply)
+        if let copyText {
+            Button("Copy", systemImage: "doc.on.doc") { copyToPasteboard(copyText) }
+        }
         if message.canTranslate {
             Button("Translate", systemImage: "character.bubble", action: translate)
         }

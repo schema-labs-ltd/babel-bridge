@@ -21,6 +21,14 @@ struct ConversationView: View {
     @State var usage: UsageSummary?
     /// The quoted message a tap on a reply scrolled to; it is briefly highlighted.
     @State var replyJumpTarget: String?
+    @State var isAtBottom = true
+    /// Messages that arrived while the user was reading further up, shown on the scroll-down button.
+    @State var unseenCount = 0
+    @State var loadingOlder = false
+    /// The first message that was unread when the chat opened, where WhatsApp's "unread messages" bar goes.
+    @State var unreadMarkerID: String?
+    @State var unreadMarkerCount = 0
+    @State var pendingScrollID: String?
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -120,10 +128,44 @@ struct ConversationView: View {
             .platformDismissesKeyboard()
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.count) {
-                guard messageSearch.isEmpty, !starredOnly else { return }
-                withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+            // Keyed on the newest message, so loading older history or a full search never counts as new.
+            .onChange(of: messages.last?.id) { oldID, newID in
+                guard messageSearch.isEmpty, !starredOnly, !loadingOlder, oldID != nil, newID != nil else { return }
+                // Like WhatsApp, a new message only pulls you down if you were already at the bottom
+                // or sent it yourself; otherwise the scroll-down button counts it.
+                if isAtBottom || messages.last?.isFromMe == true {
+                    withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                } else {
+                    unseenCount += 1
+                }
             }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 120
+            } action: { _, atBottom in
+                isAtBottom = atBottom
+                if atBottom { unseenCount = 0 }
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top < 300
+            } action: { _, nearTop in
+                if nearTop { Task { await loadOlderMessages(proxy: proxy) } }
+            }
+            .onChange(of: pendingScrollID) { _, id in
+                guard let id else { return }
+                proxy.scrollTo(id, anchor: .top)
+                pendingScrollID = nil
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !isAtBottom {
+                    ScrollToBottomButton(unseenCount: unseenCount) {
+                        withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                    }
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 10)
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: isAtBottom)
             .onChange(of: replyJumpTarget) { _, target in
                 guard let target else { return }
                 withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
@@ -155,13 +197,11 @@ struct ConversationView: View {
         if let selectedTopicID {
             TopicPageControls(topicID: selectedTopicID)
         }
-        if selectedTopicID == nil, session.messageHistoryHasMore[contact.id] == true, messageSearch.isEmpty, !starredOnly {
-            Button("Load earlier messages") {
-                Task { await session.loadMessages(for: contact.id, older: true) }
-            }
-            .font(.caption.weight(.semibold))
-            .buttonStyle(.bordered)
-            .padding(.vertical, 10)
+        // Earlier history loads by itself as you scroll near the top, as in WhatsApp.
+        if loadingOlder {
+            ProgressView()
+                .controlSize(.small)
+                .padding(.vertical, 10)
         }
 
         if visibleMessages.isEmpty {
@@ -177,6 +217,10 @@ struct ConversationView: View {
         ForEach(TimelineGrouping.days(items)) { day in
             Section {
                 ForEach(day.indices.map { (index: $0, item: items[$0]) }, id: \.item.id) { entry in
+                    if let unreadMarkerID, entry.item.messages.contains(where: { $0.id == unreadMarkerID }) {
+                        UnreadMessagesDivider(count: unreadMarkerCount)
+                            .padding(.top, 10)
+                    }
                     timelineRow(entry.item, at: entry.index, in: items)
                         .padding(.top, TimelineGrouping.startsRun(items, at: entry.index) && entry.index != day.indices.lowerBound ? 8 : 2)
                 }
@@ -328,6 +372,27 @@ struct ConversationView: View {
         messageSearch = ""
         starredOnly = false
         replyJumpTarget = target
+    }
+
+    /// Loads the next page of history and keeps the message that was at the top in place.
+    func loadOlderMessages(proxy: ScrollViewProxy) async {
+        guard !loadingOlder, selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
+              session.messageHistoryHasMore[contact.id] == true,
+              let anchor = timelineItems.first?.id else { return }
+        loadingOlder = true
+        await session.loadMessages(for: contact.id, older: true)
+        proxy.scrollTo(anchor, anchor: .top)
+        loadingOlder = false
+    }
+
+    /// Places WhatsApp's "unread messages" bar above the first message that was unread when the
+    /// chat opened, and starts the chat there instead of at the bottom.
+    func markUnread(openingCount: Int) {
+        guard openingCount > 0, unreadMarkerID == nil,
+              let marker = UnreadMarker.firstUnreadID(in: messages, unreadCount: openingCount) else { return }
+        unreadMarkerID = marker
+        unreadMarkerCount = openingCount
+        pendingScrollID = timelineItems.first { item in item.messages.contains { $0.id == marker } }?.id ?? marker
     }
 
     func activateSearch() async {

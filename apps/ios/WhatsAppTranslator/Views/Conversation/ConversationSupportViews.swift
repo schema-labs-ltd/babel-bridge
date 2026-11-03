@@ -278,3 +278,59 @@ enum TimelineGrouping {
         return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 }
+
+enum UnreadMarker {
+    /// The first of the last `unreadCount` incoming messages: the ones that were unread on opening.
+    static func firstUnreadID(in messages: [ChatMessage], unreadCount: Int) -> String? {
+        let incoming = messages.filter { !$0.isFromMe && !$0.isReaction }
+        guard unreadCount > 0, !incoming.isEmpty else { return nil }
+        return incoming[max(0, incoming.count - unreadCount)].id
+    }
+}
+
+/// WhatsApp's bar above the first unread message when a chat opens.
+struct UnreadMessagesDivider: View {
+    let count: Int
+
+    var body: some View {
+        Text(count == 1 ? "1 unread message" : "\(count) unread messages")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial)
+            .padding(.horizontal, -12)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The round button that appears when you scroll up, with a count of messages that arrived since.
+struct ScrollToBottomButton: View {
+    @Environment(\.translatorPalette) private var palette
+    let unseenCount: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 40, height: 40)
+                .translatorGlass(in: Circle())
+                .overlay(alignment: .topLeading) {
+                    if unseenCount > 0 {
+                        Text(unseenCount > 99 ? "99+" : "\(unseenCount)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(palette.accent, in: Capsule())
+                            .offset(x: -6, y: -8)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Scroll to latest message")
+        .accessibilityValue(unseenCount > 0 ? "\(unseenCount) new" : "")
+    }
+}
