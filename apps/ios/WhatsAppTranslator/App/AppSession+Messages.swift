@@ -78,7 +78,11 @@ extension AppSession {
         }
         if let cachedURL {
             let saved = await Task.detached(priority: .utility) { try? Data(contentsOf: cachedURL) }.value
-            guard current else { return }
+            guard current else {
+                // Not compared or saved, so check this contact again when it is shown.
+                if topicAccountEpoch == epoch { refreshedAvatarIDs.remove(contactID) }
+                return
+            }
             if saved == data { return }
         }
         let storedURL = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
