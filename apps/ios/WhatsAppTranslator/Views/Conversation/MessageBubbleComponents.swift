@@ -168,8 +168,9 @@ struct QuotedReplyView: View {
     let isGroup: Bool
     let open: (() -> Void)?
 
+    // Keyed by display name, as the sender's name on their own bubbles is, so one person keeps one colour.
     private var tint: Color {
-        guard isGroup, let name = reply.senderName, !name.isEmpty, name != "You" else { return palette.accent }
+        guard isGroup, let name = reply.senderName, !name.isEmpty, name != "You" else { return palette.deepAccent }
         return SenderNameColor.color(for: name)
     }
 

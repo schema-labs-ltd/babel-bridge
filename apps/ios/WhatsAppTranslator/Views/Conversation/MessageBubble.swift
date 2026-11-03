@@ -71,7 +71,7 @@ struct MessageBubble: View {
                     if startsRun, !message.isFromMe, message.chatType == "group", let sender = message.senderName {
                         Text(sender)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(SenderNameColor.color(for: TimelineGrouping.senderKey(message)))
+                            .foregroundStyle(SenderNameColor.color(for: sender))
                             .padding(.horizontal, isStandaloneEmoji ? 9 : 0)
                             .padding(.vertical, isStandaloneEmoji ? 4 : 0)
                             .background {
