@@ -24,7 +24,10 @@ extension AppSession {
                 conversation.append(target)
             }
             let normalized = normalizeMessages(conversation + [message])
-            if event.type == "message", !message.isReaction {
+            // History sync also arrives as "message" events, but with old timestamps; only a message
+            // sent in the last couple of minutes counts as a live arrival.
+            let recent = message.timestamp >= Int64(Date().timeIntervalSince1970 * 1_000) - 120_000
+            if event.type == "message", !message.isReaction, recent {
                 if liveMessageIDs.count >= 1_000 { liveMessageIDs.removeAll() }
                 liveMessageIDs.insert(message.id)
             }
