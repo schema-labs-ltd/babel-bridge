@@ -31,7 +31,7 @@ export {
   getContactActionSnapshot,
   getVisibleContacts,
   tidyServerPreview,
-} from './app-state-contacts.js?v=20261103-chat-list';
+} from './app-state-contacts.js?v=20261103-web-conversation';
 export { createDemoWorkspace, suggestDemoReply } from './app-state-demo.js';
 export {
   countMatchingMessages,

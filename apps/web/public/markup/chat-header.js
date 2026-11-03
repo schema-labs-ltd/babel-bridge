@@ -26,6 +26,12 @@ export default `
                 <span id="typing-indicator" class="typing-indicator hidden"
                   >typing...</span
                 >
+                <span
+                  id="chat-connection-status"
+                  class="chat-connection-status hidden"
+                  role="status"
+                  >Connecting…</span
+                >
               </div>
               <div class="chat-actions">
                 <button

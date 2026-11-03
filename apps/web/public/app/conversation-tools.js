@@ -8,7 +8,7 @@ import {
   removeQuickReply,
   toggleStarredMessage,
   upsertQuickReply,
-} from '../app-state.js?v=20261103-chat-list';
+} from '../app-state.js?v=20261103-web-conversation';
 
 export const conversationToolsMethods = {
   toggleConversationMenu() {

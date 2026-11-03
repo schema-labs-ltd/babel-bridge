@@ -316,17 +316,23 @@ export const connectionMethods = {
     };
   },
 
+  // Like WhatsApp, a reconnect shows as "Connecting…" under the chat's name rather than a banner
+  // over the conversation, and only once it has lasted a moment, so a quick blip shows nothing.
   setLiveReconnectBanner(reconnecting) {
-    let banner = document.getElementById('live-reconnect-banner');
-    if (!banner) {
-      banner = document.createElement('div');
-      banner.id = 'live-reconnect-banner';
-      banner.setAttribute('role', 'status');
-      banner.textContent =
-        'Reconnecting live updates… Your messages are saved.';
-      document.getElementById('main-container')?.prepend(banner);
+    clearTimeout(this.connectionStatusTimer);
+    const status = document.getElementById('chat-connection-status');
+    if (!status) return;
+    if (!reconnecting) {
+      status.classList.add('hidden');
+      status.closest('.chat-info')?.classList.remove('is-connecting');
+      return;
     }
-    banner.hidden = !reconnecting;
+    this.connectionStatusTimer = setTimeout(() => {
+      // Demo mode has no live connection to lose.
+      if (this.demoMode) return;
+      status.classList.remove('hidden');
+      status.closest('.chat-info')?.classList.add('is-connecting');
+    }, 2000);
   },
 
   async recoverLiveMessages() {
