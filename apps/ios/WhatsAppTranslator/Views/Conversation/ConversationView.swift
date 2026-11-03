@@ -22,6 +22,8 @@ struct ConversationView: View {
     /// The quoted message a tap on a reply scrolled to; it is briefly highlighted.
     @State var replyJump: ReplyJump?
     @State var quoteJumpToken = UUID()
+    /// A translation change still being saved; another tap waits for it so saves can't land out of order.
+    @State var savingTranslation = false
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -165,9 +167,12 @@ struct ConversationView: View {
     func toggleTranslation() {
         // Apply what the button offered when tapped, even if the settings were still loading, and
         // never carry one server's settings over to another picked meanwhile.
+        guard !savingTranslation else { return }
         let enable = !translationOn
         let epoch = session.topicAccountEpoch
+        savingTranslation = true
         Task {
+            defer { savingTranslation = false }
             do {
                 var settings = try await session.conversationSettings(for: contact.id)
                 guard session.topicAccountEpoch == epoch, settings.translationEnabled != enable else { return }
