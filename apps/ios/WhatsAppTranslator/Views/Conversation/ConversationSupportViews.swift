@@ -138,12 +138,15 @@ struct InlineHeaderBackground: ViewModifier {
 struct DatePill: View {
     let date: Date
     var body: some View {
-        Text(TimelineGrouping.dayLabel(for: date))
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .translatorGlass(in: Capsule())
+        // Re-evaluated each minute, so "Today" becomes "Yesterday" at midnight in an idle chat.
+        TimelineView(.everyMinute) { context in
+            Text(TimelineGrouping.dayLabel(for: date, now: context.date))
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .translatorGlass(in: Capsule())
     }
 }
 
