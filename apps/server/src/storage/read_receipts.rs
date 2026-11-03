@@ -224,6 +224,38 @@ impl MessageStore {
         Ok(changed)
     }
 
+    /// The user sent message `id` from any device: as in WhatsApp, that reads
+    /// the chat before it. Reactions and deletions, which can target an old
+    /// message, do not. Unknown IDs and other people's messages change nothing.
+    pub fn record_reply(&self, id: &str) -> Result<Vec<ReadElsewhere>> {
+        let found: Option<(bool, String, String)> = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT is_from_me,content_type,content_json FROM messages WHERE id=?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((own, label, payload)) = found else {
+            return Ok(Vec::new());
+        };
+        let kind = serde_json::from_str::<serde_json::Value>(&payload)
+            .ok()
+            .and_then(|content| content.get("type")?.as_str().map(str::to_lowercase))
+            .unwrap_or_else(|| label.to_lowercase());
+        if !own
+            || matches!(
+                kind.as_str(),
+                "reaction" | "revoked" | "protocol" | "unknown"
+            )
+        {
+            return Ok(Vec::new());
+        }
+        self.record_read_elsewhere(&[id.to_owned()], false)
+    }
+
     /// WhatsApp's history sync gives a chat's unread count on one message, and
     /// the chat's other messages arrive after it. Mark the newest stored
     /// incoming messages not yet in the unread ledger as unread until the

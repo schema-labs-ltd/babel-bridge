@@ -474,3 +474,58 @@ async fn deleted_messages_are_never_unread_and_reads_cancel_reaction_notificatio
     assert!(state.store.ready_notification_ids().unwrap().is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn a_reply_sent_from_this_app_reads_the_chat_once_whatsapp_confirms_it() {
+    let (state, dir) = test_state(None);
+    let chat = "447700900123@s.whatsapp.net";
+    state
+        .store
+        .upsert_contact(chat, None, None, Some("private"), 0)
+        .unwrap();
+    for (id, timestamp) in [("in-1", 100_000), ("in-2", 101_000)] {
+        state
+            .store
+            .add_message_with_notification(&feed_test_message(id, chat, timestamp), Some(false))
+            .unwrap();
+    }
+    let mut pending = feed_test_message("temp-reply", chat, 102_000);
+    pending.is_from_me = true;
+    pending.delivery_status = Some("sending".into());
+    state.store.add_message(&pending).unwrap();
+    let unread =
+        |state: &Arc<AppState>| state.store.get_contact(chat).unwrap().unwrap().unread_count;
+    assert_eq!(unread(&state), 2, "an unconfirmed send reads nothing");
+    let _confirmation = state
+        .register_pending_send(41, Some("temp-reply".into()))
+        .await;
+    let mut events = state.broadcast_tx.subscribe();
+    state
+        .handle_send_result(BridgeSendResult {
+            request_id: 41,
+            success: true,
+            message_id: Some("reply".into()),
+            timestamp: Some(102),
+            message_ids: vec![],
+            timestamps: vec![],
+            error: None,
+        })
+        .await;
+    assert_eq!(unread(&state), 0);
+    let viewed = std::iter::from_fn(|| events.try_recv().ok()).any(|event| {
+        matches!(
+            event,
+            WebSocketEvent::MessagesViewed {
+                unread_count: 0,
+                ..
+            }
+        )
+    });
+    assert!(viewed, "clients must clear the badge");
+    assert!(state
+        .store
+        .pending_read_receipts(i64::MAX)
+        .unwrap()
+        .is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -102,16 +102,9 @@ pub(crate) async fn handle_web_event(
                 store.set_unread_count(&stored_msg.contact_id, unread)?;
             } else if is_history && !already_stored && !stored_msg.is_from_me {
                 store.fill_history_unread(&stored_msg.contact_id)?;
-            } else if stored_msg.is_from_me
-                && !is_history
-                && !already_stored
-                && is_reply(&stored_msg)
-            {
-                // Sending a message, from any device, reads the chat before it, as in WhatsApp.
-                broadcast_read_elsewhere(
-                    state,
-                    store.record_read_elsewhere(std::slice::from_ref(&stored_msg.id), false)?,
-                );
+            } else if stored_msg.is_from_me && !is_history && !already_stored {
+                // A message sent from the phone or another linked device.
+                state.read_chat_before_reply(&stored_msg.id);
             }
 
             if !stored_msg.is_from_me
@@ -274,7 +267,7 @@ pub(crate) async fn handle_web_event(
             message_ids,
         } => {
             // Read on the user's phone or another linked device.
-            broadcast_read_elsewhere(state, store.record_read_elsewhere(&message_ids, true)?);
+            state.broadcast_read_elsewhere(store.record_read_elsewhere(&message_ids, true)?);
         }
 
         BridgeEvent::Receipt {
@@ -469,30 +462,5 @@ pub(crate) fn extract_text_content(content: &MessageContent) -> Option<String> {
             caption: Some(c), ..
         } => Some(c.clone()),
         _ => None,
-    }
-}
-
-/// A message the user wrote. Reacting to or deleting an old message, which
-/// this app also does, does not mean the user read the chat.
-fn is_reply(message: &StoredMessage) -> bool {
-    let kind = serde_json::from_str::<serde_json::Value>(&message.content_json)
-        .ok()
-        .and_then(|content| content.get("type")?.as_str().map(str::to_lowercase))
-        .unwrap_or_else(|| message.content_type.to_lowercase());
-    !matches!(
-        kind.as_str(),
-        "reaction" | "revoked" | "protocol" | "unknown"
-    )
-}
-
-fn broadcast_read_elsewhere(state: &AppState, chats: Vec<crate::storage::ReadElsewhere>) {
-    for chat in chats {
-        let _ = state
-            .broadcast_tx
-            .send(web::WebSocketEvent::MessagesViewed {
-                chat_id: chat.chat_id,
-                message_ids: chat.message_ids,
-                unread_count: chat.unread_count,
-            });
     }
 }
