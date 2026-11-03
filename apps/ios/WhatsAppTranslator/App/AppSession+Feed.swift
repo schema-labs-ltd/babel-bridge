@@ -127,7 +127,10 @@ extension AppSession {
         // Always fetch: a live arrival can make the cache look current while hiding an offline gap.
         // The newest message the server had when this started: later arrivals were not part of the
         // unread count, so they must not push the older unread messages out of the selection.
+        // Timestamps are whole seconds, so messages sharing the boundary second count only if that
+        // first page had them.
         var boundary: Int64?
+        var boundaryIDs: Set<String> = []
         if !demoMode {
             var oldestFetched: ChatMessage?
             var fetchedUnread = 0
@@ -138,7 +141,11 @@ extension AppSession {
                     )
                     // A switch of server while this ran must not let the old server's messages in.
                     guard topicAccountEpoch == epoch else { return }
-                    if boundary == nil { boundary = response.messages.map(\.timestamp).max() ?? 0 }
+                    if boundary == nil {
+                        let newest = response.messages.map(\.timestamp).max() ?? 0
+                        boundary = newest
+                        boundaryIDs = Set(response.messages.filter { $0.timestamp == newest }.map(\.id))
+                    }
                     messages[contact.id] = normalizeMessages((messages[contact.id] ?? []) + response.messages)
                     fetchedUnread += response.messages.filter {
                         $0.canSendReadReceipt && !viewedReceiptMessageIDs.contains($0.id)
@@ -155,8 +162,10 @@ extension AppSession {
             }
         }
         guard topicAccountEpoch == epoch else { return }
-        let limit = boundary ?? .max
-        let candidates = unread().filter { $0.timestamp <= limit }
+        let candidates = unread().filter { message in
+            guard let boundary else { return true }
+            return message.timestamp < boundary || (message.timestamp == boundary && boundaryIDs.contains(message.id))
+        }
         await recordMessageViews(Array(candidates.suffix(contact.unreadCount)))
     }
 }
