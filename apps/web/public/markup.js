@@ -4,7 +4,7 @@
 // loaded as a module just before app.js, and module scripts run in order,
 // so the elements exist by the time the app starts.
 import appearanceModal from './markup/appearance-modal.js?v=20261026-split';
-import chatHeader from './markup/chat-header.js?v=20261026-split';
+import chatHeader from './markup/chat-header.js?v=20261103-web-conversation';
 import chatShell from './markup/chat-shell.js?v=20261103-camera';
 import settingsModal from './markup/settings-modal.js?v=20261026-split';
 

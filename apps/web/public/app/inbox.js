@@ -8,13 +8,15 @@ import {
   getDraftText,
   getReminderStatus,
   getVisibleContacts,
-} from '../app-state.js?v=20260912-conversation-translation';
+  tidyServerPreview,
+} from '../app-state.js?v=20261103-web-conversation';
 
 export const inboxMethods = {
   syncInboxControls() {
     const controlsAvailable = this.inboxFilterControlsAvailable();
     const normalizedFilters = normalizeInboxFilters(this.contactFilters, {
       controlsAvailable,
+      visibleFilters: this.visibleInboxFilterKeys(),
     });
     const filtersChanged = Object.keys(this.contactFilters).some(
       (key) => this.contactFilters[key] !== normalizedFilters[key],
@@ -31,8 +33,25 @@ export const inboxMethods = {
 
     document.querySelectorAll('[data-inbox-filter]').forEach((button) => {
       const key = button.dataset.inboxFilter;
-      button.classList.toggle('active', Boolean(this.contactFilters[key]));
+      const active = Boolean(this.contactFilters[key]);
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     });
+    const noFilter = !Object.values(this.contactFilters).some(Boolean);
+    document.querySelectorAll('[data-inbox-all]').forEach((button) => {
+      button.classList.toggle('active', noFilter);
+      button.setAttribute('aria-pressed', String(noFilter));
+    });
+  },
+
+  // WhatsApp's chips are a single choice: All, Unread or Groups.
+  selectInboxChip(filterName) {
+    for (const key of Object.keys(this.contactFilters)) {
+      this.contactFilters[key] = key === filterName;
+    }
+    this.persistInboxPreferences();
+    this.syncInboxControls();
+    this.renderContacts();
   },
 
   inboxFilterControlsAvailable() {
@@ -40,6 +59,12 @@ export const inboxMethods = {
     return Boolean(
       filterRow && window.getComputedStyle(filterRow).display !== 'none',
     );
+  },
+
+  visibleInboxFilterKeys() {
+    return Array.from(document.querySelectorAll('[data-inbox-filter]'))
+      .filter((button) => window.getComputedStyle(button).display !== 'none')
+      .map((button) => button.dataset.inboxFilter);
   },
 
   setInboxSearchQuery(value) {
@@ -74,7 +99,9 @@ export const inboxMethods = {
       if (lastMessage) {
         previewByContact[contact.id] = this.getMessagePreview(lastMessage);
       } else if (contact.lastMessagePreview) {
-        previewByContact[contact.id] = contact.lastMessagePreview;
+        previewByContact[contact.id] = tidyServerPreview(
+          contact.lastMessagePreview,
+        );
       }
     }
     return previewByContact;
@@ -85,6 +112,7 @@ export const inboxMethods = {
     const messagesByContact = Object.fromEntries(this.messages.entries());
     const effectiveFilters = normalizeInboxFilters(this.contactFilters, {
       controlsAvailable: this.inboxFilterControlsAvailable(),
+      visibleFilters: this.visibleInboxFilterKeys(),
     });
     return getVisibleContacts({
       contacts: this.contacts,
@@ -200,6 +228,7 @@ export const inboxMethods = {
     const demo = createDemoWorkspace();
     this.demoMode = true;
     this.connected = true;
+    this.setLiveReconnectBanner(false);
 
     if (this.ws) {
       this.ws.onclose = null;

@@ -29,7 +29,6 @@
 #command-palette-button,
 #app-appearance-button,
 .notification-prompt,
-.inbox-filter-row,
 .sidebar-footer,
 .visitor-dashboard,
 .chat-workspace-button,
@@ -308,18 +307,6 @@
   cursor: pointer;
   position: relative;
   -webkit-tap-highlight-color: transparent;
-}
-
-.translation-indicator .info-icon {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: rgba(var(--accent-rgb), 0.16);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: bold;
 }
 
 .translation-indicator .original-tooltip {

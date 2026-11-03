@@ -3,7 +3,7 @@
 import {
   getDraftText,
   upsertDraft,
-} from '../app-state.js?v=20260912-conversation-translation';
+} from '../app-state.js?v=20261103-web-conversation';
 
 export const messageContentMethods = {
   // Render message content

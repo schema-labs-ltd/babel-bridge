@@ -22,8 +22,12 @@ export const eventsMethods = {
 
     document.querySelectorAll('[data-inbox-filter]').forEach((button) => {
       button.addEventListener('click', () =>
-        this.toggleInboxFilter(button.dataset.inboxFilter),
+        this.selectInboxChip(button.dataset.inboxFilter),
       );
+    });
+
+    document.querySelectorAll('[data-inbox-all]').forEach((button) => {
+      button.addEventListener('click', () => this.selectInboxChip(null));
     });
 
     document

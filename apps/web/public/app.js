@@ -5,25 +5,25 @@ import { setupChatGptSignIn } from './chatgpt-signin.js';
 // WhatsApp Translator Web Client
 
 import { ConversationSettingsClient } from './conversation-settings.js';
-import { resolveAppearanceTheme } from './app-state.js?v=20260912-conversation-translation';
+import { resolveAppearanceTheme } from './app-state.js?v=20261103-web-conversation';
 import { workspaceStateMethods } from './app/workspace-state.js';
 import { composerAssistMethods } from './app/composer-assist.js?v=20261103-camera';
-import { inboxMethods } from './app/inbox.js';
+import { inboxMethods } from './app/inbox.js?v=20261103-web-conversation';
 import { commandPaletteMethods } from './app/command-palette.js';
 import { workspacePanelMethods } from './app/workspace-panel.js';
-import { connectionMethods } from './app/connection.js';
+import { connectionMethods } from './app/connection.js?v=20261103-web-conversation';
 import { liveMessagesMethods } from './app/live-messages.js';
-import { contactsMethods } from './app/contacts.js';
+import { contactsMethods } from './app/contacts.js?v=20261103-web-conversation';
 import { conversationMethods } from './app/conversation.js';
-import { messageRenderMethods } from './app/message-render.js';
+import { messageRenderMethods } from './app/message-render.js?v=20261103-web-conversation';
 import { messageContentMethods } from './app/message-content.js';
 import { conversationToolsMethods } from './app/conversation-tools.js';
 import { sendingMethods } from './app/sending.js?v=20261103-camera';
 import { translationMethods } from './app/translation.js';
 import { repliesAiMethods } from './app/replies-ai.js';
-import { eventsMethods } from './app/events.js?v=20261103-camera';
+import { eventsMethods } from './app/events.js?v=20261103-web-conversation';
 import { menuEventsMethods } from './app/menu-events.js';
-import { formattingMethods } from './app/formatting.js';
+import { formattingMethods } from './app/formatting.js?v=20261103-web-conversation';
 import { messageMediaMethods } from './app/message-media.js';
 import { settingsModalMethods } from './app/settings-modal.js';
 

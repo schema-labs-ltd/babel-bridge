@@ -1,6 +1,6 @@
 // Reply targeting, the send button and AI compose and reply.
 
-import { suggestDemoReply } from '../app-state.js?v=20260912-conversation-translation';
+import { suggestDemoReply } from '../app-state.js?v=20261103-web-conversation';
 
 export const repliesAiMethods = {
   // Set reply state for a message
