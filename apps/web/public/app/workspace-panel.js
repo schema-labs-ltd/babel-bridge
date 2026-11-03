@@ -4,7 +4,7 @@ import {
   buildConversationBrief,
   buildConversationActionPlan,
   toggleChecklistItem,
-} from '../app-state.js?v=20260912-conversation-translation';
+} from '../app-state.js?v=20261103-chat-list';
 
 export const workspacePanelMethods = {
   toggleWorkspacePanel(force) {

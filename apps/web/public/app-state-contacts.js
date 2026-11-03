@@ -382,3 +382,85 @@ export function buildVisitorDashboard({
       .length,
   };
 }
+
+const flattenPreview = (text) =>
+  String(text || '')
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ');
+
+const bracketed = (text, label) =>
+  text.startsWith(`[ ${label}`) && text.endsWith(' ]')
+    ? text.slice(label.length + 2, -2).trim()
+    : null;
+
+/**
+ * Rewrites the server's bracketed preview labels, such as "[ Image ] caption",
+ * the way WhatsApp writes them: an icon and a word, on one line.
+ */
+export function tidyServerPreview(preview) {
+  let rest = flattenPreview(preview);
+  let prefix = '';
+  if (rest.startsWith('You: ')) {
+    prefix = 'You: ';
+    rest = rest.slice(5);
+  }
+  const after = (label) =>
+    rest.startsWith(label) ? rest.slice(label.length).trim() : null;
+  const exact = {
+    '[ Voice Note ]': '🎤 Voice message',
+    '[ Audio ]': '🎵 Audio',
+    '[ Sticker ]': 'Sticker',
+    '[ Location ]': '📍 Location',
+    '[ Message deleted ]': '🚫 This message was deleted',
+    '[ Message ]': 'Message',
+  };
+  let mapped = rest;
+  const image = after('[ Image ]');
+  const video = after('[ Video ]');
+  const documentName = bracketed(rest, 'Document: ');
+  const contactName = bracketed(rest, 'Contact: ');
+  const question = bracketed(rest, 'Poll: ');
+  if (image !== null) mapped = image ? `📷 ${image}` : '📷 Photo';
+  else if (video !== null) mapped = video ? `🎥 ${video}` : '🎥 Video';
+  else if (Object.hasOwn(exact, rest)) mapped = exact[rest];
+  else if (documentName !== null) mapped = `📄 ${documentName || 'Document'}`;
+  else if (contactName !== null) mapped = `👤 ${contactName || 'Contact'}`;
+  else if (question !== null) mapped = `📊 ${question || 'Poll'}`;
+  return prefix + mapped;
+}
+
+/**
+ * The chat list line for one message: media as an icon and a word, text on one
+ * line. The caller adds "You: " or the group sender's first name.
+ */
+export function describeMessageForPreview(content = {}, text = '') {
+  const caption = flattenPreview(text);
+  switch (content.type) {
+    case 'text':
+      return caption;
+    case 'image':
+      return caption ? `📷 ${caption}` : '📷 Photo';
+    case 'video':
+      return caption ? `🎥 ${caption}` : '🎥 Video';
+    case 'audio':
+      return content.isVoiceNote || content.is_voice_note
+        ? '🎤 Voice message'
+        : '🎵 Audio';
+    case 'document':
+      return `📄 ${content.fileName || content.file_name || 'Document'}`;
+    case 'sticker':
+      return 'Sticker';
+    case 'location':
+      return `📍 ${content.name || 'Location'}`;
+    case 'contact':
+      return `👤 ${content.name || 'Contact'}`;
+    case 'revoked':
+      return '🚫 This message was deleted';
+    case 'poll':
+      return `📊 ${content.question || 'Poll'}`;
+    default:
+      return caption || 'Message';
+  }
+}
