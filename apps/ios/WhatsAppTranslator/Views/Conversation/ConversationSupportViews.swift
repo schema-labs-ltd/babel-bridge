@@ -234,9 +234,12 @@ enum TimelineGrouping {
 
     static func senderKey(_ message: ChatMessage) -> String {
         if message.isFromMe { return "me" }
+        let isGroup = message.contactId.contains("@g.us") || message.chatType.lowercased() == "group"
+        guard isGroup else { return message.contactId }
+        if let jid = message.senderJID, !jid.isEmpty { return jid }
         if let phone = message.senderPhone, !phone.isEmpty { return phone }
-        if let name = message.senderName, !name.isEmpty { return name }
-        return message.contactId
+        // A display name can't tell two participants apart, so an unknown sender starts its own run.
+        return "unknown:\(message.id)"
     }
 
     /// Splits the items into days, keeping their order.

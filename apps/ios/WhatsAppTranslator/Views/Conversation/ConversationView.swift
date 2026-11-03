@@ -142,8 +142,9 @@ struct ConversationView: View {
                 guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
                       let oldID, newID != nil else { return }
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
-                // or sent it yourself; otherwise the scroll-down button counts it.
-                if isAtBottom || messages.last?.isFromMe == true {
+                // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
+                // keeps its place until the highlight fades.
+                if (isAtBottom && replyJump == nil) || messages.last?.isFromMe == true {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {
                     unseenCount += messages.reversed().prefix { $0.id != oldID }.filter { !$0.isFromMe && !$0.isReaction }.count
@@ -396,25 +397,6 @@ struct ConversationView: View {
 
     /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
     /// when the quoted message is older than what's loaded.
-    func jumpToQuotedMessage(_ id: String) async {
-        // A newer tap wins: an older one that is still loading history must not scroll back.
-        let token = UUID()
-        quoteJumpToken = token
-        // A topic only shows its own page, so leave it when the quoted message is not in it.
-        if selectedTopicID != nil, !messages.contains(where: { $0.id == id }) {
-            selectedTopicID = nil
-        }
-        if !messages.contains(where: { $0.id == id }) {
-            await session.loadAllMessages(for: contact.id)
-        }
-        guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
-        // Clear filters first: the timeline only holds rows that match them.
-        messageSearch = ""
-        starredOnly = false
-        guard let target = timelineItems.first(where: { item in item.messages.contains { $0.id == id } })?.id else { return }
-        replyJump = ReplyJump(itemID: target)
-    }
-
     func activateSearch() async {
         await session.loadAllMessages(for: contact.id)
         showSearch = true

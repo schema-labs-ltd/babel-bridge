@@ -259,4 +259,28 @@ extension ConversationView {
         unreadMarkerCount = openingCount
         pendingScrollID = UnreadMessagesDivider.scrollID
     }
+
+    func jumpToQuotedMessage(_ id: String) async {
+        // A newer tap wins: an older one that is still loading history must not scroll back.
+        let token = UUID()
+        quoteJumpToken = token
+        // A topic only shows its own page, so leave it when the quoted message is not in it.
+        if selectedTopicID != nil, !messages.contains(where: { $0.id == id }) {
+            selectedTopicID = nil
+        }
+        if !messages.contains(where: { $0.id == id }) {
+            await session.loadAllMessages(for: contact.id)
+            // An earlier tap or a search may already be loading the history, in which case the
+            // call above returns at once; wait for that load rather than give up on the quote.
+            while session.loadingCompleteHistoryContactIDs.contains(contact.id), quoteJumpToken == token {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
+        // Clear filters first: the timeline only holds rows that match them.
+        messageSearch = ""
+        starredOnly = false
+        guard let target = timelineItems.first(where: { item in item.messages.contains { $0.id == id } })?.id else { return }
+        replyJump = ReplyJump(itemID: target)
+    }
 }
