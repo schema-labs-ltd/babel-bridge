@@ -201,6 +201,12 @@ final class MacNotificationAppDelegate: NSObject, NSApplicationDelegate, UNUserN
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // A chat muted in the app only lands in Notification Centre, without a banner or sound.
+        let muted = Set(UserDefaults.standard.stringArray(forKey: AppPreferencesStore.mutedChatsDefaultsKey) ?? [])
+        if let contactID = notification.request.content.userInfo["contactId"] as? String, muted.contains(contactID) {
+            completionHandler([.list])
+            return
+        }
         completionHandler([.banner, .list, .sound, .badge])
     }
 

@@ -116,7 +116,20 @@ extension AppSession {
     func markChatRead(_ contact: Contact) async {
         preferences.setMarkedUnread(false, for: contact.id)
         guard contact.unreadCount > 0 else { return }
-        if messages[contact.id] == nil { await loadMessages(for: contact.id) }
+        // The cache can miss messages that arrived while the app was closed, so fetch the newest page
+        // and merge it, keeping any older pages already loaded.
+        let cached = messages[contact.id] ?? []
+        if (cached.last?.timestamp ?? 0) < contact.lastMessageTime
+            || cached.filter(\.canSendReadReceipt).count < contact.unreadCount {
+            do {
+                let response = try await api.messages(contactID: contact.id)
+                messages[contact.id] = normalizeMessages(cached + response.messages)
+            } catch {
+                guard !Self.isExpectedCancellation(error) else { return }
+                presentError("Couldn’t mark the chat as read", error)
+                return
+            }
+        }
         let incoming = (messages[contact.id] ?? []).filter(\.canSendReadReceipt)
         await recordMessageViews(Array(incoming.suffix(contact.unreadCount)))
     }

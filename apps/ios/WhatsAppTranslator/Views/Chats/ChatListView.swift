@@ -12,8 +12,12 @@ struct ChatListView: View {
     @State private var showArchived = false
 
     private var listedContacts: [Contact] {
-        session.filteredContacts.filter {
-            filter.includes($0) && session.preferences.isArchived($0.id) == showArchived
+        // Like WhatsApp, a search also finds archived chats.
+        let searching = !session.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return session.filteredContacts.filter { contact in
+            let matchesFilter = filter.includes(contact)
+                || (filter == .unread && session.preferences.isMarkedUnread(contact.id))
+            return matchesFilter && (searching || session.preferences.isArchived(contact.id) == showArchived)
         }
     }
 
@@ -243,7 +247,8 @@ struct ChatListView: View {
             if let id { session.preferences.setMarkedUnread(false, for: id) }
         }
         .overlay {
-            if !session.contacts.isEmpty && listedContacts.isEmpty && !showArchived {
+            if !session.contacts.isEmpty && listedContacts.isEmpty && !showArchived
+                && !(archivedCount > 0 && filter == .all && session.searchText.isEmpty) {
                 ContentUnavailableView("No matching chats", systemImage: "bubble.left.and.bubble.right", description: Text("Try another filter or search."))
             }
         }

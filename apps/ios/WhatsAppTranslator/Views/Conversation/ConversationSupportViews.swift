@@ -230,8 +230,11 @@ enum ConversationHeaderSummary {
         var seen = Set<String>()
         var names: [String] = []
         for message in messages where !message.isFromMe {
-            guard let first = message.senderName?.split(separator: " ").first.map(String.init),
-                  seen.insert(first).inserted else { continue }
+            guard let name = message.senderName, !name.isEmpty else { continue }
+            // A phone number stays whole; a name shortens to its first word.
+            let first = name.first.map { $0 == "+" || $0.isNumber } == true
+                ? name : (name.split(separator: " ").first.map(String.init) ?? name)
+            guard seen.insert(first).inserted else { continue }
             names.append(first)
         }
         guard !names.isEmpty else { return "tap here for group info" }

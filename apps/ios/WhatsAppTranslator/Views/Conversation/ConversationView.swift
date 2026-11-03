@@ -141,7 +141,7 @@ struct ConversationView: View {
         #endif
     }
 
-    private var conversationHeaderSubtitle: String {
+    var conversationHeaderSubtitle: String {
         // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
         if session.showsConnectingIndicator { return "Connecting…" }
         if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
