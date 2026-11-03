@@ -109,3 +109,15 @@ extension AppSession {
         #endif
     }
 }
+
+extension AppSession {
+    /// WhatsApp's "Mark as read" in the chat list: sends read receipts for the chat's unread
+    /// messages, loading them first if the chat hasn't been opened yet.
+    func markChatRead(_ contact: Contact) async {
+        preferences.setMarkedUnread(false, for: contact.id)
+        guard contact.unreadCount > 0 else { return }
+        if messages[contact.id] == nil { await loadMessages(for: contact.id) }
+        let incoming = (messages[contact.id] ?? []).filter(\.canSendReadReceipt)
+        await recordMessageViews(Array(incoming.suffix(contact.unreadCount)))
+    }
+}

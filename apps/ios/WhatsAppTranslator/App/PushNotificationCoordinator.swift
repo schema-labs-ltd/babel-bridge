@@ -357,6 +357,14 @@ final class NotificationAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // A chat muted in the app only lands in Notification Centre while the app is open, without
+        // a banner or sound, as WhatsApp does.
+        let muted = Set(UserDefaults.standard.stringArray(forKey: AppPreferencesStore.mutedChatsDefaultsKey) ?? [])
+        if let routing = MessagingNotificationRouting(userInfo: notification.request.content.userInfo),
+           muted.contains(routing.contactID) {
+            completionHandler([.list])
+            return
+        }
         completionHandler([.banner, .list, .sound, .badge])
     }
 

@@ -222,3 +222,19 @@ struct ConversationCostView: View {
         }
     }
 }
+
+enum ConversationHeaderSummary {
+    /// The group subtitle WhatsApp shows: participants' first names, then "You". The app only
+    /// knows people who have written in the loaded messages.
+    static func groupMembers(in messages: [ChatMessage]) -> String {
+        var seen = Set<String>()
+        var names: [String] = []
+        for message in messages where !message.isFromMe {
+            guard let first = message.senderName?.split(separator: " ").first.map(String.init),
+                  seen.insert(first).inserted else { continue }
+            names.append(first)
+        }
+        guard !names.isEmpty else { return "tap here for group info" }
+        return (names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending } + ["You"]).joined(separator: ", ")
+    }
+}

@@ -42,8 +42,17 @@ struct ConversationView: View {
         .accessibilityHint("Opens nickname, timezone and translation settings")
     }
 
+    private var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
+
     @ViewBuilder
     var conversationBarActions: some View {
+        // Translation is a toggle in the bar, so the subtitle can say who's in the chat, as WhatsApp's does.
+        Button(
+            translationOn ? "Turn translation off" : "Turn translation on",
+            systemImage: translationOn ? "character.bubble.fill" : "character.bubble"
+        ) { toggleTranslation() }
+        .accessibilityValue(translationOn ? "On" : "Off")
+        .accessibilityIdentifier("toggle-translation")
         Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
             .accessibilityIdentifier("open-chat-gallery")
         Menu("Conversation", systemImage: "ellipsis") { conversationActions }
@@ -135,8 +144,20 @@ struct ConversationView: View {
     private var conversationHeaderSubtitle: String {
         // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
         if session.showsConnectingIndicator { return "Connecting…" }
-        let translation = session.savedConversationSettings[contact.id]?.translationEnabled == true ? "Translation on" : "Translation off"
-        return session.localTimeDescription(for: contact.id).map { "\(translation) · \($0)" } ?? translation
+        if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
+        return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: messages) : "tap here for contact info"
+    }
+
+    func toggleTranslation() {
+        Task {
+            do {
+                var settings = try await session.conversationSettings(for: contact.id)
+                settings.translationEnabled.toggle()
+                try await session.saveConversationSettings(settings, for: contact.id)
+            } catch {
+                session.presentError("Couldn’t change translation", error)
+            }
+        }
     }
 
     @ViewBuilder

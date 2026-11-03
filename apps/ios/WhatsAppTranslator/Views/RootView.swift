@@ -160,12 +160,14 @@ struct MainNavigationToolbar: ToolbarContent {
         // Messages, Chats and Settings are the app's primary destinations, so they stay visible
         // longest when iPhone Duo compresses a vertical bar and sends other items to the overflow menu.
         ToolbarItemGroup(placement: .primaryAction) {
-            Button("Messages", systemImage: session.mainTab == .messages ? "text.bubble.fill" : "text.bubble") {
+            // WhatsApp's Chats tab is a pair of speech bubbles; the unified feed takes a tray, so the
+            // two read differently and neither looks like Contacts.
+            Button("Messages", systemImage: session.mainTab == .messages ? "tray.full.fill" : "tray.full") {
                 session.mainTab = .messages
             }
             .accessibilityAddTraits(session.mainTab == .messages ? .isSelected : [])
             .help("Messages")
-            Button("Chats", systemImage: session.mainTab == .chats ? "person.2.fill" : "person.2") {
+            Button("Chats", systemImage: session.mainTab == .chats ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right") {
                 session.mainTab = .chats
             }
             .accessibilityAddTraits(session.mainTab == .chats ? .isSelected : [])
