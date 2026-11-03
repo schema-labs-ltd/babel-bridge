@@ -20,8 +20,7 @@ extension ConversationView {
                     contact: contact,
                     displayName: session.displayName(for: contact),
                     avatarURL: session.avatarURLs[contact.id],
-                    localTime: session.localTimeDescription(for: contact.id),
-                    connecting: session.showsConnectingIndicator,
+                    subtitle: conversationHeaderSubtitle,
                     translationEnabled: session.savedConversationSettings[contact.id]?.translationEnabled == true,
                     usage: usage,
                     starredOnly: starredOnly,
@@ -30,7 +29,8 @@ extension ConversationView {
                     showGallery: { showGallery = true },
                     toggleStarred: { Task { await toggleStarredFilter() } },
                     showCost: { showCost = true },
-                    showConversationSettings: { showSettings = true }
+                    showConversationSettings: { showSettings = true },
+                    toggleTranslation: toggleTranslation
                 )
                 TopicFilterBar(contactID: contact.id, selection: $selectedTopicID)
                 #endif
@@ -150,6 +150,8 @@ extension ConversationView {
         }
         .task {
             draft = ProcessInfo.processInfo.arguments.contains("-demo") ? "" : session.draftStore.text(for: contact.id)
+            // Opening a chat however it was reached clears a manual "mark as unread".
+            session.preferences.setMarkedUnread(false, for: contact.id)
             // The picture may need a download; don't hold the messages back for it.
             async let avatar: Void = session.loadAvatar(for: contact.id)
             await session.loadMessages(for: contact.id)

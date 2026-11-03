@@ -6,8 +6,7 @@ struct MacConversationHeader: View {
     let contact: Contact
     let displayName: String
     let avatarURL: URL?
-    let localTime: String?
-    let connecting: Bool
+    let subtitle: String
     let translationEnabled: Bool
     let usage: UsageSummary?
     let starredOnly: Bool
@@ -17,6 +16,7 @@ struct MacConversationHeader: View {
     let toggleStarred: () -> Void
     let showCost: () -> Void
     let showConversationSettings: () -> Void
+    let toggleTranslation: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
@@ -44,6 +44,13 @@ struct MacConversationHeader: View {
             Spacer(minLength: 12)
 
             HStack(spacing: 7) {
+                headerButton(
+                    translationEnabled ? "Turn translation off" : "Turn translation on",
+                    systemImage: translationEnabled ? "character.bubble.fill" : "character.bubble",
+                    foreground: translationEnabled ? palette.accent : .secondary,
+                    action: toggleTranslation
+                )
+                .accessibilityValue(translationEnabled ? "On" : "Off")
                 headerButton("Gallery", systemImage: "photo.on.rectangle", action: showGallery)
                     .accessibilityIdentifier("open-chat-gallery")
                 headerButton("Search messages", systemImage: "magnifyingglass", action: search)
@@ -75,12 +82,6 @@ struct MacConversationHeader: View {
         .overlay(alignment: .bottom) {
             Divider()
         }
-    }
-
-    private var subtitle: String {
-        if connecting { return "Connecting…" }
-        let translation = translationEnabled ? "Translation on" : "Translation off"
-        return localTime.map { "\(translation) · \($0)" } ?? translation
     }
 
     private func headerButton(

@@ -22,6 +22,8 @@ struct ConversationView: View {
     /// The quoted message a tap on a reply scrolled to; it is briefly highlighted.
     @State var replyJump: ReplyJump?
     @State var quoteJumpToken = UUID()
+    /// A translation change still being saved; another tap waits for it so saves can't land out of order.
+    @State var savingTranslation = false
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -45,8 +47,16 @@ struct ConversationView: View {
         .accessibilityHint("Opens nickname, timezone and translation settings")
     }
 
+
     @ViewBuilder
     var conversationBarActions: some View {
+        // Translation is a toggle in the bar, so the subtitle can say who's in the chat, as WhatsApp's does.
+        Button(
+            translationOn ? "Turn translation off" : "Turn translation on",
+            systemImage: translationOn ? "character.bubble.fill" : "character.bubble"
+        ) { toggleTranslation() }
+        .accessibilityValue(translationOn ? "On" : "Off")
+        .accessibilityIdentifier("toggle-translation")
         Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
             .accessibilityIdentifier("open-chat-gallery")
         Menu("Conversation", systemImage: "ellipsis") { conversationActions }
@@ -145,11 +155,34 @@ struct ConversationView: View {
         #endif
     }
 
-    private var conversationHeaderSubtitle: String {
+    var conversationHeaderSubtitle: String {
         // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
         if session.showsConnectingIndicator { return "Connecting…" }
-        let translation = session.savedConversationSettings[contact.id]?.translationEnabled == true ? "Translation on" : "Translation off"
-        return session.localTimeDescription(for: contact.id).map { "\(translation) · \($0)" } ?? translation
+        if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
+        return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: session.messages[contact.id] ?? []) : "tap here for contact info"
+    }
+
+    var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
+
+    func toggleTranslation() {
+        // Apply what the button offered when tapped, even if the settings were still loading, and
+        // never carry one server's settings over to another picked meanwhile.
+        guard !savingTranslation else { return }
+        let enable = !translationOn
+        let epoch = session.topicAccountEpoch
+        savingTranslation = true
+        Task {
+            defer { savingTranslation = false }
+            do {
+                var settings = try await session.conversationSettings(for: contact.id)
+                guard session.topicAccountEpoch == epoch, settings.translationEnabled != enable else { return }
+                settings.translationEnabled = enable
+                try await session.saveConversationSettings(settings, for: contact.id)
+            } catch {
+                guard session.topicAccountEpoch == epoch, !AppSession.isExpectedCancellation(error) else { return }
+                session.presentError("Couldn’t change translation", error)
+            }
+        }
     }
 
     @ViewBuilder
