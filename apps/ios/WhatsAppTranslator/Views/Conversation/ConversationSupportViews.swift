@@ -226,6 +226,25 @@ struct ConversationCostView: View {
     }
 }
 
+/// A chat's live arrivals: how many there have been, and the most recent IDs. A conversation keeps
+/// the count it last saw and asks which IDs came since, so timestamps and sort order don't matter.
+struct LiveArrivals: Equatable {
+    /// Running totals, so a burst between two looks is counted in full.
+    private(set) var incoming = 0
+    private(set) var outgoing = 0
+    /// Only for ignoring a repeated event for the same message.
+    private var recent: [String] = []
+
+    var count: Int { incoming + outgoing }
+
+    mutating func record(_ id: String, fromMe: Bool) {
+        guard !recent.contains(id) else { return }
+        if fromMe { outgoing += 1 } else { incoming += 1 }
+        recent.append(id)
+        if recent.count > 50 { recent.removeFirst(recent.count - 50) }
+    }
+}
+
 enum ConversationHeaderSummary {
     /// The group subtitle WhatsApp shows: participants' first names, then "You". The app only
     /// knows people who have written in the loaded messages.
@@ -308,6 +327,69 @@ enum TimelineGrouping {
             return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
         }
         return date.formatted(.dateTime.day().month(.abbreviated).year())
+    }
+}
+
+enum UnreadMarker {
+    /// The messages the server's unread count can include: incoming ones that take a read receipt,
+    /// less any this device has already marked as viewed.
+    static func candidates(in messages: [ChatMessage], viewed: Set<String> = []) -> [ChatMessage] {
+        messages.filter { $0.canSendReadReceipt && !viewed.contains($0.id) }
+    }
+
+    /// The first of the last `unreadCount` candidates: the ones that were unread on opening.
+    static func firstUnreadID(in messages: [ChatMessage], unreadCount: Int, viewed: Set<String> = []) -> String? {
+        let unread = candidates(in: messages, viewed: viewed)
+        guard unreadCount > 0, !unread.isEmpty else { return nil }
+        return unread[max(0, unread.count - unreadCount)].id
+    }
+}
+
+/// WhatsApp's bar above the first unread message when a chat opens.
+struct UnreadMessagesDivider: View {
+    static let scrollID = "unread-messages-divider"
+    let count: Int
+
+    var body: some View {
+        Text(count == 1 ? "1 unread message" : "\(count) unread messages")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial)
+            .padding(.horizontal, -12)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// The round button that appears when you scroll up, with a count of messages that arrived since.
+struct ScrollToBottomButton: View {
+    @Environment(\.translatorPalette) private var palette
+    let unseenCount: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .translatorGlass(in: Circle())
+                .overlay(alignment: .topLeading) {
+                    if unseenCount > 0 {
+                        Text(unseenCount > 99 ? "99+" : "\(unseenCount)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(palette.accent, in: Capsule())
+                            .offset(x: -6, y: -8)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Scroll to latest message")
+        .accessibilityValue(unseenCount > 0 ? "\(unseenCount) new" : "")
     }
 }
 

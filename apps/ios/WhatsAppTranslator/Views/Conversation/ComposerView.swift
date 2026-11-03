@@ -68,6 +68,20 @@ struct ComposerView: View {
                     composerInput
 
                     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending {
+                        #if os(iOS)
+                        // WhatsApp keeps the camera one tap away beside the microphone.
+                        if CameraCapture.isAvailable {
+                            Button { openCamera() } label: {
+                                Image(systemName: "camera")
+                                    .font(.system(size: 21, weight: .regular))
+                                    .foregroundStyle(Color.primary)
+                                    .frame(width: 44, height: 44)
+                                    .translatorGlassControl(in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Take photo")
+                        }
+                        #endif
                         Button { showVoiceComposer = true } label: {
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 23, weight: .regular))
@@ -142,6 +156,18 @@ struct ComposerView: View {
         }
     }
 
+    #if os(iOS)
+    private func openCamera() {
+        Task {
+            if await CameraCapture.requestAccess() {
+                cameraPresented = true
+            } else {
+                pickerError = CameraCapture.accessDeniedMessage
+            }
+        }
+    }
+    #endif
+
     private var composerInput: some View {
         MessageComposerTextInput(text: $text, focus: $focused, allowsImagePaste: !isSending && !imagePaste.isLoading) { providers in
             guard !isSending, pendingPhotos == nil, !showVoiceComposer, !cameraPresented else { return }
@@ -157,15 +183,7 @@ struct ComposerView: View {
         Menu {
             Button("Photo Library", systemImage: "photo.on.rectangle") { photoLibraryPresented = true }
             if CameraCapture.isAvailable {
-                Button("Take Photo", systemImage: "camera") {
-                    Task {
-                        if await CameraCapture.requestAccess() {
-                            cameraPresented = true
-                        } else {
-                            pickerError = CameraCapture.accessDeniedMessage
-                        }
-                    }
-                }
+                Button("Take Photo", systemImage: "camera") { openCamera() }
             }
         } label: {
             addImageLabel

@@ -14,6 +14,30 @@ extension MessageBubble {
         #endif
     }
 
+    /// The text Copy puts on the pasteboard: what the bubble shows, for text and captions.
+    var copyText: String? {
+        // An album shows the caption of whichever photo has one, so Copy takes that one.
+        let source = albumMessages.count > 1
+            ? albumMessages.first { !($0.content?.caption?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+            : message
+        guard let source, source.normalizedContentType != "revoked",
+              source.contentText != nil || Self.usesInlineTextContent(source) else { return nil }
+        return showAlternate ? (source.alternateText ?? source.displayText) : source.displayText
+    }
+
+    private static func usesInlineTextContent(_ message: ChatMessage) -> Bool {
+        ["text", "conversation", "extendedtextmessage"].contains(message.normalizedContentType)
+    }
+
+    func copyToPasteboard(_ text: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = text
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
+
     var messageMetadata: some View {
         HStack(spacing: 6) {
             if message.isTranslated {
@@ -263,6 +287,9 @@ extension MessageBubble {
         Label(session.messageTopicLabel(for: message), systemImage: "tag")
         Divider()
         Button("Reply", systemImage: "arrowshape.turn.up.left", action: reply)
+        if let copyText {
+            Button("Copy", systemImage: "doc.on.doc") { copyToPasteboard(copyText) }
+        }
         if message.canTranslate {
             Button("Translate", systemImage: "character.bubble", action: translate)
         }

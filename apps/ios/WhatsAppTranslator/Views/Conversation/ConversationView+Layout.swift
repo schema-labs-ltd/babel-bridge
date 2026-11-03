@@ -154,7 +154,9 @@ extension ConversationView {
             session.preferences.setMarkedUnread(false, for: contact.id)
             // The picture may need a download; don't hold the messages back for it.
             async let avatar: Void = session.loadAvatar(for: contact.id)
-            await session.loadMessages(for: contact.id)
+            // Only a page that actually arrived can stand in for the rows reaching the chat's latest time.
+            if await session.loadMessages(for: contact.id) { newestPageLoaded = true }
+            markUnread()
             await avatar
             await session.loadTopics()
             usage = try? await session.conversationUsage(for: contact.id)
@@ -210,5 +212,122 @@ extension ConversationView {
             .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
         }
         .foldAwareComposerPane(arrangement)
+    }
+}
+
+extension ConversationView {
+    /// Loads the next page of history. The timeline's bottom anchor keeps what you're reading in
+    /// place as rows arrive above it; if you're still near the top afterwards, the next page follows.
+    func loadOlderMessages() async {
+        guard !loadingOlder, selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
+              session.messageHistoryHasMore[contact.id] == true else { return }
+        let oldestBefore = session.messages[contact.id]?.first?.id
+        loadingOlder = true
+        await session.loadMessages(for: contact.id, older: true)
+        loadingOlder = false
+        markUnread()
+        // Only follow on when the page actually added older messages; a failed request leaves the
+        // cursor where it was, and the "Load earlier messages" button stays for a manual retry.
+        guard !Task.isCancelled, session.messages[contact.id]?.first?.id != oldestBefore else { return }
+        if isNearTop, session.messageHistoryHasMore[contact.id] == true { await loadOlderMessages() }
+    }
+
+    /// Places WhatsApp's "unread messages" bar above the first message that was unread when the
+    /// chat opened, and starts the chat there. It waits for the newest page, or a cache that already
+    /// reaches the chat's latest message, so a stale cache can't put the bar in the wrong place. (A
+    /// trailing reaction moves the chat's time but isn't a row, so the rows alone can't show that.)
+    func markUnread() {
+        let openingCount = openingUnreadCount ?? contact.unreadCount
+        if openingUnreadCount == nil {
+            openingUnreadCount = openingCount
+            openingViewedIDs = session.viewedReceiptMessageIDs
+            openingLastMessageTime = contact.lastMessageTime
+        }
+        let boundary = openingLastMessageTime ?? contact.lastMessageTime
+        let loaded = session.messages[contact.id] ?? []
+        if let marker = unreadMarkerID, !loaded.contains(where: { $0.id == marker }) { unreadMarkerID = nil }
+        // Wait for any page that is loading; whichever load finishes calls this again.
+        guard !loadingOlder, openingCount > 0, unreadMarkerID == nil, selectedTopicID == nil,
+              let newest = loaded.last, newestPageLoaded || newest.timestamp >= boundary else { return }
+        let viewed = openingViewedIDs
+        // Messages that arrived after the chat opened were never part of the unread count.
+        let opening = loaded.filter { $0.timestamp <= boundary }
+        // The first page may not reach back to the first unread message, so load a few more pages
+        // first; past that the bar goes above the oldest loaded unread message.
+        if UnreadMarker.candidates(in: opening, viewed: viewed).count < openingCount,
+           session.messageHistoryHasMore[contact.id] == true, unreadHistoryPages < 5 {
+            unreadHistoryPages += 1
+            let oldestBefore = loaded.first?.id
+            // Set before the task starts, so another call in this update waits instead of loading too.
+            loadingOlder = true
+            Task {
+                await session.loadMessages(for: contact.id, older: true)
+                loadingOlder = false
+                // A failed page stops here rather than retrying; the bar then uses what is loaded.
+                if session.messages[contact.id]?.first?.id == oldestBefore { unreadHistoryPages = 5 }
+                markUnread()
+            }
+            return
+        }
+        guard let marker = UnreadMarker.firstUnreadID(in: opening, unreadCount: openingCount, viewed: viewed) else { return }
+        unreadMarkerID = marker
+        unreadMarkerCount = openingCount
+        pendingScrollID = UnreadMessagesDivider.scrollID
+    }
+
+    func jumpToQuotedMessage(_ id: String) async {
+        // A newer tap wins: an older one that is still loading history must not scroll back.
+        let token = UUID()
+        quoteJumpToken = token
+        // A topic only shows its own page, so leave it when the quoted message is not in it.
+        if selectedTopicID != nil, !messages.contains(where: { $0.id == id }) {
+            selectedTopicID = nil
+        }
+        if !messages.contains(where: { $0.id == id }) {
+            await session.loadAllMessages(for: contact.id)
+            // An earlier tap or a search may already be loading the history, in which case the
+            // call above returns at once; wait for that load rather than give up on the quote.
+            while session.loadingCompleteHistoryContactIDs.contains(contact.id), quoteJumpToken == token {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
+        // Clear filters first: the timeline only holds rows that match them.
+        messageSearch = ""
+        starredOnly = false
+        guard let target = timelineItems.first(where: { item in item.messages.contains { $0.id == id } })?.id else { return }
+        replyJump = ReplyJump(itemID: target)
+    }
+}
+
+extension ConversationView {
+    var conversationHeaderSubtitle: String {
+        // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
+        if session.showsConnectingIndicator { return "Connecting…" }
+        if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
+        return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: session.messages[contact.id] ?? []) : "tap here for contact info"
+    }
+
+    var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
+
+    func toggleTranslation() {
+        // Apply what the button offered when tapped, even if the settings were still loading, and
+        // never carry one server's settings over to another picked meanwhile.
+        guard !savingTranslation else { return }
+        let enable = !translationOn
+        let epoch = session.topicAccountEpoch
+        savingTranslation = true
+        Task {
+            defer { savingTranslation = false }
+            do {
+                var settings = try await session.conversationSettings(for: contact.id)
+                guard session.topicAccountEpoch == epoch, settings.translationEnabled != enable else { return }
+                settings.translationEnabled = enable
+                try await session.saveConversationSettings(settings, for: contact.id)
+            } catch {
+                guard session.topicAccountEpoch == epoch, !AppSession.isExpectedCancellation(error) else { return }
+                session.presentError("Couldn’t change translation", error)
+            }
+        }
     }
 }

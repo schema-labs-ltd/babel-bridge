@@ -21,6 +21,25 @@ struct ConversationView: View {
     @State var usage: UsageSummary?
     /// The quoted message a tap on a reply scrolled to; it is briefly highlighted.
     @State var replyJump: ReplyJump?
+    @State var isAtBottom = true
+    /// Messages that arrived while the user was reading further up, shown on the scroll-down button.
+    @State var unseenCount = 0
+    @State var loadingOlder = false
+    @State var isNearTop = false
+    /// The chat's unread count when it opened, before reading clears it.
+    @State var openingUnreadCount: Int?
+    /// The messages already viewed here when the chat opened, so later views don't move the bar.
+    @State var openingViewedIDs: Set<String> = []
+    /// The chat's latest message time when it opened; later arrivals are never among the unread.
+    @State var openingLastMessageTime: Int64?
+    @State var newestPageLoaded = false
+    /// The first message that was unread when the chat opened, where WhatsApp's "unread messages" bar goes.
+    @State var unreadMarkerID: String?
+    @State var unreadMarkerCount = 0
+    @State var pendingScrollID: String?
+    @State var sentCount = 0
+    /// Older pages loaded so the unread bar can reach the first unread message.
+    @State var unreadHistoryPages = 0
     @State var quoteJumpToken = UUID()
     /// A translation change still being saved; another tap waits for it so saves can't land out of order.
     @State var savingTranslation = false
@@ -131,11 +150,55 @@ struct ConversationView: View {
             .platformDismissesKeyboard()
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.count) {
-                // A highlighted quote keeps its place until the highlight fades.
-                guard messageSearch.isEmpty, !starredOnly, replyJump == nil else { return }
-                withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+            .onChange(of: session.messages[contact.id]?.last?.id) { markUnread() }
+            // Keyed on live arrivals, so history pages, refreshes and topic pages never count as new.
+            .onChange(of: session.liveArrivals[contact.id] ?? LiveArrivals()) { seen, now in
+                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly, now.count > seen.count else { return }
+                // Like WhatsApp, a new message only pulls you down if you were already at the bottom
+                // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
+                // keeps its place until the highlight fades.
+                if (isAtBottom && replyJump == nil) || now.outgoing > seen.outgoing {
+                    withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                } else {
+                    unseenCount += max(0, now.incoming - seen.incoming)
+                }
             }
+            // A refresh can replace the cached list and drop the marked row; place the bar again.
+            .onChange(of: session.messages[contact.id]?.first?.id) { markUnread() }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                // The composer and keyboard sit in the bottom inset, so they don't count as distance.
+                geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom
+                    >= geometry.contentSize.height - 120
+            } action: { _, atBottom in
+                isAtBottom = atBottom
+                if atBottom { unseenCount = 0 }
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top < 300
+            } action: { _, nearTop in
+                isNearTop = nearTop
+                if nearTop { Task { await loadOlderMessages() } }
+            }
+            // A message you sent here shows at the bottom even before its live event arrives.
+            .onChange(of: sentCount) { withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) } }
+            .onChange(of: pendingScrollID) { _, id in
+                guard let id else { return }
+                // Just below the top, so the pinned day header doesn't cover the unread bar.
+                proxy.scrollTo(id, anchor: UnitPoint(x: 0.5, y: 0.12))
+                pendingScrollID = nil
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !isAtBottom {
+                    ScrollToBottomButton(unseenCount: unseenCount) {
+                        withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+                    }
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 10)
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: isAtBottom)
+            .task { markUnread() }
             .onChange(of: replyJump) { _, jump in
                 guard let jump else { return }
                 withAnimation(.snappy) { proxy.scrollTo(jump.itemID, anchor: .center) }
@@ -155,47 +218,23 @@ struct ConversationView: View {
         #endif
     }
 
-    var conversationHeaderSubtitle: String {
-        // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
-        if session.showsConnectingIndicator { return "Connecting…" }
-        if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
-        return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: session.messages[contact.id] ?? []) : "tap here for contact info"
-    }
-
-    var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
-
-    func toggleTranslation() {
-        // Apply what the button offered when tapped, even if the settings were still loading, and
-        // never carry one server's settings over to another picked meanwhile.
-        guard !savingTranslation else { return }
-        let enable = !translationOn
-        let epoch = session.topicAccountEpoch
-        savingTranslation = true
-        Task {
-            defer { savingTranslation = false }
-            do {
-                var settings = try await session.conversationSettings(for: contact.id)
-                guard session.topicAccountEpoch == epoch, settings.translationEnabled != enable else { return }
-                settings.translationEnabled = enable
-                try await session.saveConversationSettings(settings, for: contact.id)
-            } catch {
-                guard session.topicAccountEpoch == epoch, !AppSession.isExpectedCancellation(error) else { return }
-                session.presentError("Couldn’t change translation", error)
-            }
-        }
-    }
-
     @ViewBuilder
     private var messageTimelineContent: some View {
         if let selectedTopicID {
             TopicPageControls(topicID: selectedTopicID)
         }
-        if selectedTopicID == nil, session.messageHistoryHasMore[contact.id] == true, messageSearch.isEmpty, !starredOnly {
+        // Earlier history loads by itself as you scroll near the top, as in WhatsApp. The button
+        // stays as a fallback for a chat too short to scroll, and for VoiceOver.
+        if loadingOlder {
+            ProgressView()
+                .controlSize(.small)
+                .padding(.vertical, 10)
+        } else if selectedTopicID == nil, session.messageHistoryHasMore[contact.id] == true, messageSearch.isEmpty, !starredOnly {
             Button("Load earlier messages") {
-                Task { await session.loadMessages(for: contact.id, older: true) }
+                Task { await loadOlderMessages() }
             }
             .font(.caption.weight(.semibold))
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderless)
             .padding(.vertical, 10)
         }
 
@@ -212,6 +251,11 @@ struct ConversationView: View {
         ForEach(TimelineGrouping.days(items)) { day in
             Section {
                 ForEach(day.indices.map { (index: $0, item: items[$0]) }, id: \.item.id) { entry in
+                    if let unreadMarkerID, entry.item.messages.contains(where: { $0.id == unreadMarkerID }) {
+                        UnreadMessagesDivider(count: unreadMarkerCount)
+                            .padding(.top, 10)
+                            .id(UnreadMessagesDivider.scrollID)
+                    }
                     timelineRow(entry.item, at: entry.index, in: items, firstOfDay: entry.index == day.indices.lowerBound)
                 }
             } header: {
@@ -255,7 +299,7 @@ struct ConversationView: View {
             && !showSettings && !showCost && !showGallery && focusedReplyMessage == nil
     }
 
-    private var timelineItems: [ConversationTimelineItem] {
+    var timelineItems: [ConversationTimelineItem] {
         let visibleIDs = Set(visibleMessages.map(\.id))
         return ConversationTimelineBuilder.items(from: messages).flatMap { item in
             ConversationTimelineBuilder.items(from: item.messages.filter { visibleIDs.contains($0.id) })
@@ -338,6 +382,7 @@ struct ConversationView: View {
         let reply = replyTarget
         Task {
             if await session.send(text: value, to: contact.id, reply: reply) {
+                sentCount += 1
                 draft = ""
                 cancelReply()
             }
@@ -363,30 +408,6 @@ struct ConversationView: View {
 
     /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
     /// when the quoted message is older than what's loaded.
-    func jumpToQuotedMessage(_ id: String) async {
-        // A newer tap wins: an older one that is still loading history must not scroll back.
-        let token = UUID()
-        quoteJumpToken = token
-        // A topic only shows its own page, so leave it when the quoted message is not in it.
-        if selectedTopicID != nil, !messages.contains(where: { $0.id == id }) {
-            selectedTopicID = nil
-        }
-        if !messages.contains(where: { $0.id == id }) {
-            await session.loadAllMessages(for: contact.id)
-            // An earlier tap or a search may already be loading the history, in which case the
-            // call above returns at once; wait for that load rather than give up on the quote.
-            while session.loadingCompleteHistoryContactIDs.contains(contact.id), quoteJumpToken == token {
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-        }
-        guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
-        // Clear filters first: the timeline only holds rows that match them.
-        messageSearch = ""
-        starredOnly = false
-        guard let target = timelineItems.first(where: { item in item.messages.contains { $0.id == id } })?.id else { return }
-        replyJump = ReplyJump(itemID: target)
-    }
-
     func activateSearch() async {
         await session.loadAllMessages(for: contact.id)
         showSearch = true

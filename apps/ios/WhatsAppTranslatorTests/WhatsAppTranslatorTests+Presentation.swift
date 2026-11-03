@@ -221,6 +221,32 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(SenderNameColor.index(for: "Virag"), 4)
     }
 
+    func testLiveArrivalsCountEveryArrivalOnce() {
+        var arrivals = LiveArrivals()
+        arrivals.record("a", fromMe: false)
+        let seen = arrivals
+        arrivals.record("b", fromMe: true)
+        arrivals.record("b", fromMe: true)
+        arrivals.record("c", fromMe: false)
+        XCTAssertEqual(arrivals.incoming - seen.incoming, 1)
+        XCTAssertEqual(arrivals.outgoing - seen.outgoing, 1)
+        // A burst larger than the duplicate window is still counted in full.
+        for index in 0..<60 { arrivals.record("m\(index)", fromMe: false) }
+        XCTAssertEqual(arrivals.incoming, 62)
+        XCTAssertEqual(arrivals.count, 63)
+    }
+
+    func testUnreadBarSitsAboveTheFirstUnreadIncomingMessage() throws {
+        let messages = try ["a", "b", "c"].map { try decodeMessage(id: $0, contentType: "text", content: #"{"type":"text","body":"Hi"}"#) }
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 2), "b")
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 9), "a")
+        XCTAssertNil(UnreadMarker.firstUnreadID(in: messages, unreadCount: 0))
+        // A message already viewed here, or a deleted one, can't be one of the unread.
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 2, viewed: ["c"]), "a")
+        let deleted = try decodeMessage(id: "d", contentType: "revoked", content: #"{"type":"revoked"}"#)
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages + [deleted], unreadCount: 1), "c")
+    }
+
     func testChatListPreviewTidiesServerLabelsLikeWhatsApp() {
         XCTAssertEqual(ChatListPreview.tidy("[ Image ] Beach day"), "📷 Beach day")
         XCTAssertEqual(ChatListPreview.tidy("You: [ Image ]"), "You: 📷 Photo")

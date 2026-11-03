@@ -25,6 +25,13 @@ extension AppSession {
             }
             let normalized = normalizeMessages(conversation + [message])
             messages[message.contactId] = normalized
+            // History sync also arrives as "message" events, but with old timestamps; only a message
+            // sent in the last couple of minutes counts as a live arrival. Recorded after the list
+            // changes, so an observer finds the message in it.
+            let recent = message.timestamp >= Int64(Date().timeIntervalSince1970 * 1_000) - 120_000
+            if event.type == "message", !message.isReaction, recent {
+                liveArrivals[message.contactId, default: LiveArrivals()].record(message.id, fromMe: message.isFromMe)
+            }
             invalidateTopicMembership(for: message)
             for id in Array(topicPages.keys) {
                 if let page = topicPages[id] { topicPages[id]?.messages = normalizeMessages(page.messages) }
