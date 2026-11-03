@@ -116,21 +116,41 @@ extension AppSession {
     func markChatRead(_ contact: Contact) async {
         preferences.setMarkedUnread(false, for: contact.id)
         guard contact.unreadCount > 0 else { return }
-        // The cache can miss messages that arrived while the app was closed, so fetch the newest page
-        // and merge it, keeping any older pages already loaded.
-        let cached = messages[contact.id] ?? []
-        if (cached.last?.timestamp ?? 0) < contact.lastMessageTime
-            || cached.filter(\.canSendReadReceipt).count < contact.unreadCount {
+        let epoch = topicAccountEpoch
+        // Messages that can still take a receipt: ones viewed here already can't move the count on.
+        func unread() -> [ChatMessage] {
+            (messages[contact.id] ?? []).filter { $0.canSendReadReceipt && !viewedReceiptMessageIDs.contains($0.id) }
+        }
+        // The cache can miss messages that arrived while the app was closed, or not reach back to the
+        // oldest unread one, so fetch the newest pages until they cover the unread count. Each page is
+        // merged into the cache as it stands after the request, so live arrivals are kept.
+        let stale = (messages[contact.id]?.last?.timestamp ?? 0) < contact.lastMessageTime
+        if !demoMode, stale || unread().count < contact.unreadCount {
+            var oldestFetched: ChatMessage?
+            var fetchedUnread = 0
             do {
-                let response = try await api.messages(contactID: contact.id)
-                messages[contact.id] = normalizeMessages(cached + response.messages)
+                for _ in 0..<5 {
+                    let response = try await api.messages(
+                        contactID: contact.id, before: oldestFetched?.timestamp, beforeID: oldestFetched?.id
+                    )
+                    // A switch of server while this ran must not let the old server's messages in.
+                    guard topicAccountEpoch == epoch else { return }
+                    messages[contact.id] = normalizeMessages((messages[contact.id] ?? []) + response.messages)
+                    fetchedUnread += response.messages.filter {
+                        $0.canSendReadReceipt && !viewedReceiptMessageIDs.contains($0.id)
+                    }.count
+                    guard response.hasMore, fetchedUnread < contact.unreadCount,
+                          let oldest = response.messages.min(by: { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) })
+                    else { break }
+                    oldestFetched = oldest
+                }
             } catch {
-                guard !Self.isExpectedCancellation(error) else { return }
+                guard topicAccountEpoch == epoch, !Self.isExpectedCancellation(error) else { return }
                 presentError("Couldn’t mark the chat as read", error)
                 return
             }
         }
-        let incoming = (messages[contact.id] ?? []).filter(\.canSendReadReceipt)
-        await recordMessageViews(Array(incoming.suffix(contact.unreadCount)))
+        guard topicAccountEpoch == epoch else { return }
+        await recordMessageViews(Array(unread().suffix(contact.unreadCount)))
     }
 }
