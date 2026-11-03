@@ -32,6 +32,7 @@ struct ConversationView: View {
     @State var unreadMarkerID: String?
     @State var unreadMarkerCount = 0
     @State var pendingScrollID: String?
+    @State var quoteJumpToken = UUID()
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -393,10 +394,17 @@ struct ConversationView: View {
     /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
     /// when the quoted message is older than what's loaded.
     func jumpToQuotedMessage(_ id: String) async {
-        if !messages.contains(where: { $0.id == id }), selectedTopicID == nil {
+        // A newer tap wins: an older one that is still loading history must not scroll back.
+        let token = UUID()
+        quoteJumpToken = token
+        // A topic only shows its own page, so leave it when the quoted message is not in it.
+        if selectedTopicID != nil, !messages.contains(where: { $0.id == id }) {
+            selectedTopicID = nil
+        }
+        if !messages.contains(where: { $0.id == id }) {
             await session.loadAllMessages(for: contact.id)
         }
-        guard messages.contains(where: { $0.id == id }) else { return }
+        guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
         // Clear filters first: the timeline only holds rows that match them.
         messageSearch = ""
         starredOnly = false
