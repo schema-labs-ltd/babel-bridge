@@ -40,6 +40,8 @@ struct ConversationView: View {
     /// Older pages loaded so the unread bar can reach the first unread message.
     @State var unreadHistoryPages = 0
     @State var quoteJumpToken = UUID()
+    /// A translation change still being saved; another tap waits for it so saves can't land out of order.
+    @State var savingTranslation = false
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -63,8 +65,16 @@ struct ConversationView: View {
         .accessibilityHint("Opens nickname, timezone and translation settings")
     }
 
+
     @ViewBuilder
     var conversationBarActions: some View {
+        // Translation is a toggle in the bar, so the subtitle can say who's in the chat, as WhatsApp's does.
+        Button(
+            translationOn ? "Turn translation off" : "Turn translation on",
+            systemImage: translationOn ? "character.bubble.fill" : "character.bubble"
+        ) { toggleTranslation() }
+        .accessibilityValue(translationOn ? "On" : "Off")
+        .accessibilityIdentifier("toggle-translation")
         Button("Gallery", systemImage: "photo.on.rectangle") { showGallery = true }
             .accessibilityIdentifier("open-chat-gallery")
         Menu("Conversation", systemImage: "ellipsis") { conversationActions }
@@ -207,13 +217,6 @@ struct ConversationView: View {
         #else
         ""
         #endif
-    }
-
-    private var conversationHeaderSubtitle: String {
-        // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
-        if session.showsConnectingIndicator { return "Connecting…" }
-        let translation = session.savedConversationSettings[contact.id]?.translationEnabled == true ? "Translation on" : "Translation off"
-        return session.localTimeDescription(for: contact.id).map { "\(translation) · \($0)" } ?? translation
     }
 
     @ViewBuilder

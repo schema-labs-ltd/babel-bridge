@@ -164,3 +164,67 @@ final class LiveConnectionIndicatorTests: XCTestCase {
         XCTAssertEqual((2...7).map { APIClient.reconnectDelay(attempt: $0) }, [2, 4, 8, 16, 30, 30])
     }
 }
+
+@MainActor
+final class MarkChatReadTests: XCTestCase {
+    private func message(_ id: String, time: Int64) throws -> ChatMessage {
+        let json: [String: Any] = ["id": id, "contactId": "ana@s.whatsapp.net", "timestamp": time, "isFromMe": false, "isForwarded": false, "senderName": "Ana", "senderPhone": "447700900123", "chatType": "individual", "contentType": "Text", "content": ["type": "text", "body": "Hi"], "isTranslated": false]
+        return try JSONDecoder().decode(ChatMessage.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    private func page(_ messages: [ChatMessage], hasMore: Bool) throws -> Data {
+        let payload = try messages.map { try JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) }
+        return try JSONSerialization.data(withJSONObject: ["messages": payload, "hasMore": hasMore])
+    }
+
+    /// Two pages cover the unread count, the first ending in a shared second. A live message from that
+    /// same second, known only to the cache, is not part of the count and gets no receipt.
+    func testMarkChatReadReceiptsTheFetchedUnreadMessagesOnly() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MarkReadProtocol.self]
+        let urlSession = URLSession(configuration: configuration)
+        defer { urlSession.invalidateAndCancel(); MarkReadProtocol.state.handler = nil }
+        let api = APIClient(session: urlSession)
+        await api.configure(try ServerConfiguration.make(address: "https://markread.example.test", password: "test"))
+        let session = AppSession(api: api, demoMode: false)
+        let first = try page([message("m2", time: 200_000), message("m3", time: 200_000)], hasMore: true)
+        let second = try page([message("m1", time: 100_000)], hasMore: false)
+        MarkReadProtocol.state.handler = { request in
+            let query = request.request.url?.query ?? ""
+            if request.request.url?.path == "/api/topics/messages" {
+                request.respond(Data(#"{"topics":[]}"#.utf8))
+            } else {
+                request.respond(query.contains("before=") ? second : first)
+            }
+        }
+        session.messages["ana@s.whatsapp.net"] = [try message("live", time: 200_000)]
+        session.viewedReceiptMessageIDs.insert("m0")
+        let contact = Contact(id: "ana@s.whatsapp.net", name: "Ana", phone: nil, type: "individual", lastMessageTime: 200_000,
+                              unreadCount: 3, pinnedAt: nil, lastMessagePreview: "Hi")
+        await session.markChatRead(contact)
+        XCTAssertEqual(session.pendingReadReceipts["ana@s.whatsapp.net"], ["m1", "m2", "m3"])
+        XCTAssertEqual(Set(session.messages["ana@s.whatsapp.net"]?.map(\.id) ?? []), ["live", "m1", "m2", "m3"])
+    }
+}
+
+private final class MarkReadProtocol: URLProtocol, @unchecked Sendable {
+    static let state = MarkReadState()
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "markread.example.test" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.state.handler?(self) }
+    override func stopLoading() {}
+    func respond(_ data: Data) {
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
+private final class MarkReadState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedHandler: (@Sendable (MarkReadProtocol) -> Void)?
+    var handler: (@Sendable (MarkReadProtocol) -> Void)? {
+        get { lock.withLock { storedHandler } }
+        set { lock.withLock { storedHandler = newValue } }
+    }
+}

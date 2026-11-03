@@ -109,3 +109,61 @@ extension AppSession {
         #endif
     }
 }
+
+extension AppSession {
+    /// WhatsApp's "Mark as read" in the chat list: sends read receipts for the chat's unread
+    /// messages, loading them first if the chat hasn't been opened yet.
+    func markChatRead(_ contact: Contact) async {
+        preferences.setMarkedUnread(false, for: contact.id)
+        guard contact.unreadCount > 0 else { return }
+        let epoch = topicAccountEpoch
+        // Messages that can still take a receipt: ones viewed here already can't move the count on.
+        func unread() -> [ChatMessage] {
+            (messages[contact.id] ?? []).filter { $0.canSendReadReceipt && !viewedReceiptMessageIDs.contains($0.id) }
+        }
+        // The cache can miss messages that arrived while the app was closed, or not reach back to the
+        // oldest unread one, so fetch the newest pages until they cover the unread count. Each page is
+        // merged into the cache as it stands after the request, so live arrivals are kept.
+        // Always fetch: a live arrival can make the cache look current while hiding an offline gap.
+        // The newest message the server had when this started: later arrivals were not part of the
+        // unread count, so they must not push the older unread messages out of the selection.
+        // Timestamps are whole seconds, so messages sharing the boundary second count only if a
+        // fetched page had them.
+        var boundary: Int64?
+        var boundaryIDs: Set<String> = []
+        if !demoMode {
+            var oldestFetched: ChatMessage?
+            var fetchedUnread = 0
+            do {
+                for _ in 0..<5 {
+                    let response = try await api.messages(
+                        contactID: contact.id, before: oldestFetched?.timestamp, beforeID: oldestFetched?.id
+                    )
+                    // A switch of server while this ran must not let the old server's messages in.
+                    guard topicAccountEpoch == epoch else { return }
+                    if boundary == nil { boundary = response.messages.map(\.timestamp).max() ?? 0 }
+                    // Any page can hold messages from the boundary second; only the cache can add later ones.
+                    boundaryIDs.formUnion(response.messages.filter { $0.timestamp == boundary }.map(\.id))
+                    messages[contact.id] = normalizeMessages((messages[contact.id] ?? []) + response.messages)
+                    fetchedUnread += response.messages.filter {
+                        $0.canSendReadReceipt && !viewedReceiptMessageIDs.contains($0.id)
+                    }.count
+                    guard response.hasMore, fetchedUnread < contact.unreadCount,
+                          let oldest = response.messages.min(by: { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) })
+                    else { break }
+                    oldestFetched = oldest
+                }
+            } catch {
+                guard topicAccountEpoch == epoch, !Self.isExpectedCancellation(error) else { return }
+                presentError("Couldn’t mark the chat as read", error)
+                return
+            }
+        }
+        guard topicAccountEpoch == epoch else { return }
+        let candidates = unread().filter { message in
+            guard let boundary else { return true }
+            return message.timestamp < boundary || (message.timestamp == boundary && boundaryIDs.contains(message.id))
+        }
+        await recordMessageViews(Array(candidates.suffix(contact.unreadCount)))
+    }
+}

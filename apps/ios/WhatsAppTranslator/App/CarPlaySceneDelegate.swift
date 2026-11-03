@@ -13,10 +13,10 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
         let template = CPListTemplate(title: "Chats", sections: [])
         template.tabTitle = "Chats"
-        template.tabImage = UIImage(systemName: "person.2.fill")
+        template.tabImage = UIImage(systemName: "bubble.left.and.bubble.right.fill")
         let messages = CPListTemplate(title: "Messages", sections: [])
         messages.tabTitle = "Messages"
-        messages.tabImage = UIImage(systemName: "text.bubble.fill")
+        messages.tabImage = UIImage(systemName: "tray.full.fill")
         messages.emptyViewTitleVariants = ["Loading messages…"]
         template.emptyViewTitleVariants = ["Loading conversations…"]
         let refresh = CPBarButton(title: "Refresh") { [weak self] _ in self?.startRefreshing() }

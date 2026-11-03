@@ -7,7 +7,12 @@ struct ChatRow: View {
     let displayName: String
     let draft: String
     let avatarURL: URL?
+    var isMuted = false
+    var isMarkedUnread = false
     var latestMessage: ChatMessage? = nil
+
+    private var showsUnread: Bool { contact.unreadCount > 0 || isMarkedUnread }
+    private var unreadTint: Color { isMuted ? Color.platformSecondaryLabel : palette.accent }
 
     var body: some View {
         Group {
@@ -38,7 +43,7 @@ struct ChatRow: View {
                     Spacer(minLength: 8)
                     Text(contact.lastMessageTime.chatListDate)
                         .font(.caption)
-                        .foregroundStyle(contact.unreadCount > 0 ? palette.accent : Color.platformSecondaryLabel)
+                        .foregroundStyle(showsUnread && !isMuted ? palette.accent : Color.platformSecondaryLabel)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 HStack(spacing: 8) {
@@ -64,7 +69,7 @@ struct ChatRow: View {
                     .font(.subheadline)
                 HStack(spacing: 9) {
                     Text(contact.lastMessageTime.chatListDate)
-                        .foregroundStyle(contact.unreadCount > 0 ? palette.accent : Color.platformSecondaryLabel)
+                        .foregroundStyle(showsUnread && !isMuted ? palette.accent : Color.platformSecondaryLabel)
                     statusIndicators
                 }
                 .font(.caption)
@@ -106,14 +111,26 @@ struct ChatRow: View {
                 .font(.caption2)
                 .foregroundStyle(Color.platformSecondaryLabel)
         }
+        if isMuted {
+            Image(systemName: "speaker.slash.fill")
+                .font(.caption2)
+                .foregroundStyle(Color.platformSecondaryLabel)
+                .accessibilityLabel("Muted")
+        }
         if contact.unreadCount > 0 {
+            // Like WhatsApp, a muted chat's count is grey rather than green.
             Text("\(contact.unreadCount)")
                 .font(.caption2.bold())
                 .foregroundStyle(.white)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
-                .background(palette.accent, in: Capsule())
+                .background(unreadTint, in: Capsule())
                 .fixedSize(horizontal: true, vertical: false)
+        } else if isMarkedUnread {
+            Circle()
+                .fill(unreadTint)
+                .frame(width: 18, height: 18)
+                .accessibilityLabel("Marked as unread")
         }
     }
 

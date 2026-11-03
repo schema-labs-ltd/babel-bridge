@@ -33,7 +33,7 @@ extension UnifiedMessagesView {
                                 }.padding()
                             }
                             if displayedMessages.isEmpty && !session.feedLoading && session.feedError == nil {
-                                ContentUnavailableView(selectedTopicID == nil ? "All your messages, together" : "No messages in this topic", systemImage: "text.bubble", description: Text(selectedTopicID == nil ? "Messages from your chats will appear here. Swipe a message to choose where your reply goes." : "New messages will appear here after they’re organised. All messages remains available."))
+                                ContentUnavailableView(selectedTopicID == nil ? "All your messages, together" : "No messages in this topic", systemImage: "tray.full", description: Text(selectedTopicID == nil ? "Messages from your chats will appear here. Swipe a message to choose where your reply goes." : "New messages will appear here after they’re organised. All messages remains available."))
                             }
                             ForEach(sections) { section in
                                 Section {

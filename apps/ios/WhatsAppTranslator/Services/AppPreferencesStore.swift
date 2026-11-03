@@ -53,12 +53,20 @@ final class AppPreferencesStore {
         var theme: AppTheme = .whatsapp
         var colorMode: AppColorMode = .system
         var wallpaper: AppWallpaper? = nil
+        // Optional so preferences saved before these existed still decode.
+        var mutedChatIDs: Set<String>? = nil
+        var archivedChatIDs: Set<String>? = nil
+        var markedUnreadChatIDs: Set<String>? = nil
     }
 
     private let defaults: UserDefaults
     private let storageKey = "whatsapp-translator-ios-preferences-v1"
     private var starredMessageIDs: [String: Set<String>]
     private var conversations: [String: ConversationPresentationPreferences]
+    /// Chat list organisation kept on this device, like WhatsApp's mute, archive and mark as unread.
+    private(set) var mutedChatIDs: Set<String>
+    private(set) var archivedChatIDs: Set<String>
+    private(set) var markedUnreadChatIDs: Set<String>
 
     var theme: AppTheme { didSet { persist() } }
     var colorMode: AppColorMode { didSet { persist() } }
@@ -71,6 +79,9 @@ final class AppPreferencesStore {
             ?? StoredState()
         starredMessageIDs = state.starredMessageIDs
         conversations = state.conversations
+        mutedChatIDs = state.mutedChatIDs ?? []
+        archivedChatIDs = state.archivedChatIDs ?? []
+        markedUnreadChatIDs = state.markedUnreadChatIDs ?? []
         theme = state.theme
         colorMode = state.colorMode
         wallpaper = state.wallpaper ?? .classic
@@ -85,6 +96,37 @@ final class AppPreferencesStore {
         if values.contains(messageID) { values.remove(messageID) } else { values.insert(messageID) }
         starredMessageIDs[contactID] = values
         persist()
+    }
+
+    func isMuted(_ contactID: String) -> Bool { mutedChatIDs.contains(contactID) }
+    func isArchived(_ contactID: String) -> Bool { archivedChatIDs.contains(contactID) }
+    func isMarkedUnread(_ contactID: String) -> Bool { markedUnreadChatIDs.contains(contactID) }
+
+    /// Muted chats are also kept here as a plain list, which the notification delegate reads off
+    /// the main actor to keep a muted chat's notifications quiet while the app is open.
+    static let mutedChatsDefaultsKey = "whatsapp-translator-muted-chat-ids"
+
+    func setMuted(_ muted: Bool, for contactID: String) {
+        mutedChatIDs = Self.updated(mutedChatIDs, contactID, muted)
+        defaults.set(Array(mutedChatIDs), forKey: Self.mutedChatsDefaultsKey)
+        persist()
+    }
+
+    func setArchived(_ archived: Bool, for contactID: String) {
+        archivedChatIDs = Self.updated(archivedChatIDs, contactID, archived)
+        persist()
+    }
+
+    func setMarkedUnread(_ marked: Bool, for contactID: String) {
+        guard markedUnreadChatIDs.contains(contactID) != marked else { return }
+        markedUnreadChatIDs = Self.updated(markedUnreadChatIDs, contactID, marked)
+        persist()
+    }
+
+    private static func updated(_ set: Set<String>, _ contactID: String, _ included: Bool) -> Set<String> {
+        var set = set
+        if included { set.insert(contactID) } else { set.remove(contactID) }
+        return set
     }
 
     func conversationPreferences(for contactID: String) -> ConversationPresentationPreferences {
@@ -106,7 +148,10 @@ final class AppPreferencesStore {
             conversations: conversations,
             theme: theme,
             colorMode: colorMode,
-            wallpaper: wallpaper
+            wallpaper: wallpaper,
+            mutedChatIDs: mutedChatIDs,
+            archivedChatIDs: archivedChatIDs,
+            markedUnreadChatIDs: markedUnreadChatIDs
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         defaults.set(data, forKey: storageKey)

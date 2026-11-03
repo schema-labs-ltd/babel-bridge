@@ -249,6 +249,27 @@ struct TimelineTail: Equatable {
     }
 }
 
+enum ConversationHeaderSummary {
+    /// The group subtitle WhatsApp shows: participants' first names, then "You". The app only
+    /// knows people who have written in the loaded messages.
+    static func groupMembers(in messages: [ChatMessage]) -> String {
+        var seen = Set<String>()
+        var names: [String] = []
+        for message in messages where !message.isFromMe {
+            guard let name = message.senderName, !name.isEmpty else { continue }
+            // A phone number stays whole; a name shortens to its first word.
+            let first = name.first.map { $0 == "+" || $0.isNumber } == true
+                ? name : (name.split(separator: " ").first.map(String.init) ?? name)
+            // One entry per person: two people who share a first name are both listed.
+            let identity = message.senderJID ?? message.senderPhone ?? name
+            guard seen.insert(identity).inserted else { continue }
+            names.append(first)
+        }
+        guard !names.isEmpty else { return "tap here for group info" }
+        return (names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending } + ["You"]).joined(separator: ", ")
+    }
+}
+
 /// How the conversation timeline groups messages, as WhatsApp does: a day header that names the
 /// day, and runs of consecutive messages from one sender that sit close together.
 enum TimelineGrouping {

@@ -163,6 +163,34 @@ extension WhatsAppTranslatorTests {
         )
     }
 
+    func testChatListOrganisationSurvivesRelaunchAndOlderPreferences() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "chat-organisation-\(UUID().uuidString)"))
+        // Preferences saved before mute and archive existed must still load.
+        defaults.set(Data(#"{"starredMessageIDs":{},"conversations":{},"theme":"ocean","colorMode":"dark"}"#.utf8), forKey: "whatsapp-translator-ios-preferences-v1")
+        let store = AppPreferencesStore(defaults: defaults)
+        XCTAssertEqual(store.theme, .ocean)
+        store.setMuted(true, for: "family@g.us")
+        store.setArchived(true, for: "old@s.whatsapp.net")
+        store.setMarkedUnread(true, for: "ana@s.whatsapp.net")
+
+        let reloaded = AppPreferencesStore(defaults: defaults)
+        XCTAssertTrue(reloaded.isMuted("family@g.us"))
+        XCTAssertTrue(reloaded.isArchived("old@s.whatsapp.net"))
+        XCTAssertTrue(reloaded.isMarkedUnread("ana@s.whatsapp.net"))
+        XCTAssertEqual(defaults.stringArray(forKey: AppPreferencesStore.mutedChatsDefaultsKey), ["family@g.us"])
+    }
+
+    func testGroupSubtitleListsWritersThenYou() throws {
+        let message = try decodeMessage(id: "m", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
+        XCTAssertEqual(ConversationHeaderSummary.groupMembers(in: [message]), "Virag, You")
+        XCTAssertEqual(ConversationHeaderSummary.groupMembers(in: []), "tap here for group info")
+        // Two people who share a first name are both listed.
+        func alex(_ phone: String) throws -> ChatMessage {
+            try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"\#(phone)","contactId":"chat@g.us","timestamp":1700000000000,"isFromMe":false,"isForwarded":false,"senderName":"Alex \#(phone)","senderPhone":"\#(phone)","contactName":"Family","contactPhone":null,"chatType":"group","contentType":"text","content":{"type":"text","body":"Hi"},"originalText":null,"translatedText":null,"sourceLanguage":null,"isTranslated":false}"#.utf8))
+        }
+        XCTAssertEqual(ConversationHeaderSummary.groupMembers(in: [try alex("1"), try alex("2")]), "Alex, Alex, You")
+    }
+
     func testDayHeadersNameTheDayLikeWhatsApp() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))

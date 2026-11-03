@@ -20,8 +20,7 @@ extension ConversationView {
                     contact: contact,
                     displayName: session.displayName(for: contact),
                     avatarURL: session.avatarURLs[contact.id],
-                    localTime: session.localTimeDescription(for: contact.id),
-                    connecting: session.showsConnectingIndicator,
+                    subtitle: conversationHeaderSubtitle,
                     translationEnabled: session.savedConversationSettings[contact.id]?.translationEnabled == true,
                     usage: usage,
                     starredOnly: starredOnly,
@@ -30,7 +29,8 @@ extension ConversationView {
                     showGallery: { showGallery = true },
                     toggleStarred: { Task { await toggleStarredFilter() } },
                     showCost: { showCost = true },
-                    showConversationSettings: { showSettings = true }
+                    showConversationSettings: { showSettings = true },
+                    toggleTranslation: toggleTranslation
                 )
                 TopicFilterBar(contactID: contact.id, selection: $selectedTopicID)
                 #endif
@@ -150,6 +150,8 @@ extension ConversationView {
         }
         .task {
             draft = ProcessInfo.processInfo.arguments.contains("-demo") ? "" : session.draftStore.text(for: contact.id)
+            // Opening a chat however it was reached clears a manual "mark as unread".
+            session.preferences.setMarkedUnread(false, for: contact.id)
             // The picture may need a download; don't hold the messages back for it.
             async let avatar: Void = session.loadAvatar(for: contact.id)
             // Only a page that actually arrived can stand in for the rows reaching the chat's latest time.
@@ -295,5 +297,37 @@ extension ConversationView {
         starredOnly = false
         guard let target = timelineItems.first(where: { item in item.messages.contains { $0.id == id } })?.id else { return }
         replyJump = ReplyJump(itemID: target)
+    }
+}
+
+extension ConversationView {
+    var conversationHeaderSubtitle: String {
+        // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
+        if session.showsConnectingIndicator { return "Connecting…" }
+        if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
+        return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: session.messages[contact.id] ?? []) : "tap here for contact info"
+    }
+
+    var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
+
+    func toggleTranslation() {
+        // Apply what the button offered when tapped, even if the settings were still loading, and
+        // never carry one server's settings over to another picked meanwhile.
+        guard !savingTranslation else { return }
+        let enable = !translationOn
+        let epoch = session.topicAccountEpoch
+        savingTranslation = true
+        Task {
+            defer { savingTranslation = false }
+            do {
+                var settings = try await session.conversationSettings(for: contact.id)
+                guard session.topicAccountEpoch == epoch, settings.translationEnabled != enable else { return }
+                settings.translationEnabled = enable
+                try await session.saveConversationSettings(settings, for: contact.id)
+            } catch {
+                guard session.topicAccountEpoch == epoch, !AppSession.isExpectedCancellation(error) else { return }
+                session.presentError("Couldn’t change translation", error)
+            }
+        }
     }
 }

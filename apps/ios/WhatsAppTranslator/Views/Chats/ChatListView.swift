@@ -9,6 +9,21 @@ struct ChatListView: View {
     @State private var showSettings = ProcessInfo.processInfo.arguments.contains("-demoSettings")
 
     @State private var filter: ChatFilter = .all
+    @State private var showArchived = false
+
+    private var listedContacts: [Contact] {
+        // Like WhatsApp, a search also finds archived chats.
+        let searching = !session.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return session.filteredContacts.filter { contact in
+            let matchesFilter = filter.includes(contact)
+                || (filter == .unread && session.preferences.isMarkedUnread(contact.id))
+            return matchesFilter && (searching || session.preferences.isArchived(contact.id) == showArchived)
+        }
+    }
+
+    private var archivedCount: Int {
+        session.contacts.filter { $0.showsInChatList && session.preferences.isArchived($0.id) }.count
+    }
 
     var body: some View {
         @Bindable var session = session
@@ -188,7 +203,8 @@ struct ChatListView: View {
 
     private func contactList(selection: Binding<String?>) -> some View {
         List(selection: selection) {
-            ForEach(session.filteredContacts.filter { filter.includes($0) }) { contact in
+            archiveRow
+            ForEach(listedContacts) { contact in
                 // A tagged row drives the split view's selection like a NavigationLink would,
                 // without the disclosure chevron WhatsApp's chat list doesn't have.
                 ChatRow(
@@ -196,28 +212,26 @@ struct ChatListView: View {
                     displayName: session.displayName(for: contact),
                     draft: session.draftStore.text(for: contact.id),
                     avatarURL: session.avatarURLs[contact.id],
+                    isMuted: session.preferences.isMuted(contact.id),
+                    isMarkedUnread: session.preferences.isMarkedUnread(contact.id),
                     latestMessage: session.messages[contact.id]?.last { !$0.isReaction }
                 )
                 .tag(Optional(contact.id))
                 .accessibilityAddTraits(.isButton)
-                .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                    Button {
-                        Task { await session.togglePin(contact) }
-                    } label: {
-                        Label(
-                            contact.pinnedAt == nil ? "Pin" : "Unpin",
-                            systemImage: contact.pinnedAt == nil ? "pin" : "pin.slash"
-                        )
-                    }
-                    .tint(palette.accent)
+                // WhatsApp's swipes: right for read state and pin, left for mute and archive.
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    readStateButton(for: contact)
+                    pinButton(for: contact)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    archiveButton(for: contact)
+                    muteButton(for: contact)
                 }
                 .contextMenu {
-                    Button(
-                        contact.pinnedAt == nil ? "Pin conversation" : "Unpin conversation",
-                        systemImage: contact.pinnedAt == nil ? "pin" : "pin.slash"
-                    ) {
-                        Task { await session.togglePin(contact) }
-                    }
+                    readStateButton(for: contact)
+                    pinButton(for: contact)
+                    muteButton(for: contact)
+                    archiveButton(for: contact)
                 }
                 .task { await session.loadAvatar(for: contact.id) }
                 #if os(iOS)
@@ -232,11 +246,94 @@ struct ChatListView: View {
             }
         }
         .listStyle(.plain)
+        .onChange(of: session.selectedContactID) { _, id in
+            if let id { session.preferences.setMarkedUnread(false, for: id) }
+        }
         .overlay {
-            if !session.contacts.isEmpty && session.filteredContacts.filter({ filter.includes($0) }).isEmpty {
+            if !session.contacts.isEmpty && listedContacts.isEmpty && !showArchived
+                && !(archivedCount > 0 && filter == .all && session.searchText.isEmpty) {
                 ContentUnavailableView("No matching chats", systemImage: "bubble.left.and.bubble.right", description: Text("Try another filter or search."))
             }
         }
+    }
+}
+
+extension ChatListView {
+    /// WhatsApp's "Archived" row above the chats, and a way back from the archive.
+    @ViewBuilder
+    fileprivate var archiveRow: some View {
+        if showArchived {
+            Button { withAnimation(.snappy) { showArchived = false } } label: {
+                Label("Back to chats", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(palette.deepAccent)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .listRowSeparator(.hidden)
+        } else if archivedCount > 0, filter == .all {
+            Button { withAnimation(.snappy) { showArchived = true } } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "archivebox")
+                        .frame(width: 56)
+                        .foregroundStyle(Color.platformSecondaryLabel)
+                    Text("Archived")
+                        .font(.body.weight(.semibold))
+                    Spacer()
+                    Text("\(archivedCount)")
+                        .font(.caption)
+                        .foregroundStyle(Color.platformSecondaryLabel)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowSeparator(.hidden)
+            .accessibilityLabel("Archived chats, \(archivedCount)")
+        }
+    }
+
+    fileprivate func readStateButton(for contact: Contact) -> some View {
+        let unread = contact.unreadCount > 0 || session.preferences.isMarkedUnread(contact.id)
+        return Button {
+            if unread {
+                Task { await session.markChatRead(contact) }
+            } else {
+                session.preferences.setMarkedUnread(true, for: contact.id)
+            }
+        } label: {
+            Label(unread ? "Mark as read" : "Mark as unread", systemImage: unread ? "message" : "message.badge")
+        }
+        .tint(.blue)
+    }
+
+    fileprivate func pinButton(for contact: Contact) -> some View {
+        Button {
+            Task { await session.togglePin(contact) }
+        } label: {
+            Label(contact.pinnedAt == nil ? "Pin" : "Unpin", systemImage: contact.pinnedAt == nil ? "pin" : "pin.slash")
+        }
+        .tint(palette.accent)
+    }
+
+    fileprivate func muteButton(for contact: Contact) -> some View {
+        let muted = session.preferences.isMuted(contact.id)
+        return Button {
+            session.preferences.setMuted(!muted, for: contact.id)
+        } label: {
+            Label(muted ? "Unmute" : "Mute", systemImage: muted ? "speaker.wave.2" : "speaker.slash")
+        }
+        .tint(.gray)
+    }
+
+    fileprivate func archiveButton(for contact: Contact) -> some View {
+        let archived = session.preferences.isArchived(contact.id)
+        return Button {
+            withAnimation(.snappy) { session.preferences.setArchived(!archived, for: contact.id) }
+        } label: {
+            Label(archived ? "Unarchive" : "Archive", systemImage: archived ? "tray.and.arrow.up" : "archivebox")
+        }
+        .tint(.indigo)
     }
 }
 
