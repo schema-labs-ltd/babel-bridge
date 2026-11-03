@@ -48,18 +48,22 @@ extension AppSession {
               !avatarRequests.contains(contactID) else { return }
         avatarRequests.insert(contactID)
         defer { avatarRequests.remove(contactID) }
+        // Signing out or switching server starts a new epoch and clears the media cache. Check it
+        // after every wait so a late answer can't put the old account's picture back.
+        let epoch = topicAccountEpoch
+        var current: Bool { topicAccountEpoch == epoch && !Task.isCancelled }
         let key = "avatar-\(contactID)"
         let cachedURL = try? await mediaCache.cachedURL(for: key)
+        guard current else { return }
         if avatarURLs[contactID] == nil, let cachedURL { avatarURLs[contactID] = cachedURL }
-        let server = configuration?.baseURL
         let remote: URL?
         do { remote = try await api.avatar(contactID: contactID) } catch { return }
         // The server also answers with no picture while WhatsApp reconnects or is slow, so keep
         // the saved one and check again next time rather than treat it as removed.
-        guard configuration?.baseURL == server, !Task.isCancelled, let remote else { return }
+        guard current, let remote else { return }
         let download = try? await URLSession.shared.data(from: remote)
         // A row that scrolled away cancels the download; it is checked again when shown.
-        guard !Task.isCancelled else { return }
+        guard current else { return }
         refreshedAvatarIDs.insert(contactID)
         guard let data = download?.0,
               (download?.1 as? HTTPURLResponse)?.statusCode == 200,
@@ -67,15 +71,20 @@ extension AppSession {
             if cachedURL == nil { avatarURLs[contactID] = remote }
             return
         }
-        guard configuration?.baseURL == server else { return }
         if let cachedURL {
             let saved = await Task.detached(priority: .utility) { try? Data(contentsOf: cachedURL) }.value
+            guard current else { return }
             if saved == data { return }
         }
-        _ = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
+        let storedURL = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
+        guard topicAccountEpoch == epoch else {
+            // Sign-out cleared the cache while this was being written.
+            try? await mediaCache.remove(messageID: key)
+            return
+        }
         // A file that changed keeps its path, which the picture view wouldn't reload, so this
         // launch shows the new picture from the server and the next one from the saved file.
-        avatarURLs[contactID] = cachedURL == nil ? (try? await mediaCache.cachedURL(for: key)) ?? remote : remote
+        avatarURLs[contactID] = cachedURL == nil ? storedURL ?? remote : remote
     }
 
     func togglePin(_ contact: Contact) async {
