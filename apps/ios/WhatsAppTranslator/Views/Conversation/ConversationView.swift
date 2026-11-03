@@ -28,6 +28,8 @@ struct ConversationView: View {
     @State var isNearTop = false
     /// The chat's unread count when it opened, before reading clears it.
     @State var openingUnreadCount: Int?
+    /// The messages already viewed here when the chat opened, so later views don't move the bar.
+    @State var openingViewedIDs: Set<String> = []
     /// The first message that was unread when the chat opened, where WhatsApp's "unread messages" bar goes.
     @State var unreadMarkerID: String?
     @State var unreadMarkerCount = 0
@@ -147,9 +149,15 @@ struct ConversationView: View {
                 if (isAtBottom && replyJump == nil) || messages.last?.isFromMe == true {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {
-                    unseenCount += messages.reversed().prefix { $0.id != oldID }.filter { !$0.isFromMe && !$0.isReaction }.count
+                    // Only what follows the previous newest message is new; if that message has gone
+                    // (a page replaced the list), nothing is counted rather than everything.
+                    if let previous = messages.lastIndex(where: { $0.id == oldID }) {
+                        unseenCount += messages[(previous + 1)...].filter { !$0.isFromMe && !$0.isReaction }.count
+                    }
                 }
             }
+            // A refresh can replace the cached list and drop the marked row; place the bar again.
+            .onChange(of: session.messages[contact.id]?.first?.id) { markUnread() }
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 // The composer and keyboard sit in the bottom inset, so they don't count as distance.
                 geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom

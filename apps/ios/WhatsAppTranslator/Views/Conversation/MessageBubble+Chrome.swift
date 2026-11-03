@@ -16,11 +16,16 @@ extension MessageBubble {
 
     /// The text Copy puts on the pasteboard: what the bubble shows, for text and captions.
     var copyText: String? {
-        guard message.normalizedContentType != "revoked", message.contentText != nil || usesInlineTextContent else { return nil }
-        return showAlternate ? (message.alternateText ?? message.displayText) : message.displayText
+        // An album shows the caption of whichever photo has one, so Copy takes that one.
+        let source = albumMessages.count > 1
+            ? albumMessages.first { !($0.content?.caption?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+            : message
+        guard let source, source.normalizedContentType != "revoked",
+              source.contentText != nil || Self.usesInlineTextContent(source) else { return nil }
+        return showAlternate ? (source.alternateText ?? source.displayText) : source.displayText
     }
 
-    private var usesInlineTextContent: Bool {
+    private static func usesInlineTextContent(_ message: ChatMessage) -> Bool {
         ["text", "conversation", "extendedtextmessage"].contains(message.normalizedContentType)
     }
 
