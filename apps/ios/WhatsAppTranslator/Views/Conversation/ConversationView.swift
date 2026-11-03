@@ -42,7 +42,6 @@ struct ConversationView: View {
         .accessibilityHint("Opens nickname, timezone and translation settings")
     }
 
-    private var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
 
     @ViewBuilder
     var conversationBarActions: some View {
@@ -147,6 +146,8 @@ struct ConversationView: View {
         if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
         return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: messages) : "tap here for contact info"
     }
+
+    var translationOn: Bool { session.savedConversationSettings[contact.id]?.translationEnabled == true }
 
     func toggleTranslation() {
         // Apply what the button offered when tapped, even if the settings were still loading, and
