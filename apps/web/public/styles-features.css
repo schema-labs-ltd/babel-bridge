@@ -659,7 +659,6 @@
 #command-palette-button,
 #app-appearance-button,
 .notification-prompt,
-.inbox-filter-row,
 .sidebar-footer,
 .visitor-dashboard,
 .chat-workspace-button,
@@ -976,4 +975,37 @@
   margin: 10px 8px 0 0;
   padding: 8px 16px;
   cursor: pointer;
+}
+
+/* WhatsApp-style chat filters: All, Unread and Groups. The workspace filters stay hidden. */
+.inbox-filter-row {
+  display: flex;
+}
+
+.inbox-filter-chip:not([data-inbox-all]):not(
+    [data-inbox-filter="unreadOnly"]
+  ):not([data-inbox-filter="groupsOnly"]),
+.inbox-filter-clear {
+  display: none !important;
+}
+
+.inbox-filter-chip {
+  border: 0;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--bg-tertiary);
+}
+
+.inbox-filter-chip.active {
+  background: rgba(var(--accent-rgb), 0.16);
+  color: color-mix(in srgb, var(--accent-color) 72%, var(--text-primary) 28%);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Like WhatsApp, an unread chat's time takes the accent colour. */
+.contact-item.has-unread .contact-time {
+  color: var(--accent-color);
+  font-weight: 600;
 }

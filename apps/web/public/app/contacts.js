@@ -1,7 +1,11 @@
 // Contact list, avatars, previews and viewed-message tracking.
 
 import { ViewedMessageTracker, isMessageVisible } from '../read-receipts.js';
-import { getDraftPreview } from '../app-state.js?v=20260912-conversation-translation';
+import {
+  describeMessageForPreview,
+  getDraftPreview,
+  tidyServerPreview,
+} from '../app-state.js?v=20261103-chat-list';
 
 export const contactsMethods = {
   // Load contacts from server
@@ -161,7 +165,7 @@ export const contactsMethods = {
           }
         } else if (contact.lastMessagePreview) {
           // Fall back to server-provided preview (used before messages are loaded)
-          preview = contact.lastMessagePreview;
+          preview = tidyServerPreview(contact.lastMessagePreview);
         }
 
         // Check for cached avatar
@@ -189,7 +193,7 @@ export const contactsMethods = {
       `;
 
         return `
-        <div class="contact-item ${isActive ? 'active' : ''} ${isGroup ? 'is-group' : ''} ${isPinned ? 'is-pinned' : ''}" data-contact-id="${contact.id}">
+        <div class="contact-item ${isActive ? 'active' : ''} ${isGroup ? 'is-group' : ''} ${isPinned ? 'is-pinned' : ''} ${contact.unreadCount > 0 ? 'has-unread' : ''}" data-contact-id="${contact.id}">
           <div class="avatar-container">
             <div class="avatar">
               ${avatarContent}
@@ -246,38 +250,13 @@ export const contactsMethods = {
       return content.caption || '';
     };
 
-    switch (content.type) {
-      case 'text':
-        return prefix + bodyText().substring(0, 50);
-      case 'image':
-        return (
-          prefix +
-          '[ Image ]' +
-          (captionText() ? ' ' + captionText().substring(0, 30) : '')
-        );
-      case 'video':
-        return (
-          prefix +
-          '[ Video ]' +
-          (captionText() ? ' ' + captionText().substring(0, 30) : '')
-        );
-      case 'audio':
-        return prefix + (content.isVoiceNote ? '[ Voice Note ]' : '[ Audio ]');
-      case 'document':
-        return prefix + '[ Document: ' + (content.fileName || 'file') + ' ]';
-      case 'sticker':
-        return prefix + '[ Sticker ]';
-      case 'location':
-        return prefix + '[ Location ]';
-      case 'contact':
-        return prefix + '[ Contact: ' + content.name + ' ]';
-      case 'revoked':
-        return '[ Message deleted ]';
-      case 'poll':
-        return prefix + '[ Poll: ' + content.question + ' ]';
-      default:
-        return prefix + '[ Message ]';
+    if (content.type === 'revoked') {
+      return isFromMe
+        ? '🚫 You deleted this message'
+        : describeMessageForPreview(content);
     }
+    const text = content.type === 'text' ? bodyText() : captionText();
+    return prefix + describeMessageForPreview(content, text);
   },
 
   getMessageSenderJid(message) {
