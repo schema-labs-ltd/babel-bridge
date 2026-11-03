@@ -226,6 +226,26 @@ struct ConversationCostView: View {
     }
 }
 
+/// The chat's newest second and the messages in it. Timestamps are whole seconds and rows sort by
+/// (timestamp, id), so a new message can land before the last row; this still notices it.
+struct TimelineTail: Equatable {
+    let timestamp: Int64
+    let ids: Set<String>
+
+    init?(_ messages: [ChatMessage]) {
+        guard let last = messages.last else { return nil }
+        timestamp = last.timestamp
+        ids = Set(messages.reversed().prefix { $0.timestamp == last.timestamp }.map(\.id))
+    }
+
+    /// The messages that arrived after this tail. If none of its messages remain (a page replaced
+    /// the list), nothing counts as new rather than everything.
+    func arrivals(in messages: [ChatMessage]) -> [ChatMessage] {
+        guard messages.contains(where: { ids.contains($0.id) }) else { return [] }
+        return messages.filter { $0.timestamp > timestamp || ($0.timestamp == timestamp && !ids.contains($0.id)) }
+    }
+}
+
 /// How the conversation timeline groups messages, as WhatsApp does: a day header that names the
 /// day, and runs of consecutive messages from one sender that sit close together.
 enum TimelineGrouping {

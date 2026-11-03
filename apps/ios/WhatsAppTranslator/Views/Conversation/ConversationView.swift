@@ -32,6 +32,7 @@ struct ConversationView: View {
     @State var openingViewedIDs: Set<String> = []
     /// The chat's latest message time when it opened; later arrivals are never among the unread.
     @State var openingLastMessageTime: Int64?
+    @State var newestPageLoaded = false
     /// The first message that was unread when the chat opened, where WhatsApp's "unread messages" bar goes.
     @State var unreadMarkerID: String?
     @State var unreadMarkerCount = 0
@@ -138,19 +139,17 @@ struct ConversationView: View {
             .platformDismissesKeyboard()
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
-            // Keyed on the chat's newest message, so loading older history, a full search or switching
-            // topic pages never counts as new.
-            .onChange(of: session.messages[contact.id]?.last?.id) { oldID, newID in
+            // Keyed on the chat's newest second, so loading older history, a full search or switching
+            // topic pages never counts as new, while a same-second arrival sorted before the last row does.
+            .onChange(of: TimelineTail(session.messages[contact.id] ?? [])) { old, new in
                 markUnread()
-                // Older pages never change the newest ID, so a change while one loads is a real arrival.
+                // Older pages never change the newest second, so a change while one loads is a real arrival.
                 guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
-                      let oldID, newID != nil else { return }
+                      let old, new != nil else { return }
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
                 // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
                 // keeps its place until the highlight fades.
-                // Only what follows the previous newest message is new; if that message has gone
-                // (a page replaced the list), nothing is new rather than everything.
-                let arrived = messages.lastIndex(where: { $0.id == oldID }).map { messages[($0 + 1)...] } ?? []
+                let arrived = old.arrivals(in: messages)
                 if (isAtBottom && replyJump == nil) || arrived.contains(where: \.isFromMe) {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {

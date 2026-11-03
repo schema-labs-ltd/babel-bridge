@@ -153,6 +153,7 @@ extension ConversationView {
             // The picture may need a download; don't hold the messages back for it.
             async let avatar: Void = session.loadAvatar(for: contact.id)
             await session.loadMessages(for: contact.id)
+            newestPageLoaded = true
             markUnread()
             await avatar
             await session.loadTopics()
@@ -230,8 +231,9 @@ extension ConversationView {
     }
 
     /// Places WhatsApp's "unread messages" bar above the first message that was unread when the
-    /// chat opened, and starts the chat there. It waits until the loaded messages reach the chat's
-    /// latest message, so a stale cache can't put the bar in the wrong place.
+    /// chat opened, and starts the chat there. It waits for the newest page, or a cache that already
+    /// reaches the chat's latest message, so a stale cache can't put the bar in the wrong place. (A
+    /// trailing reaction moves the chat's time but isn't a row, so the rows alone can't show that.)
     func markUnread() {
         let openingCount = openingUnreadCount ?? contact.unreadCount
         if openingUnreadCount == nil {
@@ -244,7 +246,7 @@ extension ConversationView {
         if let marker = unreadMarkerID, !loaded.contains(where: { $0.id == marker }) { unreadMarkerID = nil }
         // Wait for any page that is loading; whichever load finishes calls this again.
         guard !loadingOlder, openingCount > 0, unreadMarkerID == nil, selectedTopicID == nil,
-              let newest = loaded.last, newest.timestamp >= boundary else { return }
+              let newest = loaded.last, newestPageLoaded || newest.timestamp >= boundary else { return }
         let viewed = openingViewedIDs
         // Messages that arrived after the chat opened were never part of the unread count.
         let opening = loaded.filter { $0.timestamp <= boundary }

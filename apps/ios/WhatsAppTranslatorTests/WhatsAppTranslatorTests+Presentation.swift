@@ -193,6 +193,16 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(SenderNameColor.index(for: "Virag"), 4)
     }
 
+    func testTimelineTailNoticesSameSecondArrivalsSortedFirst() throws {
+        // All share one second, so "a" sorts before "b" even though it arrived later.
+        let b = try decodeMessage(id: "b", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
+        let a = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
+        let before = try XCTUnwrap(TimelineTail([b]))
+        XCTAssertNotEqual(TimelineTail([a, b]), before)
+        XCTAssertEqual(before.arrivals(in: [a, b]).map(\.id), ["a"])
+        XCTAssertEqual(before.arrivals(in: [a]), [])
+    }
+
     func testUnreadBarSitsAboveTheFirstUnreadIncomingMessage() throws {
         let messages = try ["a", "b", "c"].map { try decodeMessage(id: $0, contentType: "text", content: #"{"type":"text","body":"Hi"}"#) }
         XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 2), "b")
