@@ -53,6 +53,7 @@ extension AppSession {
             for (id, page) in Dictionary(grouping: pageMessages, by: \.contactId) {
                 messages[id] = normalizeMessages((messages[id] ?? []) + page)
             }
+            await persistCache()
             await refreshMessageTopics(response.messages)
         } catch {
             guard generation == feedGeneration, !Self.isExpectedCancellation(error) else { return }

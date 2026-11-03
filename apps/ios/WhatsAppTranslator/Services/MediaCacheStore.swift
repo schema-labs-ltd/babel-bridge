@@ -10,6 +10,10 @@ actor MediaCacheStore {
     private let maximumRememberedSizes: Int
     private var rememberedSizes: [String: RememberedImageSize]?
     private var pendingSizeSave: Task<Void, Never>?
+    /// File names in the media folder by cache key, read from disk once. Every bubble that
+    /// appears asks for its media, and listing a folder of thousands of files for each of those
+    /// lookups made photos slow to show when a chat opened.
+    private var fileNames: [String: String]?
 
     init(directoryURL: URL? = nil, maximumBytes: Int = 512 * 1_024 * 1_024, maximumRememberedSizes: Int = 10_000) {
         self.directoryURL = directoryURL
@@ -50,14 +54,11 @@ actor MediaCacheStore {
     }
 
     func cachedURL(for messageID: String) throws -> URL? {
-        guard FileManager.default.fileExists(atPath: directoryURL.path) else { return nil }
-        let prefix = "\(cacheKey(for: messageID))."
-        let files = try FileManager.default.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-        guard let url = files.first(where: { $0.lastPathComponent.hasPrefix(prefix) }) else {
+        let key = cacheKey(for: messageID)
+        guard let name = try loadFileNamesIfNeeded()[key] else { return nil }
+        let url = directoryURL.appending(path: name, directoryHint: .notDirectory)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            fileNames?.removeValue(forKey: key)
             return nil
         }
         try? FileManager.default.setAttributes(
@@ -75,14 +76,15 @@ actor MediaCacheStore {
         let safeExtension = fileExtension
             .lowercased()
             .filter { $0.isLetter || $0.isNumber }
-        let url = directoryURL.appending(
-            path: "\(cacheKey(for: messageID)).\(safeExtension.isEmpty ? "bin" : safeExtension)",
-            directoryHint: .notDirectory
-        )
+        let key = cacheKey(for: messageID)
+        let name = "\(key).\(safeExtension.isEmpty ? "bin" : safeExtension)"
+        let url = directoryURL.appending(path: name, directoryHint: .notDirectory)
         try data.write(
             to: url,
             options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
         )
+        _ = try loadFileNamesIfNeeded()
+        fileNames?[key] = name
         var resourceValues = URLResourceValues()
         resourceValues.isExcludedFromBackup = true
         var mutableURL = url
@@ -92,20 +94,18 @@ actor MediaCacheStore {
     }
 
     func remove(messageID: String) throws {
-        guard FileManager.default.fileExists(atPath: directoryURL.path) else { return }
-        let prefix = "\(cacheKey(for: messageID))."
-        let files = try FileManager.default.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )
-        for url in files where url.lastPathComponent.hasPrefix(prefix) {
+        let key = cacheKey(for: messageID)
+        guard let name = try loadFileNamesIfNeeded()[key] else { return }
+        let url = directoryURL.appending(path: name, directoryHint: .notDirectory)
+        if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
+        fileNames?.removeValue(forKey: key)
     }
 
     func clear() {
         try? FileManager.default.removeItem(at: directoryURL)
+        fileNames = [:]
         pendingSizeSave?.cancel()
         pendingSizeSave = nil
         rememberedSizes = [:]
@@ -149,6 +149,25 @@ actor MediaCacheStore {
         try? data.write(to: sizesURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
+    private func loadFileNamesIfNeeded() throws -> [String: String] {
+        if let fileNames { return fileNames }
+        var names: [String: String] = [:]
+        if FileManager.default.fileExists(atPath: directoryURL.path) {
+            let files = try FileManager.default.contentsOfDirectory(
+                at: directoryURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+            for url in files {
+                let name = url.lastPathComponent
+                guard let dot = name.firstIndex(of: ".") else { continue }
+                names[String(name[..<dot])] = name
+            }
+        }
+        fileNames = names
+        return names
+    }
+
     private func cacheKey(for messageID: String) -> String {
         SHA256.hash(data: Data(messageID.utf8)).map { String(format: "%02x", $0) }.joined()
     }
@@ -171,6 +190,8 @@ actor MediaCacheStore {
             .dropLast()
         for entry in removableEntries where totalBytes > maximumBytes {
             try FileManager.default.removeItem(at: entry.url)
+            let name = entry.url.lastPathComponent
+            if let dot = name.firstIndex(of: ".") { fileNames?.removeValue(forKey: String(name[..<dot])) }
             totalBytes -= entry.size
         }
     }

@@ -138,6 +138,7 @@ extension AppSession {
         contacts = []
         avatarURLs = [:]
         avatarRequests = []
+        refreshedAvatarIDs = []
         messageImages = [:]
         messageMediaURLs = [:]
         rememberedImageSizes = [:]
@@ -194,6 +195,9 @@ extension AppSession {
             contacts = try await api.contacts()
             phase = .ready
             startReadReceiptRetry()
+            // A feed restored from the cache is on screen already, so the Messages tab doesn't
+            // ask for it. Fetch the fresh page in the background instead.
+            if feedHasLoaded || mainTab == .messages { Task { await loadFeed() } }
             await persistCache()
             await PushNotificationCoordinator.shared.activate(for: self)
             try await api.connectLiveEvents { [weak self] event in
@@ -216,6 +220,7 @@ extension AppSession {
         }
         contacts = snapshot.contacts
         messages = snapshot.messages
+        restoreCachedFeed(snapshot.feed)
         for (chat, ids) in snapshot.pendingReadReceipts ?? [:] {
             pendingReadReceipts[chat, default: []].formUnion(ids)
             viewedReceiptMessageIDs.formUnion(ids)

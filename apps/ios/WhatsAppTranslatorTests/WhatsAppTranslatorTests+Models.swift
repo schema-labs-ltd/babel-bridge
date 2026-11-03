@@ -116,6 +116,78 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(restored?.messages[contact.id], [message])
     }
 
+    @MainActor
+    func testCachedFeedShowsAtLaunchUntilTheServerAnswers() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "WhatsAppTranslatorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let configuration = try ServerConfiguration.make(address: "https://translator.example.com", password: "secret")
+        let message = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: Data(#"{"id":"m1","contactId":"chat@g.us","timestamp":1700000000000,"isFromMe":false,"isForwarded":false,"chatType":"group","contentType":"Text","content":{"type":"text","body":"Szia"},"isTranslated":false}"#.utf8)
+        )
+        let store = ChatCacheStore(directoryURL: directory)
+        await store.save(ChatCacheSnapshot(
+            serverBaseURL: configuration.baseURL.absoluteString,
+            contacts: [],
+            messages: [message.contactId: [message]],
+            updatedAt: Date(),
+            feed: [message]
+        ))
+        // A background sync rewrites the file and must keep the feed.
+        let loaded = await store.load(for: configuration)
+        let synced = try XCTUnwrap(loaded).merging(contacts: [], messages: [], for: "other@s.whatsapp.net")
+        XCTAssertEqual(synced.feed, [message])
+
+        let session = AppSession(cache: store, mediaCache: MediaCacheStore(directoryURL: directory.appending(path: "Media")), demoMode: false)
+        session.configuration = configuration
+        let restored = await session.restoreCachedState()
+        XCTAssertTrue(restored)
+        XCTAssertTrue(session.feedHasLoaded)
+        XCTAssertEqual(session.unifiedMessages.map(\.id), ["m1"])
+        XCTAssertEqual(session.feedCursor?.id, "m1")
+
+        // A feed already loaded in this session is newer than the file and stays.
+        session.feedByID = [:]
+        _ = await session.restoreCachedState()
+        XCTAssertTrue(session.unifiedMessages.isEmpty)
+    }
+
+    func testChatCacheFromAnEarlierVersionLoadsWithoutAFeed() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "WhatsAppTranslatorTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let configuration = try ServerConfiguration.make(address: "https://translator.example.com", password: "secret")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let json = #"{"contacts":[],"messages":{},"serverBaseURL":"\#(configuration.baseURL.absoluteString)","updatedAt":1700000000000}"#
+        try Data(json.utf8).write(to: directory.appending(path: "chat-cache.json"))
+
+        let restored = await ChatCacheStore(directoryURL: directory).load(for: configuration)
+        XCTAssertNotNil(restored)
+        XCTAssertNil(restored?.feed)
+    }
+
+    func testMediaCacheLookupNoticesFilesRemovedOutsideTheStore() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "MediaCacheTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MediaCacheStore(directoryURL: root)
+        let url = try await store.store(Data([1, 2, 3]), messageID: "photo", fileExtension: "jpg")
+        let found = try await store.cachedURL(for: "photo")
+        XCTAssertEqual(found, url)
+
+        try FileManager.default.removeItem(at: url)
+        let missing = try await store.cachedURL(for: "photo")
+        XCTAssertNil(missing)
+
+        let replaced = try await store.store(Data([4]), messageID: "photo", fileExtension: "png")
+        let relaunched = try await MediaCacheStore(directoryURL: root).cachedURL(for: "photo")
+        XCTAssertEqual(relaunched?.lastPathComponent, replaced.lastPathComponent)
+        try await store.remove(messageID: "photo")
+        let removed = try await store.cachedURL(for: "photo")
+        XCTAssertNil(removed)
+    }
+
     func testChatCacheDoesNotRestoreAnotherServer() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "WhatsAppTranslatorTests-\(UUID().uuidString)", directoryHint: .isDirectory)

@@ -40,15 +40,40 @@ extension AppSession {
         }
     }
 
+    /// Shows the profile picture saved on this device straight away, then checks the server
+    /// once per launch and saves a changed picture for next time.
     func loadAvatar(for contactID: String) async {
         guard !demoMode,
-              avatarURLs[contactID] == nil,
+              !refreshedAvatarIDs.contains(contactID),
               !avatarRequests.contains(contactID) else { return }
         avatarRequests.insert(contactID)
         defer { avatarRequests.remove(contactID) }
-        if let url = try? await api.avatar(contactID: contactID) {
-            avatarURLs[contactID] = url
+        let key = "avatar-\(contactID)"
+        let cachedURL = try? await mediaCache.cachedURL(for: key)
+        if avatarURLs[contactID] == nil, let cachedURL { avatarURLs[contactID] = cachedURL }
+        let server = configuration?.baseURL
+        let remote: URL?
+        do { remote = try await api.avatar(contactID: contactID) } catch { return }
+        guard configuration?.baseURL == server, !Task.isCancelled else { return }
+        refreshedAvatarIDs.insert(contactID)
+        guard let remote else {
+            try? await mediaCache.remove(messageID: key)
+            avatarURLs.removeValue(forKey: contactID)
+            return
         }
+        let download = try? await URLSession.shared.data(from: remote)
+        guard let data = download?.0,
+              (download?.1 as? HTTPURLResponse)?.statusCode == 200,
+              PlatformImage(data: data) != nil else {
+            if cachedURL == nil { avatarURLs[contactID] = remote }
+            return
+        }
+        guard configuration?.baseURL == server else { return }
+        if let cachedURL, (try? Data(contentsOf: cachedURL)) == data { return }
+        _ = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
+        // A file that changed keeps its path, which the picture view wouldn't reload, so this
+        // launch shows the new picture from the server and the next one from the saved file.
+        avatarURLs[contactID] = cachedURL == nil ? (try? await mediaCache.cachedURL(for: key)) ?? remote : remote
     }
 
     func togglePin(_ contact: Contact) async {

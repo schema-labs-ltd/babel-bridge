@@ -106,7 +106,24 @@ extension AppSession {
             contacts: contacts,
             messages: trimmedMessages,
             updatedAt: Date(),
-            pendingReadReceipts: pendingReadReceipts.mapValues { Array($0).sorted() }
+            pendingReadReceipts: pendingReadReceipts.mapValues { Array($0).sorted() },
+            feed: feedHasLoaded ? cachedFeed() : nil
         )
+    }
+
+    /// The newest feed messages, oldest first, kept so the Messages tab shows them at launch.
+    private func cachedFeed() -> [ChatMessage] {
+        let ordered = feedByID.values.sorted { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }
+        return Array(ordered.suffix(ChatCacheSnapshot.maximumFeedMessages))
+    }
+
+    /// Shows the feed saved at the last launch until the server sends a fresh page. A feed
+    /// already loaded in this session is newer, so it is never replaced.
+    func restoreCachedFeed(_ feed: [ChatMessage]?) {
+        guard !feedHasLoaded, !feedLoading, let feed, !feed.isEmpty else { return }
+        feedByID = Dictionary(feed.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        feedCursor = feed.min { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }
+        feedHasMore = true
+        feedHasLoaded = true
     }
 }
