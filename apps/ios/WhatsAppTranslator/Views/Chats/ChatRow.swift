@@ -148,6 +148,22 @@ enum ChatListPreview {
 
     /// Uses the newest loaded message when it is the one the server summarised, since it carries
     /// the sender and the delivery state; otherwise tidies the server's own preview.
+    /// Whether a chat preview describes this message. The server writes "Name: " or "You: " in front
+    /// and cuts long text with "…"; a live update stores the message's display text instead.
+    static func summarises(_ preview: String, _ message: ChatMessage, label body: String) -> Bool {
+        let raw = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tidied = tidy(raw)
+        let forms = [body, message.displayText, tidy(message.displayText)].filter { !$0.isEmpty }
+        for text in [raw, tidied] {
+            if forms.contains(where: { text.hasSuffix($0) }) { return true }
+            guard text.hasSuffix("…") else { continue }
+            let cut = String(text.dropLast()).trimmingCharacters(in: .whitespaces)
+            let tail = cut.range(of: ": ").map { String(cut[$0.upperBound...]) } ?? cut
+            if !tail.isEmpty, forms.contains(where: { $0.hasPrefix(tail) || $0.hasPrefix(cut) }) { return true }
+        }
+        return false
+    }
+
     static func line(for contact: Contact, latest: ChatMessage?) -> Line {
         let serverLine = Line(text: tidy(contact.lastMessagePreview ?? "No messages yet"))
         guard let latest, !latest.isReaction, latest.timestamp >= contact.lastMessageTime else {
@@ -155,8 +171,9 @@ enum ChatListPreview {
         }
         let body = label(for: latest)
         // Timestamps are only to the second, so a different message can share one. Trust the cached
-        // message then only when the server's preview ends with the same words.
-        if latest.timestamp == contact.lastMessageTime, !serverLine.text.hasSuffix(body) {
+        // message then only when the preview reads as a summary of it.
+        if latest.timestamp == contact.lastMessageTime,
+           !summarises(contact.lastMessagePreview ?? "", latest, label: body) {
             return serverLine
         }
         if latest.isFromMe {
