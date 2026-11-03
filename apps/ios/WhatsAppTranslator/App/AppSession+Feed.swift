@@ -125,6 +125,9 @@ extension AppSession {
         // oldest unread one, so fetch the newest pages until they cover the unread count. Each page is
         // merged into the cache as it stands after the request, so live arrivals are kept.
         // Always fetch: a live arrival can make the cache look current while hiding an offline gap.
+        // The newest message the server had when this started: later arrivals were not part of the
+        // unread count, so they must not push the older unread messages out of the selection.
+        var boundary: Int64?
         if !demoMode {
             var oldestFetched: ChatMessage?
             var fetchedUnread = 0
@@ -135,6 +138,7 @@ extension AppSession {
                     )
                     // A switch of server while this ran must not let the old server's messages in.
                     guard topicAccountEpoch == epoch else { return }
+                    if boundary == nil { boundary = response.messages.map(\.timestamp).max() ?? 0 }
                     messages[contact.id] = normalizeMessages((messages[contact.id] ?? []) + response.messages)
                     fetchedUnread += response.messages.filter {
                         $0.canSendReadReceipt && !viewedReceiptMessageIDs.contains($0.id)
@@ -151,6 +155,8 @@ extension AppSession {
             }
         }
         guard topicAccountEpoch == epoch else { return }
-        await recordMessageViews(Array(unread().suffix(contact.unreadCount)))
+        let limit = boundary ?? .max
+        let candidates = unread().filter { $0.timestamp <= limit }
+        await recordMessageViews(Array(candidates.suffix(contact.unreadCount)))
     }
 }
