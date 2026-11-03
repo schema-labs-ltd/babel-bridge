@@ -70,7 +70,11 @@ extension APIClient {
         }
     }
 
-    static func reconnectDelay(attempt: Int) -> Double { min(30, pow(2, Double(min(max(attempt, 1), 5)))) }
+    /// The first retry is almost immediate: it is usually the socket iOS closed while the app was
+    /// suspended, and the server is fine. Later retries back off to 2, 4, 8, 16 and then 30 seconds.
+    static func reconnectDelay(attempt: Int) -> Double {
+        attempt <= 1 ? 0.25 : min(30, pow(2, Double(min(attempt - 1, 5))))
+    }
 
     private func checkLiveHealth(generation: UUID, socket: URLSessionWebSocketTask) {
         if generation != liveGeneration || Date().timeIntervalSince(lastLiveMessage) > 50 {

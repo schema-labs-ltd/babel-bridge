@@ -125,7 +125,7 @@ extension AppSession {
         #endif
         savedConversationSettings = [:]
         recoveryTask?.cancel()
-        liveUpdatesReconnecting = false
+        clearConnectingIndicator()
         Task {
             await api.disconnectLiveEvents()
             await cache.clear()
@@ -226,6 +226,7 @@ extension AppSession {
 
     func becameActive() async {
         guard phase == .ready, !demoMode, !isConnecting else { return }
+        await reconnectLiveEventsOnResume()
         _ = await restoreCachedState()
         await refresh()
         await refreshWhatsAppConnection()

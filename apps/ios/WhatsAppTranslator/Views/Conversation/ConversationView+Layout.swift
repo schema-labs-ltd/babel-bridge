@@ -15,17 +15,13 @@ extension ConversationView {
             ChatWallpaper()
                 .blur(radius: focusedReplyMessage == nil ? 0 : 8)
             VStack(spacing: 0) {
-                if session.liveUpdatesReconnecting {
-                    Label("Reconnecting live updates… Your messages are saved.", systemImage: "wifi.slash")
-                        .font(.caption).padding(10).frame(maxWidth: .infinity)
-                        .background(.orange.opacity(0.12))
-                }
                 #if os(macOS)
                 MacConversationHeader(
                     contact: contact,
                     displayName: session.displayName(for: contact),
                     avatarURL: session.avatarURLs[contact.id],
                     localTime: session.localTimeDescription(for: contact.id),
+                    connecting: session.showsConnectingIndicator,
                     translationEnabled: session.savedConversationSettings[contact.id]?.translationEnabled == true,
                     usage: usage,
                     starredOnly: starredOnly,

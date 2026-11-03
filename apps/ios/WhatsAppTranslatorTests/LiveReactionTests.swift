@@ -129,3 +129,38 @@ private final class ReactionRequestState: @unchecked Sendable {
         set { lock.withLock { storedRequest = newValue } }
     }
 }
+
+@MainActor
+final class LiveConnectionIndicatorTests: XCTestCase {
+    func testQuickReconnectNeverShowsConnecting() async throws {
+        let session = AppSession(demoMode: false)
+        session.phase = .ready
+        session.connectingIndicatorDelay = .milliseconds(200)
+        session.handle(.signal("live_reconnecting"))
+        XCTAssertTrue(session.liveUpdatesReconnecting)
+        XCTAssertFalse(session.showsConnectingIndicator)
+        session.clearConnectingIndicator()
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertFalse(session.showsConnectingIndicator)
+    }
+
+    func testSlowReconnectShowsConnectingUntilRestored() async throws {
+        let session = AppSession(demoMode: false)
+        session.phase = .ready
+        session.connectingIndicatorDelay = .milliseconds(50)
+        session.handle(.signal("live_reconnecting"))
+        session.handle(.signal("live_reconnecting"))
+        for _ in 0..<40 where !session.showsConnectingIndicator {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertTrue(session.showsConnectingIndicator)
+        session.clearConnectingIndicator()
+        XCTAssertFalse(session.showsConnectingIndicator)
+        XCTAssertFalse(session.liveUpdatesReconnecting)
+    }
+
+    func testFirstLiveRetryIsImmediateThenBacksOff() {
+        XCTAssertLessThan(APIClient.reconnectDelay(attempt: 1), 1)
+        XCTAssertEqual((2...7).map { APIClient.reconnectDelay(attempt: $0) }, [2, 4, 8, 16, 30, 30])
+    }
+}

@@ -94,6 +94,13 @@ final class AppSession {
     let mediaCache: MediaCacheStore
     let demoMode: Bool
     var liveUpdatesReconnecting = false
+    /// True only once a reconnect has lasted longer than `connectingIndicatorDelay`,
+    /// so the routine reconnect after the app returns to the foreground stays silent.
+    var showsConnectingIndicator = false
+    var connectingIndicatorTask: Task<Void, Never>?
+    /// Returning to the foreground drops the suspended socket, and the reconnect that follows
+    /// normally finishes well inside this window, so the indicator never shows for it.
+    var connectingIndicatorDelay: Duration = .seconds(4)
     var recoveryTask: Task<Void, Never>?
     var recoveryNeedsAnotherPass = false
     let demoConversationMode: Bool
