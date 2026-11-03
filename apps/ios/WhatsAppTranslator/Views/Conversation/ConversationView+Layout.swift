@@ -250,8 +250,9 @@ extension ConversationView {
            session.messageHistoryHasMore[contact.id] == true, unreadHistoryPages < 5 {
             unreadHistoryPages += 1
             let oldestBefore = loaded.first?.id
+            // Set before the task starts, so another call in this update waits instead of loading too.
+            loadingOlder = true
             Task {
-                loadingOlder = true
                 await session.loadMessages(for: contact.id, older: true)
                 loadingOlder = false
                 // A failed page stops here rather than retrying; the bar then uses what is loaded.
