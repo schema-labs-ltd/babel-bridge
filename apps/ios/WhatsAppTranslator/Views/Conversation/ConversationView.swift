@@ -133,6 +133,8 @@ struct ConversationView: View {
     }
 
     private var conversationHeaderSubtitle: String {
+        // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
+        if session.showsConnectingIndicator { return "Connecting…" }
         let translation = session.savedConversationSettings[contact.id]?.translationEnabled == true ? "Translation on" : "Translation off"
         return session.localTimeDescription(for: contact.id).map { "\(translation) · \($0)" } ?? translation
     }

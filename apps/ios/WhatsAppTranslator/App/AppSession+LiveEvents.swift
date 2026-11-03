@@ -51,9 +51,10 @@ extension AppSession {
         case "live_reconnecting":
             if !liveUpdatesReconnecting { AppLog.live.notice("Live updates lost; reconnecting") }
             liveUpdatesReconnecting = true
+            scheduleConnectingIndicator()
         case "live_restored", "resync", "send_result":
             if event.type == "live_restored" { AppLog.live.notice("Live updates restored") }
-            liveUpdatesReconnecting = false
+            clearConnectingIndicator()
             if recoveryTask != nil { recoveryNeedsAnotherPass = true; return }
             recoveryTask = Task {
                 defer { recoveryTask = nil }
@@ -149,5 +150,38 @@ extension AppSession {
         case "sent": 1
         default: 0
         }
+    }
+}
+
+extension AppSession {
+    func scheduleConnectingIndicator(restart: Bool = false) {
+        if restart { connectingIndicatorTask?.cancel(); connectingIndicatorTask = nil }
+        guard connectingIndicatorTask == nil, !showsConnectingIndicator else { return }
+        let delay = connectingIndicatorDelay
+        connectingIndicatorTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, !Task.isCancelled else { return }
+            self.connectingIndicatorTask = nil
+            if self.liveUpdatesReconnecting { self.showsConnectingIndicator = true }
+        }
+    }
+
+    /// The reconnect timer and backoff keep counting while the app is suspended, so a socket that
+    /// failed just before suspension would otherwise show "Connecting…" at once on return, or wait
+    /// out a long backoff. Start both afresh when the app becomes active.
+    func reconnectLiveEventsOnResume() async {
+        guard liveUpdatesReconnecting else { return }
+        showsConnectingIndicator = false
+        scheduleConnectingIndicator(restart: true)
+        try? await api.connectLiveEvents { [weak self] event in
+            self?.handle(event)
+        }
+    }
+
+    func clearConnectingIndicator() {
+        liveUpdatesReconnecting = false
+        connectingIndicatorTask?.cancel()
+        connectingIndicatorTask = nil
+        showsConnectingIndicator = false
     }
 }
