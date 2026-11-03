@@ -154,8 +154,10 @@ extension ConversationView {
         }
         .task {
             draft = ProcessInfo.processInfo.arguments.contains("-demo") ? "" : session.draftStore.text(for: contact.id)
-            await session.loadAvatar(for: contact.id)
+            // The picture may need a download; don't hold the messages back for it.
+            async let avatar: Void = session.loadAvatar(for: contact.id)
             await session.loadMessages(for: contact.id)
+            await avatar
             await session.loadTopics()
             usage = try? await session.conversationUsage(for: contact.id)
         }

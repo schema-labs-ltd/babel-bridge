@@ -113,8 +113,8 @@ extension AppSession {
 
     /// The newest feed messages, oldest first, kept so the Messages tab shows them at launch.
     private func cachedFeed() -> [ChatMessage] {
-        let ordered = feedByID.values.sorted { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }
-        return Array(ordered.suffix(ChatCacheSnapshot.maximumFeedMessages))
+        // `unifiedMessages` overlays the newer per-chat copies, such as updated delivery ticks.
+        Array(unifiedMessages.suffix(ChatCacheSnapshot.maximumFeedMessages))
     }
 
     /// Shows the feed saved at the last launch until the server sends a fresh page. A feed

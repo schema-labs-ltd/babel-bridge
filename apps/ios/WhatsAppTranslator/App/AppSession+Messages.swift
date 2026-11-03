@@ -43,9 +43,14 @@ extension AppSession {
     /// Shows the profile picture saved on this device straight away, then checks the server
     /// once per launch and saves a changed picture for next time.
     func loadAvatar(for contactID: String) async {
-        guard !demoMode,
-              !refreshedAvatarIDs.contains(contactID),
-              !avatarRequests.contains(contactID) else { return }
+        guard !demoMode, !avatarRequests.contains(contactID) else { return }
+        if refreshedAvatarIDs.contains(contactID) {
+            // Photos saved later can evict the saved picture; fetch it again if so.
+            guard let url = avatarURLs[contactID], url.isFileURL,
+                  !FileManager.default.fileExists(atPath: url.path) else { return }
+            refreshedAvatarIDs.remove(contactID)
+            avatarURLs.removeValue(forKey: contactID)
+        }
         avatarRequests.insert(contactID)
         defer { avatarRequests.remove(contactID) }
         // Signing out or switching server starts a new epoch and clears the media cache. Check it
