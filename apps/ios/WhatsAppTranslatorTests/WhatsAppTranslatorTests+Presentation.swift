@@ -199,5 +199,13 @@ extension WhatsAppTranslatorTests {
         let otherSameSecond = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
                                       unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Bence: Hello")
         XCTAssertEqual(ChatListPreview.line(for: otherSameSecond, latest: incoming), .init(text: "Bence: Hello"))
+        // A server preview cut with "…", or a live update's display text, still matches its message.
+        let long = try decodeMessage(id: "m4", contentType: "text", content: #"{"type":"text","body":"See you at the station tonight"}"#)
+        let cut = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+                          unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Virag: See you at the…")
+        XCTAssertEqual(ChatListPreview.line(for: cut, latest: long).text, "Virag: See you at the station tonight")
+        let live = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+                           unreadCount: 1, pinnedAt: nil, lastMessagePreview: photo.displayText)
+        XCTAssertEqual(ChatListPreview.line(for: live, latest: photo).text, "Virag: 📷 Photo")
     }
 }
