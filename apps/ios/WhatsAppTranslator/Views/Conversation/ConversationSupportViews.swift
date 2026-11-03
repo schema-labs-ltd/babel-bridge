@@ -138,12 +138,15 @@ struct InlineHeaderBackground: ViewModifier {
 struct DatePill: View {
     let date: Date
     var body: some View {
-        Text(date.formatted(.dateTime.weekday().day().month()))
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .translatorGlass(in: Capsule())
+        // Re-evaluated each minute, so "Today" becomes "Yesterday" at midnight in an idle chat.
+        TimelineView(.everyMinute) { context in
+            Text(TimelineGrouping.dayLabel(for: date, now: context.date))
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .translatorGlass(in: Capsule())
     }
 }
 
@@ -240,4 +243,74 @@ enum ConversationHeaderSummary {
         guard !names.isEmpty else { return "tap here for group info" }
         return (names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending } + ["You"]).joined(separator: ", ")
     }
+}
+
+/// How the conversation timeline groups messages, as WhatsApp does: a day header that names the
+/// day, and runs of consecutive messages from one sender that sit close together.
+enum TimelineGrouping {
+    struct Day: Identifiable {
+        let id: String
+        let date: Date
+        let indices: Range<Int>
+    }
+
+    static func senderKey(_ message: ChatMessage) -> String {
+        if message.isFromMe { return "me" }
+        let isGroup = message.contactId.contains("@g.us") || message.chatType.lowercased() == "group"
+        guard isGroup else { return message.contactId }
+        if let jid = message.senderJID, !jid.isEmpty { return jid }
+        if let phone = message.senderPhone, !phone.isEmpty { return phone }
+        // A display name can't tell two participants apart, so an unknown sender starts its own run.
+        return "unknown:\(message.id)"
+    }
+
+    /// Splits the items into days, keeping their order.
+    static func days(_ items: [ConversationTimelineItem], calendar: Calendar = .current) -> [Day] {
+        var days: [Day] = []
+        var start = 0
+        for index in items.indices where index > 0 {
+            if !calendar.isDate(items[index - 1].date, inSameDayAs: items[index].date) {
+                days.append(Day(id: dayID(items[start].date, calendar), date: items[start].date, indices: start..<index))
+                start = index
+            }
+        }
+        if !items.isEmpty {
+            days.append(Day(id: dayID(items[start].date, calendar), date: items[start].date, indices: start..<items.count))
+        }
+        return days
+    }
+
+    /// Keyed by the day itself, so loading older messages into a day doesn't rebuild its rows.
+    private static func dayID(_ date: Date, _ calendar: Calendar) -> String {
+        String(Int(calendar.startOfDay(for: date).timeIntervalSince1970))
+    }
+
+    /// Whether the item begins a run: the first of the day, or from a different sender than the one before.
+    static func startsRun(_ items: [ConversationTimelineItem], at index: Int, calendar: Calendar = .current) -> Bool {
+        guard index > 0 else { return true }
+        let previous = items[index - 1].primaryMessage
+        let current = items[index].primaryMessage
+        return senderKey(previous) != senderKey(current)
+            || !calendar.isDate(previous.date, inSameDayAs: current.date)
+    }
+
+    /// "Today", "Yesterday", a weekday within the last week, then the date, with the year only
+    /// when it isn't this year.
+    static func dayLabel(for date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        let startOfToday = calendar.startOfDay(for: now)
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: startOfToday).day ?? 0
+        if days == 1 { return "Yesterday" }
+        if (2...6).contains(days) { return date.formatted(.dateTime.weekday(.wide)) }
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        }
+        return date.formatted(.dateTime.day().month(.abbreviated).year())
+    }
+}
+
+/// A tap on a reply quote. Each tap is new, so tapping the same quote twice still scrolls.
+struct ReplyJump: Equatable {
+    let itemID: String
+    let nonce = UUID()
 }

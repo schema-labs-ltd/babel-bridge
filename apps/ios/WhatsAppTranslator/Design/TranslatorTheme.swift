@@ -244,3 +244,25 @@ enum ComposerLayout {
         #endif
     }
 }
+
+/// A stable colour for each group participant's name, as WhatsApp gives every sender their own
+/// colour so busy groups are easier to follow. The same sender gets the same colour on every launch.
+enum SenderNameColor {
+    private static let pairs: [(light: String, dark: String)] = [
+        ("C2255C", "FF7A99"), ("A8551A", "FFA05C"), ("1F6FD1", "53A6FD"), ("008069", "25D366"),
+        ("7B4FC9", "B794F6"), ("AD1F5C", "F06292"), ("2E7D32", "81C784"), ("8A5A2B", "D7A86E"),
+        ("00727C", "4DD0E1"), ("5C6BC0", "9FA8DA"),
+    ]
+
+    static func index(for key: String) -> Int {
+        // djb2: Swift's hashValue changes between launches, which would reshuffle the colours.
+        var hash: UInt64 = 5381
+        for byte in key.utf8 { hash = (hash &<< 5) &+ hash &+ UInt64(byte) }
+        return Int(hash % UInt64(pairs.count))
+    }
+
+    static func color(for key: String) -> Color {
+        let pair = pairs[index(for: key)]
+        return .adaptive(light: pair.light, dark: pair.dark)
+    }
+}

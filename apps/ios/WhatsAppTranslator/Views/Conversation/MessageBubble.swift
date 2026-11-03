@@ -32,6 +32,10 @@ struct MessageBubble: View {
     let retryAlbumMedia: (ChatMessage) -> Void
     var albumReply: ((ChatMessage) -> Void)? = nil
     var albumAIReply: ((ChatMessage) -> Void)? = nil
+    /// False for the second and later bubbles of one sender's run: no tail and no repeated name.
+    var startsRun = true
+    var isHighlighted = false
+    var openQuotedMessage: ((String) -> Void)? = nil
     @State var showAlternate = false
     @State var showActions = false
     @State var showReactionPicker = false
@@ -64,10 +68,10 @@ struct MessageBubble: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    if !message.isFromMe, message.chatType == "group", let sender = message.senderName {
+                    if startsRun, !message.isFromMe, message.chatType == "group", let sender = message.senderName {
                         Text(sender)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(palette.deepAccent)
+                            .foregroundStyle(SenderNameColor.color(for: sender))
                             .padding(.horizontal, isStandaloneEmoji ? 9 : 0)
                             .padding(.vertical, isStandaloneEmoji ? 4 : 0)
                             .background {
@@ -77,17 +81,11 @@ struct MessageBubble: View {
                             }
                     }
                     if let reply = message.content?.replyContext {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(reply.senderName ?? "Reply")
-                                .font(.caption.weight(.semibold))
-                            Text(reply.text ?? "")
-                                .font(.caption)
-                                .lineLimit(2)
-                        }
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
+                        QuotedReplyView(
+                            reply: reply,
+                            isGroup: message.chatType == "group",
+                            open: quotedMessageAction
+                        )
                     }
 
                     if let emoji = message.standaloneEmojiText {
@@ -131,18 +129,6 @@ struct MessageBubble: View {
                         LinkPreviewCard(preview: preview)
                     }
 
-                    if let reactions = message.reactions, !reactions.isEmpty {
-                        HStack(spacing: 4) {
-                            ForEach(reactions.keys.sorted(), id: \.self) { emoji in
-                                Text("\(emoji) \(reactions[emoji]?.count ?? 0)")
-                                    .font(.caption2.weight(.medium))
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                            }
-                        }
-                    }
-
                     if isStandaloneEmoji {
                         standaloneEmojiMetadata
                     } else if !usesInlineText {
@@ -161,16 +147,24 @@ struct MessageBubble: View {
                 .background {
                     if !isStandaloneEmoji {
                         UnevenRoundedRectangle(
-                            topLeadingRadius: message.isFromMe ? 13 : 4,
+                            topLeadingRadius: message.isFromMe || !startsRun ? 13 : 4,
                             bottomLeadingRadius: 13,
                             bottomTrailingRadius: 13,
-                            topTrailingRadius: message.isFromMe ? 4 : 13,
+                            topTrailingRadius: message.isFromMe && startsRun ? 4 : 13,
                             style: .continuous
                         )
                         .fill(message.isFromMe ? palette.outgoingBubble : palette.incomingBubble)
                         .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
                     }
                 }
+                // Like WhatsApp, reactions sit in one pill that overlaps the bubble's bottom edge.
+                .overlay(alignment: message.isFromMe ? .bottomTrailing : .bottomLeading) {
+                    if let reactions = message.reactions, !reactions.isEmpty {
+                        ReactionSummaryPill(reactions: reactions)
+                            .offset(x: message.isFromMe ? -10 : 10, y: 17)
+                    }
+                }
+                .padding(.bottom, (message.reactions?.isEmpty ?? true) ? 0 : 18)
                 .contextMenu { actionMenu }
                 .menuActionDismissBehavior(.enabled)
                 .offset(x: swipeOffset)
@@ -193,6 +187,13 @@ struct MessageBubble: View {
             if !message.isFromMe { Spacer(minLength: bubbleEdgeInset) }
         }
         .frame(maxWidth: .infinity)
+        .background {
+            // A quoted message the user jumped to flashes, as in WhatsApp.
+            palette.accent.opacity(isHighlighted ? 0.18 : 0)
+                .padding(.horizontal, -12)
+                .animation(.easeOut(duration: 0.4), value: isHighlighted)
+                .allowsHitTesting(false)
+        }
         .sheet(isPresented: $showReactionPicker) {
             MessageReactionPicker(selected: message.ownReactionEmoji, choose: react).modifier(ReadReceiptCover())
         }
@@ -204,6 +205,11 @@ struct MessageBubble: View {
                 demoSwipeOffset = MessageSwipeReply.triggerDistance
             }
         }
+    }
+
+    private var quotedMessageAction: (() -> Void)? {
+        guard let id = message.content?.replyContext?.messageId, let open = openQuotedMessage else { return nil }
+        return { open(id) }
     }
 
     var usesCompactMessageChrome: Bool {
