@@ -181,6 +181,8 @@ extension WhatsAppTranslatorTests {
         XCTAssertTrue(TimelineGrouping.startsRun(items, at: 0))
         XCTAssertFalse(TimelineGrouping.startsRun(items, at: 1))
         XCTAssertEqual(TimelineGrouping.days(items).map(\.indices), [0..<2])
-        XCTAssertEqual(SenderNameColor.index(for: "3630"), SenderNameColor.index(for: "3630"))
+        // Pinned djb2 results: a per-launch hash such as hashValue would fail these.
+        XCTAssertEqual(SenderNameColor.index(for: "3630"), 5)
+        XCTAssertEqual(SenderNameColor.index(for: "Virag"), 4)
     }
 }

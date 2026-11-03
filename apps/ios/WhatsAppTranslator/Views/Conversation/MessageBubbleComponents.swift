@@ -178,9 +178,11 @@ struct QuotedReplyView: View {
         let quote = HStack(spacing: 0) {
             Rectangle().fill(tint).frame(width: 4)
             VStack(alignment: .leading, spacing: 2) {
+                // The bar and background carry the colour; small coloured text is too faint on
+                // outgoing bubbles, so the name stays in the primary text colour.
                 Text(reply.senderName ?? "Reply")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(.primary)
                 Text(reply.text ?? "")
                     .font(.caption)
                     .foregroundStyle(.secondary)
