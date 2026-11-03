@@ -149,7 +149,7 @@ struct ConversationView: View {
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
                 // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
                 // keeps its place until the highlight fades.
-                let arrived = old.arrivals(in: messages)
+                let arrived = old.arrivals(in: messages) { session.liveMessageIDs.contains($0) }
                 if (isAtBottom && replyJump == nil) || arrived.contains(where: \.isFromMe) {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {

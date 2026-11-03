@@ -199,8 +199,10 @@ extension WhatsAppTranslatorTests {
         let a = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
         let before = try XCTUnwrap(TimelineTail([b]))
         XCTAssertNotEqual(TimelineTail([a, b]), before)
-        XCTAssertEqual(before.arrivals(in: [a, b]).map(\.id), ["a"])
-        XCTAssertEqual(before.arrivals(in: [a]), [])
+        XCTAssertEqual(before.arrivals(in: [a, b]) { $0 == "a" }.map(\.id), ["a"])
+        // The same row from a history page is not an arrival.
+        XCTAssertEqual(before.arrivals(in: [a, b]) { _ in false }, [])
+        XCTAssertEqual(before.arrivals(in: [a]) { _ in true }, [])
     }
 
     func testUnreadBarSitsAboveTheFirstUnreadIncomingMessage() throws {

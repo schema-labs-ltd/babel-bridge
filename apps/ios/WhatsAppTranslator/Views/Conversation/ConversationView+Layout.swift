@@ -152,8 +152,8 @@ extension ConversationView {
             draft = ProcessInfo.processInfo.arguments.contains("-demo") ? "" : session.draftStore.text(for: contact.id)
             // The picture may need a download; don't hold the messages back for it.
             async let avatar: Void = session.loadAvatar(for: contact.id)
-            await session.loadMessages(for: contact.id)
-            newestPageLoaded = true
+            // Only a page that actually arrived can stand in for the rows reaching the chat's latest time.
+            if await session.loadMessages(for: contact.id) { newestPageLoaded = true }
             markUnread()
             await avatar
             await session.loadTopics()

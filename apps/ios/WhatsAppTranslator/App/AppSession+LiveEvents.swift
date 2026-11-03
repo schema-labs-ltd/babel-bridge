@@ -24,6 +24,10 @@ extension AppSession {
                 conversation.append(target)
             }
             let normalized = normalizeMessages(conversation + [message])
+            if event.type == "message", !message.isReaction {
+                if liveMessageIDs.count >= 1_000 { liveMessageIDs.removeAll() }
+                liveMessageIDs.insert(message.id)
+            }
             messages[message.contactId] = normalized
             invalidateTopicMembership(for: message)
             for id in Array(topicPages.keys) {

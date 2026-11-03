@@ -88,7 +88,7 @@ final class LiveReactionTests: XCTestCase {
             }
             let request = Task {
                 if operation == 0 { await session.loadFeed() }
-                else { await session.loadMessages(for: target.contactId, older: operation == 2) }
+                else { _ = await session.loadMessages(for: target.contactId, older: operation == 2) }
             }
             let waitResult = await XCTWaiter.fulfillment(of: [started], timeout: 3)
             XCTAssertEqual(waitResult, .completed)
