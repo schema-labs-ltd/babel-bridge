@@ -152,14 +152,17 @@ enum ChatListPreview {
     /// and cuts long text with "…"; a live update stores the message's display text instead.
     static func summarises(_ preview: String, _ message: ChatMessage, label body: String) -> Bool {
         let raw = preview.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tidied = tidy(raw)
-        let forms = [body, message.displayText, tidy(message.displayText)].filter { !$0.isEmpty }
-        for text in [raw, tidied] {
-            if forms.contains(where: { text.hasSuffix($0) }) { return true }
-            guard text.hasSuffix("…") else { continue }
-            let cut = String(text.dropLast()).trimmingCharacters(in: .whitespaces)
-            let tail = cut.range(of: ": ").map { String(cut[$0.upperBound...]) } ?? cut
-            if !tail.isEmpty, forms.contains(where: { $0.hasPrefix(tail) || $0.hasPrefix(cut) }) { return true }
+        let forms = Set([body, message.displayText, tidy(message.displayText)].filter { !$0.isEmpty })
+        for text in Set([raw, tidy(raw)]) {
+            let truncated = text.hasSuffix("…")
+            let whole = truncated ? String(text.dropLast()).trimmingCharacters(in: .whitespaces) : text
+            // The whole preview, or what follows its "Name: " or "You: " prefix, must be the message
+            // itself (or, when cut, the start of it), so "No, not OK" never matches a message "OK".
+            var parts = [whole]
+            if let colon = whole.range(of: ": ") { parts.append(String(whole[colon.upperBound...])) }
+            for part in parts where !part.isEmpty {
+                if forms.contains(where: { truncated ? $0.hasPrefix(part) : $0 == part }) { return true }
+            }
         }
         return false
     }
