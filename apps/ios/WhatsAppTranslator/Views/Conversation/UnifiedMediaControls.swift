@@ -68,10 +68,12 @@ struct UnifiedMediaControls: View {
             Button("Photos") { photosPresented = true }
             if CameraCapture.isAvailable {
                 Button("Take Photo") {
-                    if CameraCapture.accessDenied {
-                        error = CameraCapture.accessDeniedMessage
-                    } else {
-                        cameraPresented = true
+                    Task {
+                        if await CameraCapture.requestAccess() {
+                            cameraPresented = true
+                        } else {
+                            error = CameraCapture.accessDeniedMessage
+                        }
                     }
                 }
             }

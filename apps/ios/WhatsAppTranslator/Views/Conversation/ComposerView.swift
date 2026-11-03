@@ -158,10 +158,12 @@ struct ComposerView: View {
             Button("Photo Library", systemImage: "photo.on.rectangle") { photoLibraryPresented = true }
             if CameraCapture.isAvailable {
                 Button("Take Photo", systemImage: "camera") {
-                    if CameraCapture.accessDenied {
-                        pickerError = CameraCapture.accessDeniedMessage
-                    } else {
-                        cameraPresented = true
+                    Task {
+                        if await CameraCapture.requestAccess() {
+                            cameraPresented = true
+                        } else {
+                            pickerError = CameraCapture.accessDeniedMessage
+                        }
                     }
                 }
             }

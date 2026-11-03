@@ -246,11 +246,12 @@ enum CameraCapture {
         #endif
     }
 
-    /// True once the user has turned camera access off, when the system camera
-    /// would only show a blank screen with Cancel.
-    static var accessDenied: Bool {
+    /// Asks for camera access the first time, and reports whether the camera can be used.
+    /// Called before presenting so a refusal shows the Settings explanation, not a blank camera.
+    static func requestAccess() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .denied, .restricted: true
+        case .authorized: true
+        case .notDetermined: await AVCaptureDevice.requestAccess(for: .video)
         default: false
         }
     }
