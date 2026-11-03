@@ -41,7 +41,8 @@ struct APIContractCheck {
             check.equal(contacts.first?.isGroup, true, "group chat is a group")
             check.equal(contacts.first?.pinnedAt != nil, true, "pinned chat has pinnedAt")
             check.equal(contacts.last?.displayName, "Ana", "contact name")
-            check.equal(contacts.last?.unreadCount, 1, "unread count")
+            // The user replied after Ana's message, which reads it.
+            check.equal(contacts.last?.unreadCount, 0, "unread count")
             check.expect(contacts.allSatisfy { $0.lastMessagePreview != nil }, "every chat has a preview")
         }
         check.response("pin", PinResponse.self) { check.expect($0.success && $0.pinned, "pin succeeds") }
