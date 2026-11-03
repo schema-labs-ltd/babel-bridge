@@ -109,7 +109,7 @@ impl MessageStore {
             params![count as i32, contact_id],
         )?;
         conn.execute("DELETE FROM unread_messages WHERE message_id IN (SELECT id FROM messages WHERE contact_id=?)", [contact_id])?;
-        conn.execute("INSERT OR IGNORE INTO unread_messages(message_id) SELECT id FROM messages WHERE contact_id=?1 AND is_from_me=0 AND lower(content_type) NOT IN ('reaction','revoked','protocol','unknown') AND id NOT IN (SELECT message_id FROM viewed_messages) ORDER BY timestamp DESC,id DESC LIMIT ?2", params![contact_id,count])?;
+        conn.execute("INSERT OR IGNORE INTO unread_messages(message_id) SELECT id FROM messages WHERE contact_id=?1 AND is_from_me=0 AND lower(COALESCE(json_extract(content_json,'$.type'),content_type)) NOT IN ('reaction','revoked','protocol','unknown') AND id NOT IN (SELECT message_id FROM viewed_messages) ORDER BY timestamp DESC,id DESC LIMIT ?2", params![contact_id,count])?;
         Ok(())
     }
 

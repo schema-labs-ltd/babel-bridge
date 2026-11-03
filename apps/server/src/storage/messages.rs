@@ -111,7 +111,11 @@ impl MessageStore {
         if inserted > 0 && !msg.is_from_me {
             if notification_requires_translation.is_some()
                 && !matches!(
-                    msg.content_type.to_lowercase().as_str(),
+                    serde_json::from_str::<serde_json::Value>(&msg.content_json)
+                        .ok()
+                        .and_then(|c| c.get("type")?.as_str().map(str::to_lowercase))
+                        .unwrap_or_else(|| msg.content_type.to_lowercase())
+                        .as_str(),
                     "reaction" | "revoked" | "protocol" | "unknown"
                 )
             {

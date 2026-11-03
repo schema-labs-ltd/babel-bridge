@@ -197,6 +197,13 @@ impl MessageStore {
                 tx.execute("DELETE FROM unread_messages WHERE message_id=?", [id])?;
                 tx.execute("DELETE FROM pending_notifications WHERE message_id=?", [id])?;
             }
+            // Reactions are notified but never counted as unread: drop their
+            // pending notifications for the same read span.
+            tx.execute(
+                "DELETE FROM pending_notifications WHERE message_id IN
+                    (SELECT id FROM messages WHERE contact_id=?1 AND timestamp<?2)",
+                params![chat_id, timestamp],
+            )?;
             let before: Option<i32> = tx
                 .query_row(
                     "SELECT unread_count FROM contacts WHERE id=?",
@@ -226,7 +233,7 @@ impl MessageStore {
         self.conn.lock().unwrap().execute(
             "INSERT OR IGNORE INTO unread_messages(message_id)
              SELECT id FROM messages WHERE contact_id=?1 AND is_from_me=0
-                AND lower(content_type) NOT IN ('reaction','revoked','protocol','unknown')
+                AND lower(COALESCE(json_extract(content_json,'$.type'),content_type)) NOT IN ('reaction','revoked','protocol','unknown')
                 AND id NOT IN (SELECT message_id FROM viewed_messages)
                 AND id NOT IN (SELECT message_id FROM unread_messages)
              ORDER BY timestamp DESC,id DESC

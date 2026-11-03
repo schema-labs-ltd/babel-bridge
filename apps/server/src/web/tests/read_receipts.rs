@@ -389,3 +389,88 @@ async fn history_unread_counts_cover_every_synced_message_and_receipts_keep_same
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn deleted_messages_are_never_unread_and_reads_cancel_reaction_notifications() {
+    let (state, dir) = test_state(None);
+    let chat = "447700900123@s.whatsapp.net";
+    let wire = |id: &str,
+                timestamp: i64,
+                history: bool,
+                unread: Option<u32>,
+                content: serde_json::Value| {
+        serde_json::from_value::<BridgeEvent>(serde_json::json!({
+            "type":"message","id":id,"timestamp":timestamp,
+            "from":{"jid":chat,"phone":"447700900123"},
+            "chat":{"type":"private","jid":chat,"name":"Geckos"},
+            "content":content,"is_from_me":false,"is_forwarded":false,
+            "is_history":history,"unread_count":unread
+        }))
+        .unwrap()
+    };
+    let text = |id: &str| serde_json::json!({"type":"text","body":id});
+    let unread =
+        |state: &Arc<AppState>| state.store.get_contact(chat).unwrap().unwrap().unread_count;
+    // Newest first: a text, a deleted message, then an older text, two unread.
+    for (id, timestamp, count, content) in [
+        ("t-2", 102, Some(2), text("t-2")),
+        ("gone", 101, None, serde_json::json!({"type":"revoked"})),
+        ("t-1", 100, None, text("t-1")),
+    ] {
+        crate::handle_web_event(
+            wire(id, timestamp, true, count, content),
+            &state,
+            &state.store,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+    assert_eq!(
+        state
+            .store
+            .record_message_views(chat, &["t-1".into(), "t-2".into()], 1000)
+            .unwrap(),
+        0
+    );
+
+    // A live reaction is notified but not counted; reading past it cancels it.
+    crate::handle_web_event(
+        wire(
+            "like",
+            200,
+            false,
+            None,
+            serde_json::json!({"type":"reaction","emoji":"👍","target_message_id":"t-2","sender_timestamp_ms":200000}),
+        ),
+        &state,
+        &state.store,
+        None,
+    )
+    .await
+    .unwrap();
+    crate::handle_web_event(
+        wire("t-3", 201, false, None, text("t-3")),
+        &state,
+        &state.store,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(unread(&state), 1);
+    assert!(state
+        .store
+        .ready_notification_ids()
+        .unwrap()
+        .contains(&"like".to_string()));
+    let read: BridgeEvent = serde_json::from_value(serde_json::json!({
+        "type":"messages_read","chat_id":chat,"message_ids":["t-3"]
+    }))
+    .unwrap();
+    crate::handle_web_event(read, &state, &state.store, None)
+        .await
+        .unwrap();
+    assert_eq!(unread(&state), 0);
+    assert!(state.store.ready_notification_ids().unwrap().is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
+}
