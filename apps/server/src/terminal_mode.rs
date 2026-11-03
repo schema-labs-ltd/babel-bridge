@@ -222,7 +222,7 @@ pub(crate) async fn handle_terminal_event(
         BridgeEvent::ReadReceiptResult { .. } => {
             debug!("Read receipt result");
         }
-        BridgeEvent::MarkAsRead { .. } => {
+        BridgeEvent::MarkAsRead { .. } | BridgeEvent::MessagesRead { .. } => {
             // Mark-as-read events are only used in web mode
             debug!("Ignoring mark-as-read event in terminal mode");
         }

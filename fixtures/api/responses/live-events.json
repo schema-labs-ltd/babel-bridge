@@ -51,6 +51,14 @@
     "type": "message"
   },
   {
+    "chat_id": "447700900123@s.whatsapp.net",
+    "message_ids": [
+      "ana-hello"
+    ],
+    "type": "messages_viewed",
+    "unread_count": 0
+  },
+  {
     "message": {
       "chatType": "private",
       "contactId": "447700900123@s.whatsapp.net",

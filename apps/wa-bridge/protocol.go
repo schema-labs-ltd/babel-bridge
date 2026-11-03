@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
 // Event types sent to Rust CLI (via stdout)
@@ -344,6 +345,30 @@ func NewReceiptEvent(messageIDs []types.MessageID, receiptType types.ReceiptType
 		status = "read"
 	}
 	return ReceiptEvent{Type: "receipt", MessageIDs: messageIDs, Status: status}
+}
+
+// MessagesReadEvent reports incoming messages the user read on another of
+// their own devices (a read receipt sent by their own account).
+type MessagesReadEvent struct {
+	Type       string            `json:"type"`
+	ChatID     string            `json:"chat_id"`
+	MessageIDs []types.MessageID `json:"message_ids"`
+}
+
+// NewMessagesReadEvent turns a receipt from the user's own account into a
+// messages_read event. Receipts from other people, which report progress on
+// messages the user sent, return false.
+func NewMessagesReadEvent(receipt *events.Receipt) (MessagesReadEvent, bool) {
+	if !receipt.IsFromMe || len(receipt.MessageIDs) == 0 {
+		return MessagesReadEvent{}, false
+	}
+	switch receipt.Type {
+	case types.ReceiptTypeRead, types.ReceiptTypeReadSelf, types.ReceiptTypePlayed, types.ReceiptTypePlayedSelf:
+	default:
+		return MessagesReadEvent{}, false
+	}
+	chat := normalizePrivateChatJID(types.MessageInfo{MessageSource: receipt.MessageSource})
+	return MessagesReadEvent{Type: "messages_read", ChatID: chat.String(), MessageIDs: receipt.MessageIDs}, true
 }
 
 // MarkAsReadEvent is sent when a chat is marked as read from another device

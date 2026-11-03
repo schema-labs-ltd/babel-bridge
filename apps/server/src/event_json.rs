@@ -150,6 +150,14 @@ impl serde::Serialize for BridgeEvent {
                 map.serialize_entry("type", "mark_as_read")?;
                 map.serialize_entry("chat_id", chat_id)?;
             }
+            BridgeEvent::MessagesRead {
+                chat_id,
+                message_ids,
+            } => {
+                map.serialize_entry("type", "messages_read")?;
+                map.serialize_entry("chat_id", chat_id)?;
+                map.serialize_entry("message_ids", message_ids)?;
+            }
             BridgeEvent::Receipt {
                 message_ids,
                 status,

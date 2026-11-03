@@ -8,6 +8,39 @@ pub struct PendingReadReceipt {
     pub viewed_at: i64,
 }
 
+/// A chat whose unread badge cleared because the user read it in WhatsApp.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReadElsewhere {
+    pub chat_id: String,
+    pub message_ids: Vec<String>,
+    pub unread_count: i32,
+}
+
+/// Lower a chat's unread count by the `removed` ledger entries, and never
+/// leave it above the incoming messages still in the unread ledger. A count
+/// with nothing behind it (for example a WhatsApp history count for messages
+/// that were never stored) could otherwise never reach zero.
+fn settle_unread_count(
+    tx: &rusqlite::Transaction,
+    contact_id: &str,
+    removed: usize,
+) -> Result<i32> {
+    tx.execute(
+        "UPDATE contacts SET unread_count=MIN(MAX(0,unread_count-?1),
+            (SELECT COUNT(*) FROM unread_messages u JOIN messages m ON m.id=u.message_id WHERE m.contact_id=?2))
+         WHERE id=?2",
+        params![removed as i64, contact_id],
+    )?;
+    Ok(tx
+        .query_row(
+            "SELECT unread_count FROM contacts WHERE id=?",
+            [contact_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(0))
+}
+
 impl MessageStore {
     pub(super) fn init_read_receipts(&self) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
@@ -98,17 +131,76 @@ impl MessageStore {
             removed += tx.execute("DELETE FROM unread_messages WHERE message_id=?", [id])?;
             tx.execute("DELETE FROM pending_notifications WHERE message_id=?", [id])?;
         }
-        tx.execute(
-            "UPDATE contacts SET unread_count=MAX(0,unread_count-?1) WHERE id=?2",
-            params![removed, contact_id.as_ref()],
-        )?;
-        let count = tx.query_row(
-            "SELECT unread_count FROM contacts WHERE id=?",
-            [contact_id.as_ref()],
-            |r| r.get(0),
-        )?;
+        let count = settle_unread_count(&tx, contact_id.as_ref(), removed)?;
         tx.commit()?;
         Ok(count)
+    }
+
+    /// Clear the unread badge for incoming messages the user already read in
+    /// WhatsApp itself: on their phone or another linked device, or by sending
+    /// a message in the chat. Everything at or before the newest read message
+    /// counts as read, as in WhatsApp. For a reply (`through_newest` false),
+    /// a message in the same second as the reply stays unread, since it may
+    /// have arrived after it. This only changes local unread state; it
+    /// never queues a read receipt. Returns each chat whose unread state
+    /// changed, with the cleared message IDs and the new count.
+    pub fn record_read_elsewhere(
+        &self,
+        ids: &[String],
+        through_newest: bool,
+    ) -> Result<Vec<ReadElsewhere>> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut newest: std::collections::BTreeMap<String, i64> = Default::default();
+        for id in ids {
+            // Look up by message ID: the receipt's chat may be a LID or phone
+            // alias of the chat the message is stored under.
+            let found: Option<(String, i64)> = tx
+                .query_row(
+                    "SELECT contact_id,timestamp FROM messages WHERE id=?",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            if let Some((chat, timestamp)) = found {
+                let entry = newest.entry(chat).or_insert(timestamp);
+                *entry = (*entry).max(timestamp);
+            }
+        }
+        let mut changed = Vec::new();
+        for (chat_id, timestamp) in newest {
+            let mut statement = tx.prepare(
+                "SELECT u.message_id FROM unread_messages u JOIN messages m ON m.id=u.message_id
+                 WHERE m.contact_id=?1 AND (m.timestamp<?2 OR (?3 AND m.timestamp=?2))",
+            )?;
+            let message_ids = statement
+                .query_map(params![chat_id, timestamp, through_newest], |r| {
+                    r.get::<_, String>(0)
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            drop(statement);
+            for id in &message_ids {
+                tx.execute("DELETE FROM unread_messages WHERE message_id=?", [id])?;
+                tx.execute("DELETE FROM pending_notifications WHERE message_id=?", [id])?;
+            }
+            let before: Option<i32> = tx
+                .query_row(
+                    "SELECT unread_count FROM contacts WHERE id=?",
+                    [&chat_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let unread_count = settle_unread_count(&tx, &chat_id, message_ids.len())?;
+            if !message_ids.is_empty() || before.is_some_and(|before| before != unread_count) {
+                changed.push(ReadElsewhere {
+                    chat_id,
+                    message_ids,
+                    unread_count,
+                });
+            }
+        }
+        tx.commit()?;
+        Ok(changed)
     }
 
     pub fn pending_read_receipts(&self, now: i64) -> Result<Vec<PendingReadReceipt>> {
