@@ -175,7 +175,7 @@ extension WhatsAppTranslatorTests {
     }
 
     func testChatListPreviewNamesGroupSendersAndShowsTicksForOwnMessages() throws {
-        let group = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+        let group = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_699_999_999_000,
                             unreadCount: 0, pinnedAt: nil, lastMessagePreview: "Szia")
         let incoming = try decodeMessage(id: "m1", contentType: "text", content: #"{"type":"text","body":"Szia"}"#)
         XCTAssertEqual(ChatListPreview.line(for: group, latest: incoming), .init(text: "Virag: Szia"))
@@ -191,5 +191,13 @@ extension WhatsAppTranslatorTests {
         let newer = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_100_000,
                             unreadCount: 1, pinnedAt: nil, lastMessagePreview: "[ Sticker ]")
         XCTAssertEqual(ChatListPreview.line(for: newer, latest: incoming), .init(text: "Sticker"))
+
+        // In the same second, the loaded message is used only when it is the one the server summarised.
+        let sameSecond = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+                                 unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Virag: Szia")
+        XCTAssertEqual(ChatListPreview.line(for: sameSecond, latest: incoming), .init(text: "Virag: Szia"))
+        let otherSameSecond = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+                                      unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Bence: Hello")
+        XCTAssertEqual(ChatListPreview.line(for: otherSameSecond, latest: incoming), .init(text: "Bence: Hello"))
     }
 }

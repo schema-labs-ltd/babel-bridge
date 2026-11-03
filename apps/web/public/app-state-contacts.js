@@ -424,7 +424,7 @@ export function tidyServerPreview(preview) {
   const question = bracketed(rest, 'Poll: ');
   if (image !== null) mapped = image ? `📷 ${image}` : '📷 Photo';
   else if (video !== null) mapped = video ? `🎥 ${video}` : '🎥 Video';
-  else if (exact[rest]) mapped = exact[rest];
+  else if (Object.hasOwn(exact, rest)) mapped = exact[rest];
   else if (documentName !== null) mapped = `📄 ${documentName || 'Document'}`;
   else if (contactName !== null) mapped = `👤 ${contactName || 'Contact'}`;
   else if (question !== null) mapped = `📊 ${question || 'Poll'}`;
