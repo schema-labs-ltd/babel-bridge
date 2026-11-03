@@ -226,26 +226,21 @@ struct ConversationCostView: View {
     }
 }
 
-/// The chat's newest second and the messages in it. Timestamps are whole seconds and rows sort by
-/// (timestamp, id), so a new message can land before the last row; this still notices it.
-struct TimelineTail: Equatable {
-    let timestamp: Int64
-    let ids: Set<String>
+/// A chat's live arrivals: how many there have been, and the most recent IDs. A conversation keeps
+/// the count it last saw and asks which IDs came since, so timestamps and sort order don't matter.
+struct LiveArrivals: Equatable {
+    private(set) var count = 0
+    private(set) var recent: [String] = []
 
-    init?(_ messages: [ChatMessage]) {
-        guard let last = messages.last else { return nil }
-        timestamp = last.timestamp
-        ids = Set(messages.reversed().prefix { $0.timestamp == last.timestamp }.map(\.id))
+    mutating func record(_ id: String) {
+        guard !recent.contains(id) else { return }
+        count += 1
+        recent.append(id)
+        if recent.count > 50 { recent.removeFirst(recent.count - 50) }
     }
 
-    /// The messages that arrived after this tail. A history page can add rows from the tail's own
-    /// second, so a new row in that second counts only when it came over the live connection. If
-    /// none of the tail's messages remain (a page replaced the list), nothing counts as new.
-    func arrivals(in messages: [ChatMessage], isLive: (String) -> Bool) -> [ChatMessage] {
-        guard messages.contains(where: { ids.contains($0.id) }) else { return [] }
-        return messages.filter {
-            $0.timestamp > timestamp || ($0.timestamp == timestamp && !ids.contains($0.id) && isLive($0.id))
-        }
+    func ids(since seen: Int) -> [String] {
+        Array(recent.suffix(max(0, min(count - seen, recent.count))))
     }
 }
 

@@ -85,9 +85,9 @@ final class AppSession {
     let appIcons = AppIconController()
     var readReceiptCovers: Set<UUID> = []
     var viewedReceiptMessageIDs: Set<String> = []
-    /// Recent messages that arrived over the live connection, so a conversation can tell them from
-    /// history pages that land in the same second.
-    var liveMessageIDs: Set<String> = []
+    /// Messages that arrived over the live connection, per chat, so a conversation can tell them
+    /// from history pages and refreshes whatever their timestamps.
+    var liveArrivals: [String: LiveArrivals] = [:]
     var pendingReadReceipts: [String: Set<String>] = [:]
     var readReceiptTask: Task<Void, Never>?
 

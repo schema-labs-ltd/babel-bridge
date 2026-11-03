@@ -37,6 +37,7 @@ struct ConversationView: View {
     @State var unreadMarkerID: String?
     @State var unreadMarkerCount = 0
     @State var pendingScrollID: String?
+    @State var sentCount = 0
     /// Older pages loaded so the unread bar can reach the first unread message.
     @State var unreadHistoryPages = 0
     @State var quoteJumpToken = UUID()
@@ -149,17 +150,15 @@ struct ConversationView: View {
             .platformDismissesKeyboard()
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
-            // Keyed on the chat's newest second, so loading older history, a full search or switching
-            // topic pages never counts as new, while a same-second arrival sorted before the last row does.
-            .onChange(of: TimelineTail(session.messages[contact.id] ?? [])) { old, new in
-                markUnread()
-                // Older pages never change the newest second, so a change while one loads is a real arrival.
-                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
-                      let old, new != nil else { return }
+            .onChange(of: session.messages[contact.id]?.last?.id) { markUnread() }
+            // Keyed on live arrivals, so history pages, refreshes and topic pages never count as new.
+            .onChange(of: session.liveArrivals[contact.id]?.count ?? 0) { seen, count in
+                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly, count > seen else { return }
+                let ids = Set(session.liveArrivals[contact.id]?.ids(since: seen) ?? [])
+                let arrived = messages.filter { ids.contains($0.id) }
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
                 // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
                 // keeps its place until the highlight fades.
-                let arrived = old.arrivals(in: messages) { session.liveMessageIDs.contains($0) }
                 if (isAtBottom && replyJump == nil) || arrived.contains(where: \.isFromMe) {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {
@@ -182,6 +181,8 @@ struct ConversationView: View {
                 isNearTop = nearTop
                 if nearTop { Task { await loadOlderMessages() } }
             }
+            // A message you sent here shows at the bottom even before its live event arrives.
+            .onChange(of: sentCount) { withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) } }
             .onChange(of: pendingScrollID) { _, id in
                 guard let id else { return }
                 // Just below the top, so the pinned day header doesn't cover the unread bar.
@@ -383,6 +384,7 @@ struct ConversationView: View {
         let reply = replyTarget
         Task {
             if await session.send(text: value, to: contact.id, reply: reply) {
+                sentCount += 1
                 draft = ""
                 cancelReply()
             }

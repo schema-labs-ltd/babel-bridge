@@ -221,16 +221,17 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(SenderNameColor.index(for: "Virag"), 4)
     }
 
-    func testTimelineTailNoticesSameSecondArrivalsSortedFirst() throws {
-        // All share one second, so "a" sorts before "b" even though it arrived later.
-        let b = try decodeMessage(id: "b", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
-        let a = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
-        let before = try XCTUnwrap(TimelineTail([b]))
-        XCTAssertNotEqual(TimelineTail([a, b]), before)
-        XCTAssertEqual(before.arrivals(in: [a, b]) { $0 == "a" }.map(\.id), ["a"])
-        // The same row from a history page is not an arrival.
-        XCTAssertEqual(before.arrivals(in: [a, b]) { _ in false }, [])
-        XCTAssertEqual(before.arrivals(in: [a]) { _ in true }, [])
+    func testLiveArrivalsReportOnlyWhatCameSinceTheLastLook() {
+        var arrivals = LiveArrivals()
+        arrivals.record("a")
+        let seen = arrivals.count
+        arrivals.record("b")
+        arrivals.record("b")
+        arrivals.record("c")
+        XCTAssertEqual(arrivals.ids(since: seen), ["b", "c"])
+        XCTAssertEqual(arrivals.ids(since: arrivals.count), [])
+        for index in 0..<60 { arrivals.record("m\(index)") }
+        XCTAssertEqual(arrivals.ids(since: 0).count, 50)
     }
 
     func testUnreadBarSitsAboveTheFirstUnreadIncomingMessage() throws {
