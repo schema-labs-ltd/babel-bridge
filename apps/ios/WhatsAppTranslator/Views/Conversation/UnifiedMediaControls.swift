@@ -67,7 +67,13 @@ struct UnifiedMediaControls: View {
         .confirmationDialog(context.map { "Send to \($0.destination)" } ?? "Add attachment", isPresented: $choices, titleVisibility: .visible) {
             Button("Photos") { photosPresented = true }
             if CameraCapture.isAvailable {
-                Button("Take Photo") { cameraPresented = true }
+                Button("Take Photo") {
+                    if CameraCapture.accessDenied {
+                        error = CameraCapture.accessDeniedMessage
+                    } else {
+                        cameraPresented = true
+                    }
+                }
             }
             Button("Video") { videoPresented = true }
             Button("File") { filesPresented = true }

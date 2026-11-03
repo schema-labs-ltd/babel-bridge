@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import CoreTransferable
 import PhotosUI
@@ -234,6 +235,7 @@ extension View {
     }
 }
 
+@MainActor
 enum CameraCapture {
     /// False on the simulator and on devices without a usable camera.
     static var isAvailable: Bool {
@@ -243,6 +245,17 @@ enum CameraCapture {
         false
         #endif
     }
+
+    /// True once the user has turned camera access off, when the system camera
+    /// would only show a blank screen with Cancel.
+    static var accessDenied: Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .denied, .restricted: true
+        default: false
+        }
+    }
+
+    static let accessDeniedMessage = "Camera access is turned off. Turn it on in Settings › Babel Bridge › Camera to take photos."
 
     enum Outcome {
         case captured(PendingPhoto)

@@ -60,26 +60,10 @@ struct ComposerView: View {
 
             ComposerGlassGroup {
                 HStack(alignment: .center, spacing: 7) {
-                    #if os(iOS)
-                    Menu {
-                        Button("Photo Library", systemImage: "photo.on.rectangle") { photoLibraryPresented = true }
-                        if CameraCapture.isAvailable {
-                            Button("Take Photo", systemImage: "camera") { cameraPresented = true }
-                        }
-                    } label: {
-                        addImageLabel
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    #else
-                    PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 30, matching: .images) {
-                        addImageLabel
-                    }
-                    .buttonStyle(.plain)
-                    #endif
-                    .disabled(isSending)
-                    .accessibilityLabel("Send photos")
-                    .translatorGlassControl(in: Circle())
+                    addImageButton
+                        .disabled(isSending)
+                        .accessibilityLabel("Send photos")
+                        .translatorGlassControl(in: Circle())
 
                     composerInput
 
@@ -165,6 +149,33 @@ struct ComposerView: View {
             imagePaste.begin(providers, reply: reply, send: sendImages)
         }
         .modifier(ComposerInputStyle())
+    }
+
+    @ViewBuilder
+    private var addImageButton: some View {
+        #if os(iOS)
+        Menu {
+            Button("Photo Library", systemImage: "photo.on.rectangle") { photoLibraryPresented = true }
+            if CameraCapture.isAvailable {
+                Button("Take Photo", systemImage: "camera") {
+                    if CameraCapture.accessDenied {
+                        pickerError = CameraCapture.accessDeniedMessage
+                    } else {
+                        cameraPresented = true
+                    }
+                }
+            }
+        } label: {
+            addImageLabel
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        #else
+        PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 30, matching: .images) {
+            addImageLabel
+        }
+        .buttonStyle(.plain)
+        #endif
     }
 
     nonisolated private var addImageLabel: some View {
