@@ -207,5 +207,10 @@ extension WhatsAppTranslatorTests {
         let live = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
                            unreadCount: 1, pinnedAt: nil, lastMessagePreview: photo.displayText)
         XCTAssertEqual(ChatListPreview.line(for: live, latest: photo).text, "Virag: 📷 Photo")
+        // Matching is on the whole message, not its ending.
+        let ok = try decodeMessage(id: "m5", contentType: "text", content: #"{"type":"text","body":"OK"}"#)
+        let notOK = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
+                            unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Bence: No, not OK")
+        XCTAssertEqual(ChatListPreview.line(for: notOK, latest: ok).text, "Bence: No, not OK")
     }
 }
