@@ -11,7 +11,7 @@ import {
   getTimezoneInfo,
   isContactSnoozed,
   resolveAppearanceTheme,
-} from '../app-state.js?v=20261103-chat-list';
+} from '../app-state.js?v=20261103-web-conversation';
 
 export const workspaceStateMethods = {
   loadStoredJson(key) {

@@ -9,7 +9,7 @@ import {
   getReminderStatus,
   getVisibleContacts,
   tidyServerPreview,
-} from '../app-state.js?v=20261103-chat-list';
+} from '../app-state.js?v=20261103-web-conversation';
 
 export const inboxMethods = {
   syncInboxControls() {
@@ -228,6 +228,7 @@ export const inboxMethods = {
     const demo = createDemoWorkspace();
     this.demoMode = true;
     this.connected = true;
+    this.setLiveReconnectBanner(false);
 
     if (this.ws) {
       this.ws.onclose = null;

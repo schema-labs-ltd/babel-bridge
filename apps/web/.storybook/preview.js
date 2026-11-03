@@ -9,6 +9,7 @@ import '../public/styles-simplified.css';
 import '../public/styles-responsive.css';
 import '../public/styles-menus.css';
 import '../public/styles-workspace.css';
+import '../public/styles-command-palette.css';
 import '../public/styles-features.css';
 import './storybook.css';
 
