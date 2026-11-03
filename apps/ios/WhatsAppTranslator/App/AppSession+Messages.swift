@@ -54,14 +54,13 @@ extension AppSession {
         let server = configuration?.baseURL
         let remote: URL?
         do { remote = try await api.avatar(contactID: contactID) } catch { return }
-        guard configuration?.baseURL == server, !Task.isCancelled else { return }
-        refreshedAvatarIDs.insert(contactID)
-        guard let remote else {
-            try? await mediaCache.remove(messageID: key)
-            avatarURLs.removeValue(forKey: contactID)
-            return
-        }
+        // The server also answers with no picture while WhatsApp reconnects or is slow, so keep
+        // the saved one and check again next time rather than treat it as removed.
+        guard configuration?.baseURL == server, !Task.isCancelled, let remote else { return }
         let download = try? await URLSession.shared.data(from: remote)
+        // A row that scrolled away cancels the download; it is checked again when shown.
+        guard !Task.isCancelled else { return }
+        refreshedAvatarIDs.insert(contactID)
         guard let data = download?.0,
               (download?.1 as? HTTPURLResponse)?.statusCode == 200,
               PlatformImage(data: data) != nil else {
@@ -69,7 +68,10 @@ extension AppSession {
             return
         }
         guard configuration?.baseURL == server else { return }
-        if let cachedURL, (try? Data(contentsOf: cachedURL)) == data { return }
+        if let cachedURL {
+            let saved = await Task.detached(priority: .utility) { try? Data(contentsOf: cachedURL) }.value
+            if saved == data { return }
+        }
         _ = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
         // A file that changed keeps its path, which the picture view wouldn't reload, so this
         // launch shows the new picture from the server and the next one from the saved file.

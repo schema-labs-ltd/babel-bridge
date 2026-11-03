@@ -161,7 +161,14 @@ actor MediaCacheStore {
             for url in files {
                 let name = url.lastPathComponent
                 guard let dot = name.firstIndex(of: ".") else { continue }
-                names[String(name[..<dot])] = name
+                let key = String(name[..<dot])
+                // Older builds could leave one key under two extensions. Keep one so the
+                // index and the folder agree.
+                if names[key] != nil {
+                    try? FileManager.default.removeItem(at: url)
+                    continue
+                }
+                names[key] = name
             }
         }
         fileNames = names
@@ -191,7 +198,9 @@ actor MediaCacheStore {
         for entry in removableEntries where totalBytes > maximumBytes {
             try FileManager.default.removeItem(at: entry.url)
             let name = entry.url.lastPathComponent
-            if let dot = name.firstIndex(of: ".") { fileNames?.removeValue(forKey: String(name[..<dot])) }
+            if let dot = name.firstIndex(of: "."), fileNames?[String(name[..<dot])] == name {
+                fileNames?.removeValue(forKey: String(name[..<dot]))
+            }
             totalBytes -= entry.size
         }
     }

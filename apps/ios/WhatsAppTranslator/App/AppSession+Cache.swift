@@ -123,7 +123,9 @@ extension AppSession {
         guard !feedHasLoaded, !feedLoading, let feed, !feed.isEmpty else { return }
         feedByID = Dictionary(feed.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
         feedCursor = feed.min { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }
-        feedHasMore = true
+        // Earlier pages wait for the fresh page, which sets this from the server, so a tap
+        // can't hold the loading flag and make the launch refresh skip.
+        feedHasMore = false
         feedHasLoaded = true
     }
 }
