@@ -100,6 +100,8 @@ pub(crate) async fn handle_web_event(
             if let Some(unread) = unread_count {
                 // History sync message with unread count from WhatsApp - use it directly
                 store.set_unread_count(&stored_msg.contact_id, unread)?;
+            } else if is_history && !already_stored && !stored_msg.is_from_me {
+                store.fill_history_unread(&stored_msg.contact_id)?;
             } else if stored_msg.is_from_me
                 && !is_history
                 && !already_stored

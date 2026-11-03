@@ -138,20 +138,23 @@ impl MessageStore {
 
     /// Clear the unread badge for incoming messages the user already read in
     /// WhatsApp itself: on their phone or another linked device, or by sending
-    /// a message in the chat. Everything at or before the newest read message
-    /// counts as read, as in WhatsApp. For a reply (`through_newest` false),
-    /// a message in the same second as the reply stays unread, since it may
-    /// have arrived after it. This only changes local unread state; it
+    /// a message in the chat. Every message before the newest one named
+    /// counts as read, as in WhatsApp. Timestamps have one-second precision,
+    /// so another message in that same second may have arrived later: it
+    /// stays unread unless `ids_were_read` (a read receipt, which names each
+    /// message it read) lists it. A reply passes false, since the reply itself
+    /// is not an unread message. This only changes local unread state; it
     /// never queues a read receipt. Returns each chat whose unread state
     /// changed, with the cleared message IDs and the new count.
     pub fn record_read_elsewhere(
         &self,
         ids: &[String],
-        through_newest: bool,
+        ids_were_read: bool,
     ) -> Result<Vec<ReadElsewhere>> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
-        let mut newest: std::collections::BTreeMap<String, i64> = Default::default();
+        let mut newest: std::collections::BTreeMap<String, (i64, Vec<&String>)> =
+            Default::default();
         for id in ids {
             // Look up by message ID: the receipt's chat may be a LID or phone
             // alias of the chat the message is stored under.
@@ -163,22 +166,33 @@ impl MessageStore {
                 )
                 .optional()?;
             if let Some((chat, timestamp)) = found {
-                let entry = newest.entry(chat).or_insert(timestamp);
-                *entry = (*entry).max(timestamp);
+                let entry = newest.entry(chat).or_insert((timestamp, Vec::new()));
+                entry.0 = entry.0.max(timestamp);
+                if ids_were_read {
+                    entry.1.push(id);
+                }
             }
         }
         let mut changed = Vec::new();
-        for (chat_id, timestamp) in newest {
+        for (chat_id, (timestamp, read_ids)) in newest {
             let mut statement = tx.prepare(
                 "SELECT u.message_id FROM unread_messages u JOIN messages m ON m.id=u.message_id
-                 WHERE m.contact_id=?1 AND (m.timestamp<?2 OR (?3 AND m.timestamp=?2))",
+                 WHERE m.contact_id=?1 AND m.timestamp<?2",
             )?;
-            let message_ids = statement
-                .query_map(params![chat_id, timestamp, through_newest], |r| {
-                    r.get::<_, String>(0)
-                })?
+            let mut message_ids = statement
+                .query_map(params![chat_id, timestamp], |r| r.get::<_, String>(0))?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
             drop(statement);
+            for id in read_ids {
+                let unread = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM unread_messages WHERE message_id=?)",
+                    [id],
+                    |r| r.get::<_, bool>(0),
+                )?;
+                if unread && !message_ids.contains(id) {
+                    message_ids.push(id.clone());
+                }
+            }
             for id in &message_ids {
                 tx.execute("DELETE FROM unread_messages WHERE message_id=?", [id])?;
                 tx.execute("DELETE FROM pending_notifications WHERE message_id=?", [id])?;
@@ -201,6 +215,27 @@ impl MessageStore {
         }
         tx.commit()?;
         Ok(changed)
+    }
+
+    /// WhatsApp's history sync gives a chat's unread count on one message, and
+    /// the chat's other messages arrive after it. Mark the newest stored
+    /// incoming messages not yet in the unread ledger as unread until the
+    /// ledger covers the count again.
+    pub fn fill_history_unread(&self, contact_id: &str) -> Result<()> {
+        let contact_id = canonical_chat_id(contact_id);
+        self.conn.lock().unwrap().execute(
+            "INSERT OR IGNORE INTO unread_messages(message_id)
+             SELECT id FROM messages WHERE contact_id=?1 AND is_from_me=0
+                AND lower(content_type) NOT IN ('reaction','revoked','protocol','unknown')
+                AND id NOT IN (SELECT message_id FROM viewed_messages)
+                AND id NOT IN (SELECT message_id FROM unread_messages)
+             ORDER BY timestamp DESC,id DESC
+             LIMIT MAX(0,
+                COALESCE((SELECT unread_count FROM contacts WHERE id=?1),0)
+                - (SELECT COUNT(*) FROM unread_messages u JOIN messages m ON m.id=u.message_id WHERE m.contact_id=?1))",
+            [contact_id.as_ref()],
+        )?;
+        Ok(())
     }
 
     pub fn pending_read_receipts(&self, now: i64) -> Result<Vec<PendingReadReceipt>> {

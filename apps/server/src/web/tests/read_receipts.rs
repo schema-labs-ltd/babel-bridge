@@ -332,3 +332,60 @@ fn a_count_with_no_unread_messages_behind_it_clears_once_viewed() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn history_unread_counts_cover_every_synced_message_and_receipts_keep_same_second_arrivals() {
+    let (state, dir) = test_state(None);
+    let chat = "447700900123@s.whatsapp.net";
+    let wire = |id: &str, timestamp: i64, history: bool, unread: Option<u32>| {
+        serde_json::from_value::<BridgeEvent>(serde_json::json!({
+            "type":"message","id":id,"timestamp":timestamp,
+            "from":{"jid":chat,"phone":"447700900123"},
+            "chat":{"type":"private","jid":chat,"name":"Geckos"},
+            "content":{"type":"text","body":id},"is_from_me":false,"is_forwarded":false,
+            "is_history":history,"unread_count":unread
+        }))
+        .unwrap()
+    };
+    let unread =
+        |state: &Arc<AppState>| state.store.get_contact(chat).unwrap().unwrap().unread_count;
+    // History sync sends the newest message first, carrying the chat's count.
+    for (id, timestamp, count) in [
+        ("h-3", 103, Some(3)),
+        ("h-2", 102, None),
+        ("h-1", 101, None),
+        ("h-0", 100, None),
+    ] {
+        crate::handle_web_event(wire(id, timestamp, true, count), &state, &state.store, None)
+            .await
+            .unwrap();
+    }
+    assert_eq!(unread(&state), 3);
+    // Viewing the oldest unread message leaves the other two unread.
+    assert_eq!(
+        state
+            .store
+            .record_message_views(chat, &["h-1".into()], 1000)
+            .unwrap(),
+        2
+    );
+
+    // A live message arrives in the same second as h-3, after the phone read h-3.
+    crate::handle_web_event(wire("live", 103, false, None), &state, &state.store, None)
+        .await
+        .unwrap();
+    assert_eq!(unread(&state), 3);
+    let read: BridgeEvent = serde_json::from_value(serde_json::json!({
+        "type":"messages_read","chat_id":chat,"message_ids":["h-3"]
+    }))
+    .unwrap();
+    crate::handle_web_event(read, &state, &state.store, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        unread(&state),
+        1,
+        "only the message the receipt names, and those before it"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
