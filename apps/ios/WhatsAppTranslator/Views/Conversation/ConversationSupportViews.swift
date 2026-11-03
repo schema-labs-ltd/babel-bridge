@@ -138,7 +138,7 @@ struct InlineHeaderBackground: ViewModifier {
 struct DatePill: View {
     let date: Date
     var body: some View {
-        Text(date.formatted(.dateTime.weekday().day().month()))
+        Text(TimelineGrouping.dayLabel(for: date))
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
@@ -220,5 +220,61 @@ struct ConversationCostView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
+    }
+}
+
+/// How the conversation timeline groups messages, as WhatsApp does: a day header that names the
+/// day, and runs of consecutive messages from one sender that sit close together.
+enum TimelineGrouping {
+    struct Day: Identifiable {
+        let id: String
+        let date: Date
+        let indices: Range<Int>
+    }
+
+    static func senderKey(_ message: ChatMessage) -> String {
+        if message.isFromMe { return "me" }
+        if let phone = message.senderPhone, !phone.isEmpty { return phone }
+        if let name = message.senderName, !name.isEmpty { return name }
+        return message.contactId
+    }
+
+    /// Splits the items into days, keeping their order.
+    static func days(_ items: [ConversationTimelineItem], calendar: Calendar = .current) -> [Day] {
+        var days: [Day] = []
+        var start = 0
+        for index in items.indices where index > 0 {
+            if !calendar.isDate(items[index - 1].date, inSameDayAs: items[index].date) {
+                days.append(Day(id: items[start].id, date: items[start].date, indices: start..<index))
+                start = index
+            }
+        }
+        if !items.isEmpty {
+            days.append(Day(id: items[start].id, date: items[start].date, indices: start..<items.count))
+        }
+        return days
+    }
+
+    /// Whether the item begins a run: the first of the day, or from a different sender than the one before.
+    static func startsRun(_ items: [ConversationTimelineItem], at index: Int, calendar: Calendar = .current) -> Bool {
+        guard index > 0 else { return true }
+        let previous = items[index - 1].primaryMessage
+        let current = items[index].primaryMessage
+        return senderKey(previous) != senderKey(current)
+            || !calendar.isDate(previous.date, inSameDayAs: current.date)
+    }
+
+    /// "Today", "Yesterday", a weekday within the last week, then the date, with the year only
+    /// when it isn't this year.
+    static func dayLabel(for date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        let startOfToday = calendar.startOfDay(for: now)
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: startOfToday).day ?? 0
+        if days == 1 { return "Yesterday" }
+        if (2...6).contains(days) { return date.formatted(.dateTime.weekday(.wide)) }
+        if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        }
+        return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 }

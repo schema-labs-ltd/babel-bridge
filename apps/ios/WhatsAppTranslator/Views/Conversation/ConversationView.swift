@@ -19,6 +19,8 @@ struct ConversationView: View {
     @State var selectedTopicID: String?
     @State var showTopicManagement = false
     @State var usage: UsageSummary?
+    /// The quoted message a tap on a reply scrolled to; it is briefly highlighted.
+    @State var replyJumpTarget: String?
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -101,13 +103,14 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 #if os(macOS)
-                VStack(spacing: 6) {
+                VStack(spacing: 0) {
                     messageTimelineContent
                 }
                 .padding(.horizontal, MacChatLayoutMetrics.timelineHorizontalPadding / 2)
                 .padding(.vertical, 14)
                 #else
-                LazyVStack(spacing: 6) {
+                // Day headers stay pinned at the top while their day scrolls past, as in WhatsApp.
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     messageTimelineContent
                 }
                 .padding(.horizontal, 12)
@@ -120,6 +123,14 @@ struct ConversationView: View {
             .onChange(of: messages.count) {
                 guard messageSearch.isEmpty, !starredOnly else { return }
                 withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+            }
+            .onChange(of: replyJumpTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
+                Task {
+                    try? await Task.sleep(for: .seconds(1.4))
+                    withAnimation(.easeOut(duration: 0.4)) { if replyJumpTarget == target { replyJumpTarget = nil } }
+                }
             }
         }
     }
@@ -163,32 +174,42 @@ struct ConversationView: View {
         }
 
         let items = timelineItems
-        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-            if shouldShowDate(before: index) {
-                DatePill(date: item.date)
-                    .padding(.vertical, 10)
-            }
-            switch item {
-            case let .message(message):
-                messageBubble(message: message)
-                    .id(message.id)
-                    .modifier(MessageReadVisibility(messages: [message], enabled: canRecordViews))
-                    .task {
-                        await loadTimelineMedia(for: [message])
-                        await prefetchImages(before: index, in: items)
-                    }
-            case let .photoAlbum(album):
-                messageBubble(message: album.primaryMessage, albumMessages: album.messages)
-                    .id(item.id)
-                    .modifier(MessageReadVisibility(messages: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)), enabled: canRecordViews))
-                    .task(id: album.messages.map(\.id)) {
-                        await loadTimelineMedia(for: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)))
-                        await prefetchImages(before: index, in: items)
-                    }
+        ForEach(TimelineGrouping.days(items)) { day in
+            Section {
+                ForEach(day.indices.map { (index: $0, item: items[$0]) }, id: \.item.id) { entry in
+                    timelineRow(entry.item, at: entry.index, in: items)
+                        .padding(.top, TimelineGrouping.startsRun(items, at: entry.index) && entry.index != day.indices.lowerBound ? 8 : 2)
+                }
+            } header: {
+                DatePill(date: day.date)
+                    .padding(.vertical, 8)
             }
         }
         // Album grouping can replace the last image's ID; keep a stable scroll target.
         Color.clear.frame(height: 1).id("conversation-bottom")
+    }
+
+    @ViewBuilder
+    private func timelineRow(_ item: ConversationTimelineItem, at index: Int, in items: [ConversationTimelineItem]) -> some View {
+        let startsRun = TimelineGrouping.startsRun(items, at: index)
+        switch item {
+        case let .message(message):
+            messageBubble(message: message, startsRun: startsRun)
+                .id(message.id)
+                .modifier(MessageReadVisibility(messages: [message], enabled: canRecordViews))
+                .task {
+                    await loadTimelineMedia(for: [message])
+                    await prefetchImages(before: index, in: items)
+                }
+        case let .photoAlbum(album):
+            messageBubble(message: album.primaryMessage, albumMessages: album.messages, startsRun: startsRun)
+                .id(item.id)
+                .modifier(MessageReadVisibility(messages: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)), enabled: canRecordViews))
+                .task(id: album.messages.map(\.id)) {
+                    await loadTimelineMedia(for: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)))
+                    await prefetchImages(before: index, in: items)
+                }
+        }
     }
 
     private var canRecordViews: Bool {
@@ -203,7 +224,7 @@ struct ConversationView: View {
         }
     }
 
-    func messageBubble(message: ChatMessage, albumMessages: [ChatMessage] = []) -> some View {
+    func messageBubble(message: ChatMessage, albumMessages: [ChatMessage] = [], startsRun: Bool = true) -> some View {
         MessageBubble(
                 message: message,
                 isStarred: session.preferences.isStarred(messageID: message.id, contactID: contact.id),
@@ -225,7 +246,10 @@ struct ConversationView: View {
                 albumFailedIDs: session.mediaErrorIDs,
                 retryAlbumMedia: { albumMessage in Task { await session.retryMedia(for: albumMessage) } },
                 albumReply: selectReply,
-                albumAIReply: generateAIReply
+                albumAIReply: generateAIReply,
+                startsRun: startsRun,
+                isHighlighted: replyJumpTarget == message.id,
+                openQuotedMessage: { id in Task { await jumpToQuotedMessage(id) } }
             )
     }
 
@@ -252,11 +276,6 @@ struct ConversationView: View {
             await session.loadMedia(for: message)
             for url in message.extractedURLs { await session.loadLinkPreview(for: url) }
         }
-    }
-
-    private func shouldShowDate(before index: Int) -> Bool {
-        guard index > 0 else { return true }
-        return !Calendar.current.isDate(timelineItems[index - 1].date, inSameDayAs: timelineItems[index].date)
     }
 
     private func selectReply(_ message: ChatMessage) {
@@ -296,6 +315,19 @@ struct ConversationView: View {
             selectReply(message)
             draft = suggestion
         }
+    }
+
+    /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
+    /// when the quoted message is older than what's loaded.
+    func jumpToQuotedMessage(_ id: String) async {
+        if !messages.contains(where: { $0.id == id }), selectedTopicID == nil {
+            await session.loadAllMessages(for: contact.id)
+        }
+        guard messages.contains(where: { $0.id == id }) else { return }
+        let target = timelineItems.first { item in item.messages.contains { $0.id == id } }?.id ?? id
+        messageSearch = ""
+        starredOnly = false
+        replyJumpTarget = target
     }
 
     func activateSearch() async {

@@ -159,3 +159,78 @@ struct CompactMessageLayout: Layout {
         subviews[1].place(at: CGPoint(x: bounds.maxX - footer.width, y: inline ? bounds.maxY - footer.height : bounds.minY + text.height + 2), proposal: ProposedViewSize(footer))
     }
 }
+
+/// The quote at the top of a reply, drawn like WhatsApp's: a coloured bar and sender name over a
+/// tinted box. Tapping it scrolls to the quoted message when that message can be found.
+struct QuotedReplyView: View {
+    @Environment(\.translatorPalette) private var palette
+    let reply: ReplyContext
+    let isGroup: Bool
+    let open: (() -> Void)?
+
+    private var tint: Color {
+        guard isGroup, let name = reply.senderName, !name.isEmpty, name != "You" else { return palette.accent }
+        return SenderNameColor.color(for: name)
+    }
+
+    var body: some View {
+        let quote = HStack(spacing: 0) {
+            Rectangle().fill(tint).frame(width: 4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reply.senderName ?? "Reply")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Text(reply.text ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(tint.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+        if let open {
+            Button(action: open) { quote }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows the quoted message")
+        } else {
+            quote
+        }
+    }
+}
+
+/// Every reaction on a message in one pill: the emojis, most used first, and a total when more
+/// than one person reacted.
+struct ReactionSummaryPill: View {
+    let reactions: [String: [String]]
+
+    private var ordered: [String] {
+        reactions.filter { !$0.value.isEmpty }
+            .sorted { $0.value.count == $1.value.count ? $0.key < $1.key : $0.value.count > $1.value.count }
+            .map(\.key)
+    }
+
+    private var total: Int { reactions.values.reduce(0) { $0 + $1.count } }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Text(ordered.prefix(3).joined())
+            if total > 1 {
+                Text("\(total)")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.footnote)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Reactions: \(ordered.joined(separator: ", ")), \(total) in total")
+    }
+}

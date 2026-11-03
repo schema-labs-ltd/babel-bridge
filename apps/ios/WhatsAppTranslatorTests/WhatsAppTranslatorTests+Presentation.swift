@@ -162,4 +162,25 @@ extension WhatsAppTranslatorTests {
             ]
         )
     }
+
+    func testDayHeadersNameTheDayLikeWhatsApp() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 20)))
+        func daysAgo(_ days: Int) -> Date { calendar.date(byAdding: .day, value: -days, to: now)! }
+        XCTAssertEqual(TimelineGrouping.dayLabel(for: daysAgo(0), now: now, calendar: calendar), "Today")
+        XCTAssertEqual(TimelineGrouping.dayLabel(for: daysAgo(1), now: now, calendar: calendar), "Yesterday")
+        XCTAssertEqual(TimelineGrouping.dayLabel(for: daysAgo(3), now: now, calendar: calendar), daysAgo(3).formatted(.dateTime.weekday(.wide)))
+        XCTAssertNotEqual(TimelineGrouping.dayLabel(for: daysAgo(400), now: now, calendar: calendar), daysAgo(400).formatted(.dateTime.weekday(.wide)))
+    }
+
+    func testConsecutiveMessagesFromOneSenderFormARun() throws {
+        let first = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"One"}"#)
+        let second = try decodeMessage(id: "b", contentType: "text", content: #"{"type":"text","body":"Two"}"#)
+        let items: [ConversationTimelineItem] = [.message(first), .message(second)]
+        XCTAssertTrue(TimelineGrouping.startsRun(items, at: 0))
+        XCTAssertFalse(TimelineGrouping.startsRun(items, at: 1))
+        XCTAssertEqual(TimelineGrouping.days(items).map(\.indices), [0..<2])
+        XCTAssertEqual(SenderNameColor.index(for: "3630"), SenderNameColor.index(for: "3630"))
+    }
 }
