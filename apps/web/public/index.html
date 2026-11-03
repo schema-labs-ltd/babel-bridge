@@ -77,7 +77,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=20261103-camera" />
+    <link rel="stylesheet" href="styles.css?v=20261103-chat-list" />
     <!-- QR Code library -->
     <script src="https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js"></script>
     <!-- Prevent phone number detection on iOS -->
@@ -215,7 +215,14 @@
                 placeholder="Search chats"
               />
             </label>
-            <div class="inbox-filter-row">
+            <div
+              class="inbox-filter-row"
+              role="group"
+              aria-label="Filter chats"
+            >
+              <button class="inbox-filter-chip" data-inbox-all type="button">
+                All
+              </button>
               <button
                 class="inbox-filter-chip"
                 data-inbox-filter="unreadOnly"
@@ -462,7 +469,7 @@
       </div>
     </div>
 
-    <script type="module" src="markup.js?v=20261103-camera"></script>
-    <script type="module" src="app.js?v=20261103-camera"></script>
+    <script type="module" src="markup.js?v=20261103-chat-list"></script>
+    <script type="module" src="app.js?v=20261103-chat-list"></script>
   </body>
 </html>

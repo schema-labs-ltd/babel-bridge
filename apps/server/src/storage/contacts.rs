@@ -188,26 +188,19 @@ impl MessageStore {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                 });
-                let truncated: String = body.chars().take(50).collect();
-                format!("{}{}", prefix, truncated)
+                format!("{}{}", prefix, truncate_preview(body, PREVIEW_TEXT_CHARS))
             }
             "image" => {
                 let caption = translated_text
                     .or_else(|| content.get("caption").and_then(|v| v.as_str()))
-                    .map(|c| {
-                        let truncated: String = c.chars().take(30).collect();
-                        format!(" {}", truncated)
-                    })
+                    .map(|c| format!(" {}", truncate_preview(c, PREVIEW_CAPTION_CHARS)))
                     .unwrap_or_default();
                 format!("{}[ Image ]{}", prefix, caption)
             }
             "video" => {
                 let caption = translated_text
                     .or_else(|| content.get("caption").and_then(|v| v.as_str()))
-                    .map(|c| {
-                        let truncated: String = c.chars().take(30).collect();
-                        format!(" {}", truncated)
-                    })
+                    .map(|c| format!(" {}", truncate_preview(c, PREVIEW_CAPTION_CHARS)))
                     .unwrap_or_default();
                 format!("{}[ Video ]{}", prefix, caption)
             }
@@ -448,4 +441,24 @@ impl MessageStore {
 
         Ok(language)
     }
+}
+
+/// Apps show two lines of preview and truncate them themselves, so the stored preview keeps
+/// enough text to fill them and marks a cut with an ellipsis instead of stopping mid-word.
+const PREVIEW_TEXT_CHARS: usize = 160;
+const PREVIEW_CAPTION_CHARS: usize = 120;
+
+fn truncate_preview(text: &str, max_chars: usize) -> String {
+    let text = text.trim();
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut cut: String = text.chars().take(max_chars).collect();
+    // Prefer to end on a word boundary when one is reasonably close.
+    if let Some(space) = cut.rfind(char::is_whitespace) {
+        if cut[..space].chars().count() >= max_chars * 3 / 4 {
+            cut.truncate(space);
+        }
+    }
+    format!("{}…", cut.trim_end())
 }

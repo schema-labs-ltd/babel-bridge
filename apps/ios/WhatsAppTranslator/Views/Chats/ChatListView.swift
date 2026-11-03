@@ -189,14 +189,17 @@ struct ChatListView: View {
     private func contactList(selection: Binding<String?>) -> some View {
         List(selection: selection) {
             ForEach(session.filteredContacts.filter { filter.includes($0) }) { contact in
-                NavigationLink(value: contact.id) {
-                    ChatRow(
-                        contact: contact,
-                        displayName: session.displayName(for: contact),
-                        draft: session.draftStore.text(for: contact.id),
-                        avatarURL: session.avatarURLs[contact.id]
-                    )
-                }
+                // A tagged row drives the split view's selection like a NavigationLink would,
+                // without the disclosure chevron WhatsApp's chat list doesn't have.
+                ChatRow(
+                    contact: contact,
+                    displayName: session.displayName(for: contact),
+                    draft: session.draftStore.text(for: contact.id),
+                    avatarURL: session.avatarURLs[contact.id],
+                    latestMessage: session.messages[contact.id]?.last { !$0.isReaction }
+                )
+                .tag(Optional(contact.id))
+                .accessibilityAddTraits(.isButton)
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                     Button {
                         Task { await session.togglePin(contact) }

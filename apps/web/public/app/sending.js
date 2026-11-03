@@ -3,7 +3,7 @@
 import {
   simulateTranslation,
   upsertDraft,
-} from '../app-state.js?v=20260912-conversation-translation';
+} from '../app-state.js?v=20261103-chat-list';
 
 export const sendingMethods = {
   // Send a message

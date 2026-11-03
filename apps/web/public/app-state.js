@@ -27,9 +27,11 @@ export {
 } from './app-state-core.js';
 export {
   buildVisitorDashboard,
+  describeMessageForPreview,
   getContactActionSnapshot,
   getVisibleContacts,
-} from './app-state-contacts.js';
+  tidyServerPreview,
+} from './app-state-contacts.js?v=20261103-chat-list';
 export { createDemoWorkspace, suggestDemoReply } from './app-state-demo.js';
 export {
   countMatchingMessages,
@@ -49,14 +51,19 @@ export {
 
 export function normalizeInboxFilters(
   filters = {},
-  { controlsAvailable = true } = {},
+  { controlsAvailable = true, visibleFilters = null } = {},
 ) {
   if (!controlsAvailable) {
     return { ...DEFAULT_FILTERS };
   }
 
+  // A filter whose chip is hidden can't be seen or cleared, so it never applies.
+  const visible = visibleFilters ? new Set(visibleFilters) : null;
   return Object.fromEntries(
-    Object.keys(DEFAULT_FILTERS).map((key) => [key, Boolean(filters?.[key])]),
+    Object.keys(DEFAULT_FILTERS).map((key) => [
+      key,
+      Boolean(filters?.[key]) && (!visible || visible.has(key)),
+    ]),
   );
 }
 
