@@ -229,18 +229,19 @@ struct ConversationCostView: View {
 /// A chat's live arrivals: how many there have been, and the most recent IDs. A conversation keeps
 /// the count it last saw and asks which IDs came since, so timestamps and sort order don't matter.
 struct LiveArrivals: Equatable {
-    private(set) var count = 0
-    private(set) var recent: [String] = []
+    /// Running totals, so a burst between two looks is counted in full.
+    private(set) var incoming = 0
+    private(set) var outgoing = 0
+    /// Only for ignoring a repeated event for the same message.
+    private var recent: [String] = []
 
-    mutating func record(_ id: String) {
+    var count: Int { incoming + outgoing }
+
+    mutating func record(_ id: String, fromMe: Bool) {
         guard !recent.contains(id) else { return }
-        count += 1
+        if fromMe { outgoing += 1 } else { incoming += 1 }
         recent.append(id)
         if recent.count > 50 { recent.removeFirst(recent.count - 50) }
-    }
-
-    func ids(since seen: Int) -> [String] {
-        Array(recent.suffix(max(0, min(count - seen, recent.count))))
     }
 }
 

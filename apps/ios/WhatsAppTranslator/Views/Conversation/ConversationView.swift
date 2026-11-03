@@ -152,17 +152,15 @@ struct ConversationView: View {
             .defaultScrollAnchor(.bottom)
             .onChange(of: session.messages[contact.id]?.last?.id) { markUnread() }
             // Keyed on live arrivals, so history pages, refreshes and topic pages never count as new.
-            .onChange(of: session.liveArrivals[contact.id]?.count ?? 0) { seen, count in
-                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly, count > seen else { return }
-                let ids = Set(session.liveArrivals[contact.id]?.ids(since: seen) ?? [])
-                let arrived = messages.filter { ids.contains($0.id) }
+            .onChange(of: session.liveArrivals[contact.id] ?? LiveArrivals()) { seen, now in
+                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly, now.count > seen.count else { return }
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
                 // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
                 // keeps its place until the highlight fades.
-                if (isAtBottom && replyJump == nil) || arrived.contains(where: \.isFromMe) {
+                if (isAtBottom && replyJump == nil) || now.outgoing > seen.outgoing {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {
-                    unseenCount += arrived.filter { !$0.isFromMe && !$0.isReaction }.count
+                    unseenCount += max(0, now.incoming - seen.incoming)
                 }
             }
             // A refresh can replace the cached list and drop the marked row; place the bar again.

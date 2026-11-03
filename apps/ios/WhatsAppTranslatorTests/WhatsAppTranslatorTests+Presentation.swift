@@ -221,17 +221,19 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(SenderNameColor.index(for: "Virag"), 4)
     }
 
-    func testLiveArrivalsReportOnlyWhatCameSinceTheLastLook() {
+    func testLiveArrivalsCountEveryArrivalOnce() {
         var arrivals = LiveArrivals()
-        arrivals.record("a")
-        let seen = arrivals.count
-        arrivals.record("b")
-        arrivals.record("b")
-        arrivals.record("c")
-        XCTAssertEqual(arrivals.ids(since: seen), ["b", "c"])
-        XCTAssertEqual(arrivals.ids(since: arrivals.count), [])
-        for index in 0..<60 { arrivals.record("m\(index)") }
-        XCTAssertEqual(arrivals.ids(since: 0).count, 50)
+        arrivals.record("a", fromMe: false)
+        let seen = arrivals
+        arrivals.record("b", fromMe: true)
+        arrivals.record("b", fromMe: true)
+        arrivals.record("c", fromMe: false)
+        XCTAssertEqual(arrivals.incoming - seen.incoming, 1)
+        XCTAssertEqual(arrivals.outgoing - seen.outgoing, 1)
+        // A burst larger than the duplicate window is still counted in full.
+        for index in 0..<60 { arrivals.record("m\(index)", fromMe: false) }
+        XCTAssertEqual(arrivals.incoming, 62)
+        XCTAssertEqual(arrivals.count, 63)
     }
 
     func testUnreadBarSitsAboveTheFirstUnreadIncomingMessage() throws {

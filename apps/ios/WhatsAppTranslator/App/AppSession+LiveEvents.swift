@@ -30,7 +30,7 @@ extension AppSession {
             // changes, so an observer finds the message in it.
             let recent = message.timestamp >= Int64(Date().timeIntervalSince1970 * 1_000) - 120_000
             if event.type == "message", !message.isReaction, recent {
-                liveArrivals[message.contactId, default: LiveArrivals()].record(message.id)
+                liveArrivals[message.contactId, default: LiveArrivals()].record(message.id, fromMe: message.isFromMe)
             }
             invalidateTopicMembership(for: message)
             for id in Array(topicPages.keys) {
