@@ -492,6 +492,14 @@
   cursor: not-allowed;
 }
 
+/* Desktop browsers ignore capture and open a file dialog, so the camera
+   button only shows where a touch screen suggests a built-in camera. */
+@media (pointer: fine) {
+  .camera-button {
+    display: none;
+  }
+}
+
 .send-button {
   background: transparent;
   border: none;

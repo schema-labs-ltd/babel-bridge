@@ -226,7 +226,9 @@ export const sendingMethods = {
     }
 
     const attachButton = document.getElementById('attach-button');
+    const cameraButton = document.getElementById('camera-button');
     attachButton.disabled = true;
+    if (cameraButton) cameraButton.disabled = true;
 
     // Capture reply state before clearing
     const replyTo = this.replyingTo ? this.replyingTo.messageId : null;
@@ -307,6 +309,7 @@ export const sendingMethods = {
       alert('Failed to send image: ' + err.message);
     } finally {
       attachButton.disabled = this.replyOnlyBlocked();
+      if (cameraButton) cameraButton.disabled = this.replyOnlyBlocked();
     }
   },
 

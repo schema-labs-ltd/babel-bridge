@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import CoreTransferable
 import PhotosUI
@@ -220,3 +221,121 @@ struct AttachmentComposerSheet: View {
         #endif
     }
 }
+
+extension View {
+    /// Presents the system camera on iPhone and iPad and hands back the captured photo.
+    /// The photo is delivered after the camera has dismissed, so the caller can present
+    /// its photo composer sheet straight away. Does nothing on macOS.
+    func cameraCapture(
+        isPresented: Binding<Bool>,
+        onCapture: @escaping (PendingPhoto) -> Void,
+        onFailure: @escaping () -> Void
+    ) -> some View {
+        modifier(CameraCapturePresentation(isPresented: isPresented, onCapture: onCapture, onFailure: onFailure))
+    }
+}
+
+@MainActor
+enum CameraCapture {
+    /// False on the simulator and on devices without a usable camera.
+    static var isAvailable: Bool {
+        #if os(iOS)
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+        #else
+        false
+        #endif
+    }
+
+    /// Asks for camera access the first time, and reports whether the camera can be used.
+    /// Called before presenting so a refusal shows the Settings explanation, not a blank camera.
+    static func requestAccess() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: true
+        case .notDetermined: await AVCaptureDevice.requestAccess(for: .video)
+        default: false
+        }
+    }
+
+    static let accessDeniedMessage = "Camera access is turned off. Turn it on in Settings › Babel Bridge › Camera to take photos."
+
+    enum Outcome {
+        case captured(PendingPhoto)
+        case cancelled
+        case failed
+    }
+}
+
+private struct CameraCapturePresentation: ViewModifier {
+    @Binding var isPresented: Bool
+    let onCapture: (PendingPhoto) -> Void
+    let onFailure: () -> Void
+    @State private var outcome: CameraCapture.Outcome?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.fullScreenCover(isPresented: $isPresented, onDismiss: deliver) {
+            CameraCaptureView { result in
+                outcome = result
+                isPresented = false
+            }
+            .ignoresSafeArea()
+        }
+        #else
+        content
+        #endif
+    }
+
+    private func deliver() {
+        let result = outcome
+        outcome = nil
+        switch result {
+        case .captured(let photo): onCapture(photo)
+        case .failed: onFailure()
+        case .cancelled, nil: break
+        }
+    }
+}
+
+#if os(iOS)
+private struct CameraCaptureView: UIViewControllerRepresentable {
+    let finish: (CameraCapture.Outcome) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = [UTType.image.identifier]
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(finish: finish) }
+
+    @MainActor
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let finish: (CameraCapture.Outcome) -> Void
+
+        init(finish: @escaping (CameraCapture.Outcome) -> Void) {
+            self.finish = finish
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            guard let image = info[.originalImage] as? UIImage,
+                  let data = image.jpegData(compressionQuality: 0.9) else {
+                finish(.failed)
+                return
+            }
+            finish(.captured(PendingPhoto(data: data, mimeType: "image/jpeg", image: image)))
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            finish(.cancelled)
+        }
+    }
+}
+#endif
