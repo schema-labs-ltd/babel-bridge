@@ -228,6 +228,7 @@ export const inboxMethods = {
     const demo = createDemoWorkspace();
     this.demoMode = true;
     this.connected = true;
+    this.setLiveReconnectBanner(false);
 
     if (this.ws) {
       this.ws.onclose = null;

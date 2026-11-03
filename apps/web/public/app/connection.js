@@ -322,13 +322,13 @@ export const connectionMethods = {
     clearTimeout(this.connectionStatusTimer);
     const status = document.getElementById('chat-connection-status');
     if (!status) return;
-    if (!reconnecting) {
+    // Demo mode has no live connection to lose.
+    if (!reconnecting || this.demoMode) {
       status.classList.add('hidden');
       status.closest('.chat-info')?.classList.remove('is-connecting');
       return;
     }
     this.connectionStatusTimer = setTimeout(() => {
-      // Demo mode has no live connection to lose.
       if (this.demoMode) return;
       status.classList.remove('hidden');
       status.closest('.chat-info')?.classList.add('is-connecting');

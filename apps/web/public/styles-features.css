@@ -637,7 +637,8 @@
   color: var(--text-secondary);
 }
 .chat-connection-status.hidden,
-.chat-info.is-connecting .chat-note-indicator {
+.chat-info.is-connecting .chat-note-indicator,
+.chat-info.is-connecting .typing-indicator {
   display: none;
 }
 .delivery-uncertain {
@@ -865,7 +866,15 @@
 
 .message-footer .message-actions {
   order: -1;
+  margin-left: 0;
   margin-right: auto;
+}
+
+/* The indicator sits at the bubble's right edge, so open its tooltip leftwards. */
+.message-footer .translation-indicator .original-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .visually-hidden {
