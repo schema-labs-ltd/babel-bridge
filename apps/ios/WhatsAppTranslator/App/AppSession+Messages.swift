@@ -14,7 +14,11 @@ extension AppSession {
                 before: oldest?.timestamp,
                 beforeID: oldest?.id
             )
-            messages[contactID] = older ? normalizeMessages(response.messages + current) : normalizeMessages(response.messages)
+            // Merge an older page into the list as it is now, so messages that arrived during the
+            // request are kept rather than rolled back to the list captured before it.
+            messages[contactID] = older
+                ? normalizeMessages(response.messages + (messages[contactID] ?? current))
+                : normalizeMessages(response.messages)
             messageHistoryHasMore[contactID] = response.hasMore
             await persistCache()
             await refreshMessageTopics(response.messages)

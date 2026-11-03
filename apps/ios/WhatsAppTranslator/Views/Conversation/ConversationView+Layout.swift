@@ -237,16 +237,20 @@ extension ConversationView {
         if openingUnreadCount == nil {
             openingUnreadCount = openingCount
             openingViewedIDs = session.viewedReceiptMessageIDs
+            openingLastMessageTime = contact.lastMessageTime
         }
+        let boundary = openingLastMessageTime ?? contact.lastMessageTime
         let loaded = session.messages[contact.id] ?? []
         if let marker = unreadMarkerID, !loaded.contains(where: { $0.id == marker }) { unreadMarkerID = nil }
         // Wait for any page that is loading; whichever load finishes calls this again.
         guard !loadingOlder, openingCount > 0, unreadMarkerID == nil, selectedTopicID == nil,
-              let newest = session.messages[contact.id]?.last, newest.timestamp >= contact.lastMessageTime else { return }
+              let newest = loaded.last, newest.timestamp >= boundary else { return }
         let viewed = openingViewedIDs
+        // Messages that arrived after the chat opened were never part of the unread count.
+        let opening = loaded.filter { $0.timestamp <= boundary }
         // The first page may not reach back to the first unread message, so load a few more pages
         // first; past that the bar goes above the oldest loaded unread message.
-        if UnreadMarker.candidates(in: loaded, viewed: viewed).count < openingCount,
+        if UnreadMarker.candidates(in: opening, viewed: viewed).count < openingCount,
            session.messageHistoryHasMore[contact.id] == true, unreadHistoryPages < 5 {
             unreadHistoryPages += 1
             let oldestBefore = loaded.first?.id
@@ -261,7 +265,7 @@ extension ConversationView {
             }
             return
         }
-        guard let marker = UnreadMarker.firstUnreadID(in: loaded, unreadCount: openingCount, viewed: viewed) else { return }
+        guard let marker = UnreadMarker.firstUnreadID(in: opening, unreadCount: openingCount, viewed: viewed) else { return }
         unreadMarkerID = marker
         unreadMarkerCount = openingCount
         pendingScrollID = UnreadMessagesDivider.scrollID

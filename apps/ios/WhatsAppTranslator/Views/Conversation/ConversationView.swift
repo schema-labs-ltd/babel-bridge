@@ -30,6 +30,8 @@ struct ConversationView: View {
     @State var openingUnreadCount: Int?
     /// The messages already viewed here when the chat opened, so later views don't move the bar.
     @State var openingViewedIDs: Set<String> = []
+    /// The chat's latest message time when it opened; later arrivals are never among the unread.
+    @State var openingLastMessageTime: Int64?
     /// The first message that was unread when the chat opened, where WhatsApp's "unread messages" bar goes.
     @State var unreadMarkerID: String?
     @State var unreadMarkerCount = 0
@@ -146,14 +148,13 @@ struct ConversationView: View {
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
                 // or sent it yourself; otherwise the scroll-down button counts it. A highlighted quote
                 // keeps its place until the highlight fades.
-                if (isAtBottom && replyJump == nil) || messages.last?.isFromMe == true {
+                // Only what follows the previous newest message is new; if that message has gone
+                // (a page replaced the list), nothing is new rather than everything.
+                let arrived = messages.lastIndex(where: { $0.id == oldID }).map { messages[($0 + 1)...] } ?? []
+                if (isAtBottom && replyJump == nil) || arrived.contains(where: \.isFromMe) {
                     withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
                 } else {
-                    // Only what follows the previous newest message is new; if that message has gone
-                    // (a page replaced the list), nothing is counted rather than everything.
-                    if let previous = messages.lastIndex(where: { $0.id == oldID }) {
-                        unseenCount += messages[(previous + 1)...].filter { !$0.isFromMe && !$0.isReaction }.count
-                    }
+                    unseenCount += arrived.filter { !$0.isFromMe && !$0.isReaction }.count
                 }
             }
             // A refresh can replace the cached list and drop the marked row; place the bar again.
