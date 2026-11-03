@@ -150,11 +150,10 @@ extension ConversationView {
         }
         .task {
             draft = ProcessInfo.processInfo.arguments.contains("-demo") ? "" : session.draftStore.text(for: contact.id)
-            let openingUnread = contact.unreadCount
             // The picture may need a download; don't hold the messages back for it.
             async let avatar: Void = session.loadAvatar(for: contact.id)
             await session.loadMessages(for: contact.id)
-            markUnread(openingCount: openingUnread)
+            markUnread()
             await avatar
             await session.loadTopics()
             usage = try? await session.conversationUsage(for: contact.id)
@@ -210,5 +209,32 @@ extension ConversationView {
             .padding(.bottom, ComposerLayout.bottomAdjustment(for: bottomSafeArea))
         }
         .foldAwareComposerPane(arrangement)
+    }
+}
+
+extension ConversationView {
+    /// Loads the next page of history. The timeline's bottom anchor keeps what you're reading in
+    /// place as rows arrive above it; if you're still near the top afterwards, the next page follows.
+    func loadOlderMessages() async {
+        guard !loadingOlder, selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
+              session.messageHistoryHasMore[contact.id] == true else { return }
+        loadingOlder = true
+        await session.loadMessages(for: contact.id, older: true)
+        loadingOlder = false
+        if isNearTop, session.messageHistoryHasMore[contact.id] == true { await loadOlderMessages() }
+    }
+
+    /// Places WhatsApp's "unread messages" bar above the first message that was unread when the
+    /// chat opened, and starts the chat there. It waits until the loaded messages reach the chat's
+    /// latest message, so a stale cache can't put the bar in the wrong place.
+    func markUnread() {
+        let openingCount = openingUnreadCount ?? contact.unreadCount
+        if openingUnreadCount == nil { openingUnreadCount = openingCount }
+        guard openingCount > 0, unreadMarkerID == nil, selectedTopicID == nil,
+              let newest = session.messages[contact.id]?.last, newest.timestamp >= contact.lastMessageTime,
+              let marker = UnreadMarker.firstUnreadID(in: session.messages[contact.id] ?? [], unreadCount: openingCount) else { return }
+        unreadMarkerID = marker
+        unreadMarkerCount = openingCount
+        pendingScrollID = UnreadMessagesDivider.scrollID
     }
 }

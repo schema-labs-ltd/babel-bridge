@@ -295,6 +295,7 @@ enum UnreadMarker {
 
 /// WhatsApp's bar above the first unread message when a chat opens.
 struct UnreadMessagesDivider: View {
+    static let scrollID = "unread-messages-divider"
     let count: Int
 
     var body: some View {
@@ -320,7 +321,7 @@ struct ScrollToBottomButton: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .translatorGlass(in: Circle())
                 .overlay(alignment: .topLeading) {
                     if unseenCount > 0 {
