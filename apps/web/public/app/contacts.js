@@ -251,7 +251,9 @@ export const contactsMethods = {
     };
 
     if (content.type === 'revoked') {
-      return describeMessageForPreview(content);
+      return isFromMe
+        ? '🚫 You deleted this message'
+        : describeMessageForPreview(content);
     }
     const text = content.type === 'text' ? bodyText() : captionText();
     return prefix + describeMessageForPreview(content, text);

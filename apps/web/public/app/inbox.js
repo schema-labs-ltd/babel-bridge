@@ -8,6 +8,7 @@ import {
   getDraftText,
   getReminderStatus,
   getVisibleContacts,
+  tidyServerPreview,
 } from '../app-state.js?v=20261103-chat-list';
 
 export const inboxMethods = {
@@ -15,6 +16,7 @@ export const inboxMethods = {
     const controlsAvailable = this.inboxFilterControlsAvailable();
     const normalizedFilters = normalizeInboxFilters(this.contactFilters, {
       controlsAvailable,
+      visibleFilters: this.visibleInboxFilterKeys(),
     });
     const filtersChanged = Object.keys(this.contactFilters).some(
       (key) => this.contactFilters[key] !== normalizedFilters[key],
@@ -59,6 +61,12 @@ export const inboxMethods = {
     );
   },
 
+  visibleInboxFilterKeys() {
+    return Array.from(document.querySelectorAll('[data-inbox-filter]'))
+      .filter((button) => window.getComputedStyle(button).display !== 'none')
+      .map((button) => button.dataset.inboxFilter);
+  },
+
   setInboxSearchQuery(value) {
     this.sidebarSearchQuery = String(value || '').trimStart();
     this.persistInboxPreferences();
@@ -91,7 +99,9 @@ export const inboxMethods = {
       if (lastMessage) {
         previewByContact[contact.id] = this.getMessagePreview(lastMessage);
       } else if (contact.lastMessagePreview) {
-        previewByContact[contact.id] = contact.lastMessagePreview;
+        previewByContact[contact.id] = tidyServerPreview(
+          contact.lastMessagePreview,
+        );
       }
     }
     return previewByContact;
@@ -102,6 +112,7 @@ export const inboxMethods = {
     const messagesByContact = Object.fromEntries(this.messages.entries());
     const effectiveFilters = normalizeInboxFilters(this.contactFilters, {
       controlsAvailable: this.inboxFilterControlsAvailable(),
+      visibleFilters: this.visibleInboxFilterKeys(),
     });
     return getVisibleContacts({
       contacts: this.contacts,

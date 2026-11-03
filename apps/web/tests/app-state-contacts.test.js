@@ -645,3 +645,12 @@ test('describeMessageForPreview keeps whole text and labels media', async () => 
     '🚫 This message was deleted',
   );
 });
+
+test('normalizeInboxFilters drops filters whose chips are hidden', () => {
+  const filters = normalizeInboxFilters(
+    { unreadOnly: true, needsReplyOnly: true },
+    { visibleFilters: ['unreadOnly', 'groupsOnly'] },
+  );
+  assert.equal(filters.unreadOnly, true);
+  assert.equal(filters.needsReplyOnly, false);
+});

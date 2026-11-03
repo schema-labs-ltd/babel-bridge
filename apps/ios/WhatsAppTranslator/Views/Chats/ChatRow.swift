@@ -235,3 +235,7 @@ enum ChatListPreview {
         text.split(whereSeparator: \.isNewline).joined(separator: " ")
     }
 }
+
+private extension String {
+    var nilIfBlank: String? { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self }
+}
