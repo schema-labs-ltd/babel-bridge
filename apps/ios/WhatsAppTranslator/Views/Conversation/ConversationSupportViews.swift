@@ -237,7 +237,9 @@ enum ConversationHeaderSummary {
             // A phone number stays whole; a name shortens to its first word.
             let first = name.first.map { $0 == "+" || $0.isNumber } == true
                 ? name : (name.split(separator: " ").first.map(String.init) ?? name)
-            guard seen.insert(first).inserted else { continue }
+            // One entry per person: two people who share a first name are both listed.
+            let identity = message.senderJID ?? message.senderPhone ?? name
+            guard seen.insert(identity).inserted else { continue }
             names.append(first)
         }
         guard !names.isEmpty else { return "tap here for group info" }

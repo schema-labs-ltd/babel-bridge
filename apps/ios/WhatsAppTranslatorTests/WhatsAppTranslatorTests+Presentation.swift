@@ -184,6 +184,11 @@ extension WhatsAppTranslatorTests {
         let message = try decodeMessage(id: "m", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
         XCTAssertEqual(ConversationHeaderSummary.groupMembers(in: [message]), "Virag, You")
         XCTAssertEqual(ConversationHeaderSummary.groupMembers(in: []), "tap here for group info")
+        // Two people who share a first name are both listed.
+        func alex(_ phone: String) throws -> ChatMessage {
+            try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"\#(phone)","contactId":"chat@g.us","timestamp":1700000000000,"isFromMe":false,"isForwarded":false,"senderName":"Alex \#(phone)","senderPhone":"\#(phone)","contactName":"Family","contactPhone":null,"chatType":"group","contentType":"text","content":{"type":"text","body":"Hi"},"originalText":null,"translatedText":null,"sourceLanguage":null,"isTranslated":false}"#.utf8))
+        }
+        XCTAssertEqual(ConversationHeaderSummary.groupMembers(in: [try alex("1"), try alex("2")]), "Alex, Alex, You")
     }
 
     func testDayHeadersNameTheDayLikeWhatsApp() throws {
