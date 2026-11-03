@@ -17,10 +17,7 @@ export const formattingMethods = {
 
     // Today
     if (date.toDateString() === now.toDateString()) {
-      return date.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      return this.formatMessageTime(timestamp);
     }
 
     // Yesterday
@@ -108,9 +105,10 @@ export const formattingMethods = {
     });
   },
 
+  // The reader's own clock style, as WhatsApp uses: "20:41" in the UK, "8:41 PM" in the US.
   formatMessageTime(timestamp) {
     return new Date(timestamp).toLocaleTimeString([], {
-      hour: '2-digit',
+      hour: 'numeric',
       minute: '2-digit',
     });
   },

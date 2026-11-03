@@ -3,7 +3,7 @@
 import {
   buildConversationHandoffBrief,
   simulateTranslation,
-} from '../app-state.js?v=20261103-chat-list';
+} from '../app-state.js?v=20261103-web-conversation';
 
 export const translationMethods = {
   getConversationHandoffBrief() {
