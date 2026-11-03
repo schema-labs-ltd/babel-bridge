@@ -86,7 +86,7 @@ extension ConversationView {
                         .accessibilityHidden(focusedReplyMessage != nil)
                     if let focusedReplyMessage {
                         FocusedReplyOverlay(destination: session.displayName(for: contact), isSending: session.sendingContactIDs.contains(contact.id), cancel: cancelReply) {
-                            messageBubble(message: session.messages[focusedReplyMessage.contactId]?.first(where: { $0.id == focusedReplyMessage.id }) ?? focusedReplyMessage)
+                            messageBubble(message: session.messages[focusedReplyMessage.contactId]?.first(where: { $0.id == focusedReplyMessage.id }) ?? focusedReplyMessage, opensQuotes: false)
                                 .modifier(ViewedMessageTask(messages: [focusedReplyMessage], enabled: !showSettings && !showCost && !showGallery))
                         }
                     }

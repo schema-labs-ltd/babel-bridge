@@ -163,6 +163,36 @@ extension WhatsAppTranslatorTests {
         )
     }
 
+    func testDayHeadersNameTheDayLikeWhatsApp() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 20)))
+        func daysAgo(_ days: Int) -> Date { calendar.date(byAdding: .day, value: -days, to: now)! }
+        XCTAssertEqual(TimelineGrouping.dayLabel(for: daysAgo(0), now: now, calendar: calendar), "Today")
+        XCTAssertEqual(TimelineGrouping.dayLabel(for: daysAgo(1), now: now, calendar: calendar), "Yesterday")
+        XCTAssertEqual(TimelineGrouping.dayLabel(for: daysAgo(3), now: now, calendar: calendar), daysAgo(3).formatted(.dateTime.weekday(.wide)))
+        XCTAssertNotEqual(TimelineGrouping.dayLabel(for: daysAgo(400), now: now, calendar: calendar), daysAgo(400).formatted(.dateTime.weekday(.wide)))
+    }
+
+    func testConsecutiveMessagesFromOneSenderFormARun() throws {
+        let first = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"One"}"#)
+        let second = try decodeMessage(id: "b", contentType: "text", content: #"{"type":"text","body":"Two"}"#)
+        let items: [ConversationTimelineItem] = [.message(first), .message(second)]
+        XCTAssertTrue(TimelineGrouping.startsRun(items, at: 0))
+        XCTAssertFalse(TimelineGrouping.startsRun(items, at: 1))
+        XCTAssertEqual(TimelineGrouping.days(items).map(\.indices), [0..<2])
+
+        // Two group messages with only a shared name may be two people, so each starts a run.
+        func anonymous(_ id: String) throws -> ChatMessage {
+            try JSONDecoder().decode(ChatMessage.self, from: Data(#"{"id":"\#(id)","contactId":"chat@g.us","timestamp":1700000000000,"isFromMe":false,"isForwarded":false,"senderName":"Alex","senderPhone":null,"contactName":"Family","contactPhone":null,"chatType":"group","contentType":"text","content":{"type":"text","body":"Hi"},"originalText":null,"translatedText":null,"sourceLanguage":null,"isTranslated":false}"#.utf8))
+        }
+        let alexes: [ConversationTimelineItem] = [.message(try anonymous("x")), .message(try anonymous("y"))]
+        XCTAssertTrue(TimelineGrouping.startsRun(alexes, at: 1))
+        // Pinned djb2 results: a per-launch hash such as hashValue would fail these.
+        XCTAssertEqual(SenderNameColor.index(for: "3630"), 5)
+        XCTAssertEqual(SenderNameColor.index(for: "Virag"), 4)
+    }
+
     func testChatListPreviewTidiesServerLabelsLikeWhatsApp() {
         XCTAssertEqual(ChatListPreview.tidy("[ Image ] Beach day"), "📷 Beach day")
         XCTAssertEqual(ChatListPreview.tidy("You: [ Image ]"), "You: 📷 Photo")

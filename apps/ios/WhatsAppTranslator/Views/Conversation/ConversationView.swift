@@ -19,6 +19,9 @@ struct ConversationView: View {
     @State var selectedTopicID: String?
     @State var showTopicManagement = false
     @State var usage: UsageSummary?
+    /// The quoted message a tap on a reply scrolled to; it is briefly highlighted.
+    @State var replyJump: ReplyJump?
+    @State var quoteJumpToken = UUID()
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
     #if os(iOS)
@@ -101,13 +104,14 @@ struct ConversationView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 #if os(macOS)
-                VStack(spacing: 6) {
+                VStack(spacing: 0) {
                     messageTimelineContent
                 }
                 .padding(.horizontal, MacChatLayoutMetrics.timelineHorizontalPadding / 2)
                 .padding(.vertical, 14)
                 #else
-                LazyVStack(spacing: 6) {
+                // Day headers stay pinned at the top while their day scrolls past, as in WhatsApp.
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     messageTimelineContent
                 }
                 .padding(.horizontal, 12)
@@ -118,8 +122,17 @@ struct ConversationView: View {
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
             .onChange(of: messages.count) {
-                guard messageSearch.isEmpty, !starredOnly else { return }
+                // A highlighted quote keeps its place until the highlight fades.
+                guard messageSearch.isEmpty, !starredOnly, replyJump == nil else { return }
                 withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
+            }
+            .onChange(of: replyJump) { _, jump in
+                guard let jump else { return }
+                withAnimation(.snappy) { proxy.scrollTo(jump.itemID, anchor: .center) }
+                Task {
+                    try? await Task.sleep(for: .seconds(1.4))
+                    withAnimation(.easeOut(duration: 0.4)) { if replyJump == jump { replyJump = nil } }
+                }
             }
         }
     }
@@ -163,14 +176,28 @@ struct ConversationView: View {
         }
 
         let items = timelineItems
-        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-            if shouldShowDate(before: index) {
-                DatePill(date: item.date)
-                    .padding(.vertical, 10)
+        ForEach(TimelineGrouping.days(items)) { day in
+            Section {
+                ForEach(day.indices.map { (index: $0, item: items[$0]) }, id: \.item.id) { entry in
+                    timelineRow(entry.item, at: entry.index, in: items, firstOfDay: entry.index == day.indices.lowerBound)
+                }
+            } header: {
+                DatePill(date: day.date)
+                    .padding(.vertical, 8)
             }
+        }
+        // Album grouping can replace the last image's ID; keep a stable scroll target.
+        Color.clear.frame(height: 1).id("conversation-bottom")
+    }
+
+    @ViewBuilder
+    private func timelineRow(_ item: ConversationTimelineItem, at index: Int, in items: [ConversationTimelineItem], firstOfDay: Bool) -> some View {
+        let startsRun = TimelineGrouping.startsRun(items, at: index)
+        let highlighted = replyJump?.itemID == item.id
+        Group {
             switch item {
             case let .message(message):
-                messageBubble(message: message)
+                messageBubble(message: message, startsRun: startsRun, isHighlighted: highlighted)
                     .id(message.id)
                     .modifier(MessageReadVisibility(messages: [message], enabled: canRecordViews))
                     .task {
@@ -178,7 +205,7 @@ struct ConversationView: View {
                         await prefetchImages(before: index, in: items)
                     }
             case let .photoAlbum(album):
-                messageBubble(message: album.primaryMessage, albumMessages: album.messages)
+                messageBubble(message: album.primaryMessage, albumMessages: album.messages, startsRun: startsRun, isHighlighted: highlighted)
                     .id(item.id)
                     .modifier(MessageReadVisibility(messages: Array(album.messages.prefix(PhotoGalleryLayout.previewLimit)), enabled: canRecordViews))
                     .task(id: album.messages.map(\.id)) {
@@ -187,8 +214,7 @@ struct ConversationView: View {
                     }
             }
         }
-        // Album grouping can replace the last image's ID; keep a stable scroll target.
-        Color.clear.frame(height: 1).id("conversation-bottom")
+        .padding(.top, startsRun && !firstOfDay ? 8 : 2)
     }
 
     private var canRecordViews: Bool {
@@ -203,7 +229,13 @@ struct ConversationView: View {
         }
     }
 
-    func messageBubble(message: ChatMessage, albumMessages: [ChatMessage] = []) -> some View {
+    func messageBubble(
+        message: ChatMessage,
+        albumMessages: [ChatMessage] = [],
+        startsRun: Bool = true,
+        isHighlighted: Bool = false,
+        opensQuotes: Bool = true
+    ) -> some View {
         MessageBubble(
                 message: message,
                 isStarred: session.preferences.isStarred(messageID: message.id, contactID: contact.id),
@@ -225,7 +257,10 @@ struct ConversationView: View {
                 albumFailedIDs: session.mediaErrorIDs,
                 retryAlbumMedia: { albumMessage in Task { await session.retryMedia(for: albumMessage) } },
                 albumReply: selectReply,
-                albumAIReply: generateAIReply
+                albumAIReply: generateAIReply,
+                startsRun: startsRun,
+                isHighlighted: isHighlighted,
+                openQuotedMessage: opensQuotes ? { id in Task { await jumpToQuotedMessage(id) } } : nil
             )
     }
 
@@ -252,11 +287,6 @@ struct ConversationView: View {
             await session.loadMedia(for: message)
             for url in message.extractedURLs { await session.loadLinkPreview(for: url) }
         }
-    }
-
-    private func shouldShowDate(before index: Int) -> Bool {
-        guard index > 0 else { return true }
-        return !Calendar.current.isDate(timelineItems[index - 1].date, inSameDayAs: timelineItems[index].date)
     }
 
     private func selectReply(_ message: ChatMessage) {
@@ -296,6 +326,32 @@ struct ConversationView: View {
             selectReply(message)
             draft = suggestion
         }
+    }
+
+    /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
+    /// when the quoted message is older than what's loaded.
+    func jumpToQuotedMessage(_ id: String) async {
+        // A newer tap wins: an older one that is still loading history must not scroll back.
+        let token = UUID()
+        quoteJumpToken = token
+        // A topic only shows its own page, so leave it when the quoted message is not in it.
+        if selectedTopicID != nil, !messages.contains(where: { $0.id == id }) {
+            selectedTopicID = nil
+        }
+        if !messages.contains(where: { $0.id == id }) {
+            await session.loadAllMessages(for: contact.id)
+            // An earlier tap or a search may already be loading the history, in which case the
+            // call above returns at once; wait for that load rather than give up on the quote.
+            while session.loadingCompleteHistoryContactIDs.contains(contact.id), quoteJumpToken == token {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
+        // Clear filters first: the timeline only holds rows that match them.
+        messageSearch = ""
+        starredOnly = false
+        guard let target = timelineItems.first(where: { item in item.messages.contains { $0.id == id } })?.id else { return }
+        replyJump = ReplyJump(itemID: target)
     }
 
     func activateSearch() async {
