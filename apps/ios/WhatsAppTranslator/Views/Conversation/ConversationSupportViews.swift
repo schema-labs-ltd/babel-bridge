@@ -285,11 +285,17 @@ enum TimelineGrouping {
 }
 
 enum UnreadMarker {
-    /// The first of the last `unreadCount` incoming messages: the ones that were unread on opening.
-    static func firstUnreadID(in messages: [ChatMessage], unreadCount: Int) -> String? {
-        let incoming = messages.filter { !$0.isFromMe && !$0.isReaction }
-        guard unreadCount > 0, !incoming.isEmpty else { return nil }
-        return incoming[max(0, incoming.count - unreadCount)].id
+    /// The messages the server's unread count can include: incoming ones that take a read receipt,
+    /// less any this device has already marked as viewed.
+    static func candidates(in messages: [ChatMessage], viewed: Set<String> = []) -> [ChatMessage] {
+        messages.filter { $0.canSendReadReceipt && !viewed.contains($0.id) }
+    }
+
+    /// The first of the last `unreadCount` candidates: the ones that were unread on opening.
+    static func firstUnreadID(in messages: [ChatMessage], unreadCount: Int, viewed: Set<String> = []) -> String? {
+        let unread = candidates(in: messages, viewed: viewed)
+        guard unreadCount > 0, !unread.isEmpty else { return nil }
+        return unread[max(0, unread.count - unreadCount)].id
     }
 }
 

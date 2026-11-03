@@ -191,5 +191,9 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 2), "b")
         XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 9), "a")
         XCTAssertNil(UnreadMarker.firstUnreadID(in: messages, unreadCount: 0))
+        // A message already viewed here, or a deleted one, can't be one of the unread.
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages, unreadCount: 2, viewed: ["c"]), "a")
+        let deleted = try decodeMessage(id: "d", contentType: "revoked", content: #"{"type":"revoked"}"#)
+        XCTAssertEqual(UnreadMarker.firstUnreadID(in: messages + [deleted], unreadCount: 1), "c")
     }
 }

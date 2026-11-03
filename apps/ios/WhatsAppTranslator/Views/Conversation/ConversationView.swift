@@ -32,6 +32,8 @@ struct ConversationView: View {
     @State var unreadMarkerID: String?
     @State var unreadMarkerCount = 0
     @State var pendingScrollID: String?
+    /// Older pages loaded so the unread bar can reach the first unread message.
+    @State var unreadHistoryPages = 0
     @State var quoteJumpToken = UUID()
     var selectedTopic: ChatTopic? { session.topics(for: contact.id).first { $0.id == selectedTopicID } }
 
@@ -136,7 +138,8 @@ struct ConversationView: View {
             // topic pages never counts as new.
             .onChange(of: session.messages[contact.id]?.last?.id) { oldID, newID in
                 markUnread()
-                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly, !loadingOlder,
+                // Older pages never change the newest ID, so a change while one loads is a real arrival.
+                guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
                       let oldID, newID != nil else { return }
                 // Like WhatsApp, a new message only pulls you down if you were already at the bottom
                 // or sent it yourself; otherwise the scroll-down button counts it.

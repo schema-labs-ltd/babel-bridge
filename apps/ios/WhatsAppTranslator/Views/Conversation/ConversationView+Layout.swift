@@ -218,9 +218,13 @@ extension ConversationView {
     func loadOlderMessages() async {
         guard !loadingOlder, selectedTopicID == nil, messageSearch.isEmpty, !starredOnly,
               session.messageHistoryHasMore[contact.id] == true else { return }
+        let oldestBefore = session.messages[contact.id]?.first?.id
         loadingOlder = true
         await session.loadMessages(for: contact.id, older: true)
         loadingOlder = false
+        // Only follow on when the page actually added older messages; a failed request leaves the
+        // cursor where it was, and the "Load earlier messages" button stays for a manual retry.
+        guard !Task.isCancelled, session.messages[contact.id]?.first?.id != oldestBefore else { return }
         if isNearTop, session.messageHistoryHasMore[contact.id] == true { await loadOlderMessages() }
     }
 
@@ -231,8 +235,26 @@ extension ConversationView {
         let openingCount = openingUnreadCount ?? contact.unreadCount
         if openingUnreadCount == nil { openingUnreadCount = openingCount }
         guard openingCount > 0, unreadMarkerID == nil, selectedTopicID == nil,
-              let newest = session.messages[contact.id]?.last, newest.timestamp >= contact.lastMessageTime,
-              let marker = UnreadMarker.firstUnreadID(in: session.messages[contact.id] ?? [], unreadCount: openingCount) else { return }
+              let newest = session.messages[contact.id]?.last, newest.timestamp >= contact.lastMessageTime else { return }
+        let loaded = session.messages[contact.id] ?? []
+        let viewed = session.viewedReceiptMessageIDs
+        // The first page may not reach back to the first unread message, so load a few more pages
+        // first; past that the bar goes above the oldest loaded unread message.
+        if UnreadMarker.candidates(in: loaded, viewed: viewed).count < openingCount,
+           session.messageHistoryHasMore[contact.id] == true, unreadHistoryPages < 5, !loadingOlder {
+            unreadHistoryPages += 1
+            let oldestBefore = loaded.first?.id
+            Task {
+                loadingOlder = true
+                await session.loadMessages(for: contact.id, older: true)
+                loadingOlder = false
+                // A failed page stops here rather than retrying; the bar then uses what is loaded.
+                if session.messages[contact.id]?.first?.id == oldestBefore { unreadHistoryPages = 5 }
+                markUnread()
+            }
+            return
+        }
+        guard let marker = UnreadMarker.firstUnreadID(in: loaded, unreadCount: openingCount, viewed: viewed) else { return }
         unreadMarkerID = marker
         unreadMarkerCount = openingCount
         pendingScrollID = UnreadMessagesDivider.scrollID
