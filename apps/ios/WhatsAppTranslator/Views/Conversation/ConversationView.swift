@@ -122,7 +122,8 @@ struct ConversationView: View {
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
             .onChange(of: messages.count) {
-                guard messageSearch.isEmpty, !starredOnly else { return }
+                // A highlighted quote keeps its place until the highlight fades.
+                guard messageSearch.isEmpty, !starredOnly, replyJump == nil else { return }
                 withAnimation(.snappy) { proxy.scrollTo("conversation-bottom", anchor: .bottom) }
             }
             .onChange(of: replyJump) { _, jump in
@@ -339,6 +340,11 @@ struct ConversationView: View {
         }
         if !messages.contains(where: { $0.id == id }) {
             await session.loadAllMessages(for: contact.id)
+            // An earlier tap or a search may already be loading the history, in which case the
+            // call above returns at once; wait for that load rather than give up on the quote.
+            while session.loadingCompleteHistoryContactIDs.contains(contact.id), quoteJumpToken == token {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         }
         guard quoteJumpToken == token, messages.contains(where: { $0.id == id }) else { return }
         // Clear filters first: the timeline only holds rows that match them.
