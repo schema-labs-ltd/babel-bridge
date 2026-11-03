@@ -7,8 +7,12 @@ struct ChatCacheSnapshot: Codable, Equatable, Sendable {
     var messages: [String: [ChatMessage]]
     let updatedAt: Date
     var pendingReadReceipts: [String: [String]]? = nil
+    /// The newest messages of the combined Messages feed, so it shows at launch before the
+    /// server answers. Older cache files have none, and decode with `nil`.
+    var feed: [ChatMessage]? = nil
 
     static let maximumMessagesPerChat = 100
+    static let maximumFeedMessages = 200
 
     func merging(
         contacts newContacts: [Contact],
@@ -25,7 +29,8 @@ struct ChatCacheSnapshot: Codable, Equatable, Sendable {
             contacts: newContacts,
             messages: nextMessages,
             updatedAt: now,
-            pendingReadReceipts: pendingReadReceipts
+            pendingReadReceipts: pendingReadReceipts,
+            feed: feed
         )
     }
 

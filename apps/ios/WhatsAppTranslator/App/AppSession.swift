@@ -98,6 +98,8 @@ final class AppSession {
     var recoveryNeedsAnotherPass = false
     let demoConversationMode: Bool
     var avatarRequests: Set<String> = []
+    /// Contacts whose profile picture was checked with the server since launch.
+    var refreshedAvatarIDs: Set<String> = []
     var mediaRequests: Set<String> = []
     static let maximumGalleryThumbnailRequests = 4
     var activeGalleryThumbnailRequests = 0

@@ -40,15 +40,60 @@ extension AppSession {
         }
     }
 
+    /// Shows the profile picture saved on this device straight away, then checks the server
+    /// once per launch and saves a changed picture for next time.
     func loadAvatar(for contactID: String) async {
-        guard !demoMode,
-              avatarURLs[contactID] == nil,
-              !avatarRequests.contains(contactID) else { return }
+        guard !demoMode, !avatarRequests.contains(contactID) else { return }
+        if refreshedAvatarIDs.contains(contactID) {
+            // Photos saved later can evict the saved picture; fetch it again if so.
+            guard let url = avatarURLs[contactID], url.isFileURL,
+                  !FileManager.default.fileExists(atPath: url.path) else { return }
+            refreshedAvatarIDs.remove(contactID)
+            avatarURLs.removeValue(forKey: contactID)
+        }
         avatarRequests.insert(contactID)
         defer { avatarRequests.remove(contactID) }
-        if let url = try? await api.avatar(contactID: contactID) {
-            avatarURLs[contactID] = url
+        // Signing out or switching server starts a new epoch and clears the media cache. Check it
+        // after every wait so a late answer can't put the old account's picture back.
+        let epoch = topicAccountEpoch
+        var current: Bool { topicAccountEpoch == epoch && !Task.isCancelled }
+        let key = "avatar-\(contactID)"
+        let cachedURL = try? await mediaCache.cachedURL(for: key)
+        guard current else { return }
+        if avatarURLs[contactID] == nil, let cachedURL { avatarURLs[contactID] = cachedURL }
+        let remote: URL?
+        do { remote = try await api.avatar(contactID: contactID) } catch { return }
+        // The server also answers with no picture while WhatsApp reconnects or is slow, so keep
+        // the saved one and check again next time rather than treat it as removed.
+        guard current, let remote else { return }
+        let download = try? await URLSession.shared.data(from: remote)
+        // A row that scrolled away cancels the download; it is checked again when shown.
+        guard current else { return }
+        refreshedAvatarIDs.insert(contactID)
+        guard let data = download?.0,
+              (download?.1 as? HTTPURLResponse)?.statusCode == 200,
+              PlatformImage(data: data) != nil else {
+            if cachedURL == nil { avatarURLs[contactID] = remote }
+            return
         }
+        if let cachedURL {
+            let saved = await Task.detached(priority: .utility) { try? Data(contentsOf: cachedURL) }.value
+            guard current else {
+                // Not compared or saved, so check this contact again when it is shown.
+                if topicAccountEpoch == epoch { refreshedAvatarIDs.remove(contactID) }
+                return
+            }
+            if saved == data { return }
+        }
+        let storedURL = try? await mediaCache.store(data, messageID: key, fileExtension: "jpg")
+        guard topicAccountEpoch == epoch else {
+            // Sign-out cleared the cache while this was being written.
+            try? await mediaCache.remove(messageID: key)
+            return
+        }
+        // A file that changed keeps its path, which the picture view wouldn't reload, so this
+        // launch shows the new picture from the server and the next one from the saved file.
+        avatarURLs[contactID] = cachedURL == nil ? storedURL ?? remote : remote
     }
 
     func togglePin(_ contact: Contact) async {

@@ -5,23 +5,32 @@ struct ContactAvatar: View {
     let contact: Contact
     let url: URL?
     var size: CGFloat = 52
+    /// A picture saved on this device. `AsyncImage` loads only web addresses, so saved files
+    /// are read here instead.
+    @State private var savedImage: PlatformImage?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
-                    Circle()
-                        .fill(contact.isGroup ? Color.indigo.opacity(0.16) : palette.accent.opacity(0.14))
-                        .overlay {
-                            Text(contact.initials)
-                                .font(.system(size: size * 0.34, weight: .semibold))
-                                .foregroundStyle(contact.isGroup ? .indigo : palette.deepAccent)
+            Group {
+                if let url, url.isFileURL {
+                    if let savedImage {
+                        Image(platformImage: savedImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        placeholder
+                    }
+                } else {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        default:
+                            placeholder
                         }
+                    }
                 }
             }
             .frame(width: size, height: size)
@@ -36,5 +45,24 @@ struct ContactAvatar: View {
             }
         }
         .frame(width: size, height: size)
+        .task(id: url) {
+            guard let url, url.isFileURL else {
+                savedImage = nil
+                return
+            }
+            let data = await Task.detached(priority: .userInitiated) { try? Data(contentsOf: url) }.value
+            guard !Task.isCancelled else { return }
+            savedImage = data.flatMap { PlatformImage(data: $0) }
+        }
+    }
+
+    private var placeholder: some View {
+        Circle()
+            .fill(contact.isGroup ? Color.indigo.opacity(0.16) : palette.accent.opacity(0.14))
+            .overlay {
+                Text(contact.initials)
+                    .font(.system(size: size * 0.34, weight: .semibold))
+                    .foregroundStyle(contact.isGroup ? .indigo : palette.deepAccent)
+            }
     }
 }
