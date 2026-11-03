@@ -870,11 +870,14 @@
   margin-right: auto;
 }
 
-/* The indicator sits at the bubble's right edge, so open its tooltip leftwards. */
-.message-footer .translation-indicator .original-tooltip {
-  left: auto;
-  right: 0;
-  transform: none;
+/* The indicator sits at the bubble's right edge, so open its tooltip leftwards. Narrow screens
+   keep the centred fixed tooltip from styles-responsive.css. */
+@media (min-width: 769px) {
+  .message-footer .translation-indicator .original-tooltip {
+    left: auto;
+    right: 0;
+    transform: none;
+  }
 }
 
 .visually-hidden {
