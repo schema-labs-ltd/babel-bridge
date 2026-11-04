@@ -23,8 +23,9 @@ extension AppSession {
                !conversation.contains(where: { $0.id == affectedID }) {
                 conversation.append(target)
             }
-            // A message from someone ends their typing, as it does in WhatsApp.
-            if event.type == "message", !message.isFromMe {
+            // A message from someone ends their typing, as it does in WhatsApp. Older messages,
+            // such as imported history, say nothing about whether they're typing now.
+            if event.type == "message", !message.isFromMe, message.date > .now.addingTimeInterval(-TypingIndicators.lifetime) {
                 typing.stop(chatID: message.contactId, userID: message.senderJID)
             }
             let normalized = normalizeMessages(conversation + [message])
