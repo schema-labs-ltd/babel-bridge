@@ -237,8 +237,15 @@ extension AppSession {
         var media: [String: (data: Data, mimeType: String)] = [:]
         for message in items where message.mediaKind != nil {
             do {
-                if demoMode, let base64 = message.content?.mediaData, let data = Data(base64Encoded: base64) {
-                    media[message.id] = (data, message.content?.mimeType ?? "application/octet-stream")
+                // Media already on this device, or carried in the message, needs no download.
+                let mimeType = message.content?.mimeType?.nilIfBlank
+                if let mimeType, let url = try? await mediaCache.cachedURL(for: message.id),
+                   let data = try? Data(contentsOf: url), !data.isEmpty {
+                    media[message.id] = (data, mimeType)
+                    continue
+                }
+                if let mimeType, let base64 = message.content?.mediaData, let data = Data(base64Encoded: base64) {
+                    media[message.id] = (data, mimeType)
                     continue
                 }
                 let response = try await api.media(messageID: message.id)
@@ -271,17 +278,31 @@ extension AppSession {
                         let attachment = OutgoingAttachment(
                             data: file.data,
                             mimeType: file.mimeType,
-                            fileName: isVideo ? "video.mp4" : (message.content?.fileName?.nilIfBlank ?? "Document"),
+                            fileName: message.content?.fileName?.nilIfBlank ?? (isVideo ? "video.mp4" : "Document"),
                             kind: isVideo ? "video" : "document"
                         )
                         sentAll = await sendAttachment(attachment, caption: caption, to: contactID, reply: nil)
                     default:
-                        sentAll = await send(text: message.displayText, to: contactID)
+                        sentAll = await send(text: Self.forwardedText(message), to: contactID)
                     }
                 }
             }
             if sentAll { delivered += 1 }
         }
+        if delivered < contactIDs.count, errorMessage == nil {
+            presentError("Couldn’t forward", "The message didn’t reach every chat you chose. Try again in a moment.")
+        }
         return delivered
     }
+
+    /// The words as they were written: an incoming message's original, not this app's translation
+    /// of it, so the chosen chat's own translation setting applies as for anything you send.
+    nonisolated static func forwardedText(_ message: ChatMessage) -> String {
+        guard !message.isFromMe else { return message.displayText }
+        return message.content?.body?.nilIfBlank ?? message.originalText?.nilIfBlank ?? message.displayText
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self }
 }

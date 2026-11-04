@@ -360,6 +360,7 @@ extension WhatsAppTranslatorTests {
         XCTAssertTrue(AppSession.canForward(photo))
         XCTAssertFalse(AppSession.canForward(voice))
         XCTAssertFalse(AppSession.canForward(deleted))
+        XCTAssertEqual(AppSession.forwardedText(text), "Hi")
     }
 
     func testDeleteForMeHidesMessagesOnThisDeviceOnly() throws {

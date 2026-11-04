@@ -141,7 +141,7 @@ struct ChatMediaGallery: View {
             }
         }
         .task { await loadMore() }
-        .onChange(of: session.messages[contact.id]) { _, messages in model.merge(messages ?? []) }
+        .onChange(of: session.messages[contact.id]) { _, messages in model.merge(session.preferences.visible(messages ?? [])) }
         #if os(iOS)
         .fullScreenCover(item: $selectedMedia) { selected in
             GalleryMediaViewer(model: model, initialID: selected.id, close: { selectedMedia = nil }, loadMore: loadMore)
