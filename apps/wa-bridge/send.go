@@ -494,28 +494,34 @@ func buildMediaMessage(cmd Command, jid types.JID, uploaded whatsmeow.UploadResp
 // takes the phone's notifications, so the server sets it back to unavailable when no app is.
 // The wish is kept, so it is sent again after a reconnect or once the push name is known.
 func (c *Client) SetPresence(ctx context.Context, available bool) error {
-	c.wantsPresence.Store(available)
-	return c.sendPresence(ctx)
+	c.presenceMu.Lock()
+	defer c.presenceMu.Unlock()
+	c.wantsPresence = available
+	return c.sendPresenceLocked(ctx)
 }
 
-func (c *Client) sendPresence(ctx context.Context) error {
+// sendPresenceLocked sends the wanted presence; the caller holds presenceMu.
+func (c *Client) sendPresenceLocked(ctx context.Context) error {
 	if c.client == nil || !c.client.IsConnected() {
 		return fmt.Errorf("not connected")
 	}
 	state := types.PresenceUnavailable
-	if c.wantsPresence.Load() {
+	if c.wantsPresence {
 		state = types.PresenceAvailable
 	}
 	return c.client.SendPresence(ctx, state)
 }
 
-// resendPresence restores an online state WhatsApp dropped, such as after a reconnect.
+// resendPresence restores an online state WhatsApp dropped, such as after a reconnect. It
+// reads the wish under the same lock as SetPresence, so it can't undo a later "unavailable".
 func (c *Client) resendPresence() {
-	if !c.wantsPresence.Load() {
-		return
-	}
 	go func() {
-		if err := c.sendPresence(c.ctx); err != nil {
+		c.presenceMu.Lock()
+		defer c.presenceMu.Unlock()
+		if !c.wantsPresence {
+			return
+		}
+		if err := c.sendPresenceLocked(c.ctx); err != nil {
 			SendEvent(NewLogEvent("warn", fmt.Sprintf("presence not restored: %v", err)))
 		}
 	}()

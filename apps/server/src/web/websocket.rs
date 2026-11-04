@@ -49,6 +49,18 @@ impl Drop for SocketPresence {
     }
 }
 
+/// Sends one frame, giving up on a client that has stopped reading. A blocked write would
+/// otherwise stall this socket's loop, and with it the expiry of its app's presence.
+async fn send_within<S>(sender: &mut S, message: Message) -> bool
+where
+    S: futures::Sink<Message> + Unpin,
+{
+    matches!(
+        tokio::time::timeout(Duration::from_secs(15), sender.send(message)).await,
+        Ok(Ok(()))
+    )
+}
+
 /// An app's `{"type":"presence","active":true}`, sent while it is in front of the user.
 pub(super) fn client_presence(text: &str) -> Option<bool> {
     #[derive(Deserialize)]
@@ -110,7 +122,7 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
             }
             _ = heartbeat.tick() => {
                 presence.expire().await;
-                if sender.send(Message::Text("{\"type\":\"heartbeat\"}".into())).await.is_err() { break; }
+                if !send_within(&mut sender, Message::Text("{\"type\":\"heartbeat\"}".into())).await { break; }
             }
             // Broadcast events to client
             received = rx.recv() => {
@@ -120,7 +132,7 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
                     Err(broadcast::error::RecvError::Closed) => break,
                 };
                 if let Ok(json) = serde_json::to_string(&event) {
-                    if sender.send(Message::Text(json)).await.is_err() {
+                    if !send_within(&mut sender, Message::Text(json)).await {
                         break;
                     }
                 }
@@ -131,7 +143,7 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
                 match msg {
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(Message::Ping(data))) => {
-                        let _ = sender.send(Message::Pong(data)).await;
+                        if !send_within(&mut sender, Message::Pong(data)).await { break; }
                     }
                     Some(Ok(Message::Text(text))) => {
                         if let Some(active) = client_presence(&text) {
