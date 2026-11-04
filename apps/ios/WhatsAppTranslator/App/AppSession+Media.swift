@@ -18,8 +18,11 @@ extension AppSession {
         return result
     }
 
+    /// A sticker whose last load failed is left out until a later tray opening loads it again,
+    /// so a passing network error doesn't hide it for good.
     private func stickerIsAvailable(_ sticker: ChatMessage) -> Bool {
-        sticker.content?.hasMedia == true || sticker.content?.mediaData != nil
+        guard !mediaErrorIDs.contains(sticker.id) else { return false }
+        return sticker.content?.hasMedia == true || sticker.content?.mediaData != nil
             || messageImages[sticker.id] != nil || stickerDigests[sticker.id] != nil
     }
 
@@ -42,10 +45,11 @@ extension AppSession {
         stickerDigests[sticker.id] = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Recent WebP stickers that can be sent again; animated Lottie ones and expired media can't.
+    /// Recent WebP stickers that can be sent again; animated Lottie ones can't. Failed loads are
+    /// kept here, so preparing the tray tries them again.
     private func stickerCandidates(limit: Int = 150) -> [ChatMessage] {
         let all = (messages.values.flatMap { $0 } + Array(feedByID.values)).filter {
-            $0.mediaKind == .sticker && !$0.isReaction && !mediaErrorIDs.contains($0.id)
+            $0.mediaKind == .sticker && !$0.isReaction
                 && ($0.content?.mimeType.map { $0.lowercased() == "image/webp" } ?? true)
         }
         var ids = Set<String>()
