@@ -366,7 +366,7 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now) { _ in "Alex" }, "Alex is typing…")
         typing.apply(chatID: "family", userID: "sam", state: "typing", now: now)
         XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now, name: none), "2 people are typing…")
-        typing.stop(chatID: "family", userID: "sam")
+        typing.stop(chatID: "family", userID: "sam", now: now)
         XCTAssertEqual(typing.active(in: "family", now: now).map(\.userID), ["alex"])
 
         // A typing state not heard again lapses, as it does in WhatsApp.
