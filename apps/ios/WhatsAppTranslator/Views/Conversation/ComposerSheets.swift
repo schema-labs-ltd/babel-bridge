@@ -379,7 +379,7 @@ struct StickerPickerSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.disabled(sendingID != nil)
                 }
             }
         }
@@ -404,7 +404,10 @@ struct StickerPickerSheet: View {
         }
         .frame(width: 76, height: 76)
         .contentShape(Rectangle())
-        .task { await session.loadMedia(for: sticker) }
+        .task {
+            await session.loadMedia(for: sticker)
+            await session.fingerprintSticker(sticker)
+        }
     }
 
     private func send(_ sticker: ChatMessage) {
