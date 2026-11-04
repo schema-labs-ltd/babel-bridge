@@ -78,7 +78,7 @@ extension WhatsAppTranslatorTests {
 
     func testPendingSendGivesWayToTheServersCopyAndKeepsItsPlace() throws {
         func message(_ id: String, _ timestamp: Int64, fromMe: Bool, body: String) throws -> ChatMessage {
-            let data = try JSONSerialization.data(withJSONObject: ["id": id, "contactId": "friend", "timestamp": timestamp, "isFromMe": fromMe, "isForwarded": false, "chatType": "private", "contentType": "Text", "isTranslated": false, "content": ["type": "text", "body": body]])
+            let data = try JSONSerialization.data(withJSONObject: ["id": id, "contactId": "friend", "timestamp": timestamp, "isFromMe": fromMe, "isForwarded": false, "chatType": "private", "contentType": "Text", "isTranslated": false, "deliveryStatus": fromMe ? "sending" : "read", "content": ["type": "text", "body": body]])
             return try JSONDecoder().decode(ChatMessage.self, from: data)
         }
         func send(_ id: String, _ timestamp: Int64, _ text: String) -> PendingSend {
@@ -97,6 +97,9 @@ extension WhatsAppTranslatorTests {
         var repeated = send("p4", 1_000_050, "ok")
         repeated.earlierIDs = ["copy"]
         XCTAssertEqual(PendingSend.unconfirmed([repeated], loaded: [old, copy]).map(\.id), ["p4"])
+        // A translated send's original-text follow-up is never a send's own copy.
+        let followUp = try message("pending_original_7_1000100", 1_000_100, fromMe: true, body: "ok")
+        XCTAssertEqual(PendingSend.unconfirmed([first], loaded: [followUp]).map(\.id), ["p1"])
 
         let merged = PendingSend.merged([other.message, first.message], into: [old, copy, incoming])
         XCTAssertEqual(merged.map(\.id), ["old", "p1", "copy", "in", "p3"])

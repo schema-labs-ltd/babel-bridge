@@ -223,8 +223,10 @@ struct PendingSend: Codable, Equatable, Sendable {
     }
 
     /// The sends the server has no copy of yet. The server stores what was typed as soon as it
-    /// starts sending, so a loaded message with the same words, sent from here since this send
-    /// began, takes its place; each loaded message stands in for one send at most.
+    /// starts sending, so a loaded message with the same words, still sending or uncertain on
+    /// the server, takes its place; each loaded message stands in for one send at most. Once
+    /// the server confirms a send, its reply names the message, so words are never matched to a
+    /// sent one.
     static func unconfirmed(_ pending: [PendingSend], loaded: [ChatMessage]) -> [PendingSend] {
         var claimed = Set<String>()
         return pending.sorted { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }.filter { send in
@@ -234,10 +236,14 @@ struct PendingSend: Codable, Equatable, Sendable {
         }
     }
 
-    /// The server's copy of this send among the loaded messages, if it has arrived.
+    /// The server's unconfirmed copy of this send among the loaded messages, if it has arrived:
+    /// the row it stores while sending, which stays when the send is uncertain. The row for a
+    /// translated send's original-text follow-up is never it.
     func copy(in loaded: [ChatMessage], excluding claimed: Set<String> = []) -> ChatMessage? {
         loaded.first { message in
             message.isFromMe && message.contactId == contactID
+                && ["sending", "uncertain"].contains(message.deliveryStatus?.lowercased() ?? "")
+                && !message.id.hasPrefix("pending_original_")
                 && !claimed.contains(message.id) && !earlierIDs.contains(message.id)
                 // Allow for the phone's clock running ahead of the server's.
                 && message.timestamp >= timestamp - 120_000
@@ -344,12 +350,31 @@ extension AppSession {
 
     /// Replaces a pending send with its server copy. That copy belongs to this send alone,
     /// never to another one with the same words.
-    private func resolve(_ id: String, with copy: ChatMessage) {
+    private func resolve(_ id: String, with copy: ChatMessage, alsoReserving others: [String] = []) {
         guard let send = pendingSends.removeValue(forKey: id) else { return }
         place(copy)
         for (otherID, other) in pendingSends where other.contactID == send.contactID {
-            pendingSends[otherID]?.earlierIDs.insert(copy.id)
+            pendingSends[otherID]?.earlierIDs.formUnion([copy.id] + others)
         }
+    }
+
+    /// Settles a send the server accepted by the message its reply names, rather than by its
+    /// words. The row stored while it sent is replaced, and if the chat didn't reload the
+    /// message shows as the server confirmed it until the next load brings the server's copy.
+    private func confirm(_ id: String, response: SendMessageResponse) {
+        guard let send = pendingSends[id] else { return }
+        let contactID = send.contactID
+        let loaded = messages[contactID] ?? []
+        let stored = send.copy(in: loaded).flatMap { $0.id.hasPrefix("pending_") && $0.id != response.messageId ? $0 : nil }
+        let confirmed = loaded.first { $0.id == response.messageId } ?? send.confirmedMessage(response)
+        if let stored {
+            messages[contactID]?.removeAll { $0.id == stored.id }
+            feedByID[stored.id] = nil
+        }
+        if !loaded.contains(where: { $0.id == confirmed.id }) {
+            messages[contactID] = normalizeMessages((messages[contactID] ?? []) + [confirmed])
+        }
+        resolve(id, with: confirmed, alsoReserving: [response.originalMessageId, stored?.id].compactMap { $0 })
     }
 
     /// Puts a sent message in the Messages feed, kept through a feed load already under way
@@ -383,19 +408,8 @@ extension AppSession {
                 pendingSends[id]?.confirmed = true
                 await persistCache()
                 await loadMessages(for: contactID)
-                if !settle(id), let send = pendingSends[id] {
-                    // The chat didn't reload: show the message as the server confirmed it, so it
-                    // doesn't vanish until the next load brings the server's copy.
-                    if let response {
-                        let confirmed = send.confirmedMessage(response)
-                        if messages[contactID]?.contains(where: { $0.id == confirmed.id }) != true {
-                            messages[contactID, default: []].append(confirmed)
-                        }
-                        resolve(id, with: confirmed)
-                    } else {
-                        pendingSends[id] = nil
-                    }
-                }
+                // Demo mode has no reply; it adds the message itself.
+                if let response { confirm(id, response: response) } else { pendingSends[id] = nil }
                 Task { await loadFeed(); await refresh() }
             }
         }
