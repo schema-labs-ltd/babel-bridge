@@ -12,6 +12,8 @@ struct ChatRow: View {
     var latestMessage: ChatMessage? = nil
     /// The chat's newest message is deleted for me, so the server's preview and time are stale.
     var newestIsHidden = false
+    /// "typing…" while someone in the chat types, shown in place of the preview as WhatsApp does.
+    var typingLabel: String? = nil
 
     private var listTime: Int64 {
         newestIsHidden ? (latestMessage?.timestamp ?? contact.lastMessageTime) : contact.lastMessageTime
@@ -87,7 +89,13 @@ struct ChatRow: View {
 
     @ViewBuilder
     private func previewText(lineLimit: Int) -> some View {
-        if !draft.isEmpty {
+        if let typingLabel {
+            Text(typingLabel)
+                .foregroundStyle(palette.accent)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+        } else if !draft.isEmpty {
             Text("Draft: \(draft)")
                 .foregroundStyle(.orange)
                 .italic()

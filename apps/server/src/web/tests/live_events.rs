@@ -387,3 +387,55 @@ fn clear_orphaned_session_sidecars_keeps_sidecars_with_session_db() {
 
     let _ = std::fs::remove_dir_all(data_dir);
 }
+
+#[tokio::test]
+async fn the_account_is_online_only_while_an_app_is_in_front() {
+    let (state, data_dir) = test_state(None);
+    let (command_tx, mut command_rx) = mpsc::channel(8);
+    state.set_command_tx(command_tx).await;
+    // The worker sends presence on its own task; nothing else is sent, so waiting a moment
+    // shows whether a command followed.
+    async fn next(rx: &mut mpsc::Receiver<BridgeCommand>) -> Option<bool> {
+        let command = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await;
+        command.ok().flatten().map(|command| match command {
+            BridgeCommand::SetPresence { available } => available,
+            other => panic!("unexpected command {other:?}"),
+        })
+    }
+
+    state.app_presence_changed(true);
+    assert_eq!(next(&mut command_rx).await, Some(true));
+    // A second app changes nothing; the account goes offline only when both have left.
+    state.app_presence_changed(true);
+    state.app_presence_changed(false);
+    assert_eq!(next(&mut command_rx).await, None);
+    state.refresh_presence();
+    assert_eq!(
+        next(&mut command_rx).await,
+        Some(true),
+        "restored after reconnect"
+    );
+    state.app_presence_changed(false);
+    assert_eq!(next(&mut command_rx).await, Some(false));
+    state.refresh_presence();
+    assert_eq!(next(&mut command_rx).await, None);
+    // A stray "inactive" can't drive the count below zero.
+    state.app_presence_changed(false);
+    assert_eq!(next(&mut command_rx).await, None);
+
+    let _ = std::fs::remove_dir_all(data_dir);
+}
+
+#[test]
+fn apps_report_presence_as_a_typed_message() {
+    assert_eq!(
+        client_presence(r#"{"type":"presence","active":true}"#),
+        Some(true)
+    );
+    assert_eq!(
+        client_presence(r#"{"type":"presence","active":false}"#),
+        Some(false)
+    );
+    assert_eq!(client_presence(r#"{"type":"other","active":true}"#), None);
+    assert_eq!(client_presence("hello"), None);
+}

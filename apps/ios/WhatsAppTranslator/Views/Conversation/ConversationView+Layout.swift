@@ -304,6 +304,7 @@ extension ConversationView {
     var conversationHeaderSubtitle: String {
         // Like WhatsApp, a slow reconnect shows in the header, not as a banner over the chat.
         if session.showsConnectingIndicator { return "Connecting…" }
+        if let typing = session.typingLabel(for: contact) { return typing }
         if let localTime = session.localTimeDescription(for: contact.id) { return localTime }
         return contact.isGroup ? ConversationHeaderSummary.groupMembers(in: session.messages[contact.id] ?? []) : "tap here for contact info"
     }

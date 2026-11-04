@@ -428,6 +428,9 @@ pub enum BridgeCommand {
     /// Get profile picture for a JID
     GetProfilePicture { request_id: i32, to: String },
 
+    /// Mark the account online while an app is open, so WhatsApp sends typing indicators.
+    SetPresence { available: bool },
+
     /// Disconnect and exit
     Disconnect,
 

@@ -256,6 +256,14 @@ export const connectionMethods = {
     this.updateWorkspaceUI();
   },
 
+  // Tells the server whether this tab is in front of the user. While an app is, WhatsApp sees
+  // the account online, as with WhatsApp Web, and sends typing indicators.
+  sendPresence(socket = this.ws) {
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    const active = document.visibilityState === 'visible';
+    socket.send(JSON.stringify({ type: 'presence', active }));
+  },
+
   // WebSocket connection
   connectWebSocket() {
     if (this.demoMode || this.authExpired) return;
@@ -278,9 +286,11 @@ export const connectionMethods = {
 
     this.ws.onopen = () => {
       clearInterval(this.liveWatchdog);
+      this.sendPresence(socket);
       this.liveWatchdog = setInterval(() => {
         if (this.ws === socket && Date.now() - this.lastLiveMessage > 50000)
           socket.close();
+        else this.sendPresence(socket);
       }, 10000);
       this.setLiveReconnectBanner(false);
       void this.recoverLiveMessages();

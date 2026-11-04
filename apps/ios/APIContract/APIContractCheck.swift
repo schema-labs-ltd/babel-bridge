@@ -171,6 +171,8 @@ struct APIContractCheck {
             check.equal(first("receipt")?.messageIds, ["me-reply"], "receipt ids")
             check.equal(first("receipt")?.status, "read", "receipt status")
             check.equal(first("typing")?.chatId, ana, "typing chat")
+            check.equal(first("typing")?.userId, ana, "typing person")
+            check.equal(first("typing")?.state, "typing", "typing state")
             check.equal(first("send_progress")?.progressId, "album-1", "send progress id")
             check.equal(first("send_progress")?.stage, "uploading", "send progress stage")
             check.equal(first("send_progress")?.completed, 1, "send progress completed")

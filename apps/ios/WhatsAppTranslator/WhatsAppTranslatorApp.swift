@@ -15,6 +15,7 @@ struct WhatsAppTranslatorApp: App {
                 .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-demoWhatsAppLayout") ? .light : session.preferences.colorMode.colorScheme)
                 .task { await session.start() }
                 .onChange(of: scenePhase) { _, phase in
+                    if phase == .background { Task { await session.enteredBackground() } }
                     guard phase == .active else { return }
                     Task { await session.becameActive() }
                 }
