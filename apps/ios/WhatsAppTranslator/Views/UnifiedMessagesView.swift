@@ -13,10 +13,11 @@ struct UnifiedMessagesView: View {
         if let selectedTopicID { return session.preferences.visible(session.topicPages[selectedTopicID]?.messages ?? []) }
         return session.preferences.visible(session.unifiedMessages)
     }
-    /// What the feed shows: messages still sending join the end with a spinner, as in WhatsApp.
-    /// They stay out of `displayedMessages`, which picks the chat that typing replies to.
+    /// What the feed shows: messages still sending join it with a spinner, as in WhatsApp, under a
+    /// topic filter too, so a failed one keeps its resend button in view. They stay out of
+    /// `displayedMessages`, which picks the chat that typing replies to.
     var renderedMessages: [ChatMessage] {
-        selectedTopicID == nil ? PendingSend.merged(session.pendingMessages(for: nil), into: displayedMessages) : displayedMessages
+        PendingSend.merged(session.pendingMessages(for: nil), into: displayedMessages)
     }
     @State var atBottom = true
     @State var composerFocused = false

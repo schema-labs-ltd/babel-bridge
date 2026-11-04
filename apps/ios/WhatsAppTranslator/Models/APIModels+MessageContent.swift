@@ -120,7 +120,7 @@ struct ReplyContext: Codable, Hashable, Sendable {
     let text: String?
 }
 
-struct MessageReplyTarget: Equatable, Sendable {
+struct MessageReplyTarget: Codable, Equatable, Sendable {
     let messageID: String
     let senderJID: String?
     let senderName: String

@@ -102,13 +102,14 @@ actor APIClient {
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
-        timeoutInterval: TimeInterval? = nil
+        timeoutInterval: TimeInterval? = nil,
+        operation: String? = nil
     ) async throws -> T {
         do {
-            return try await request(path, method: method, body: body, authenticated: true, timeoutInterval: timeoutInterval)
+            return try await request(path, method: method, body: body, authenticated: true, timeoutInterval: timeoutInterval, operation: operation)
         } catch APIError.unauthorized {
             _ = try await authenticate()
-            return try await request(path, method: method, body: body, authenticated: true, timeoutInterval: timeoutInterval)
+            return try await request(path, method: method, body: body, authenticated: true, timeoutInterval: timeoutInterval, operation: operation)
         }
     }
 
@@ -184,7 +185,8 @@ actor APIClient {
         method: String = "GET",
         body: Data? = nil,
         authenticated: Bool,
-        timeoutInterval: TimeInterval? = nil
+        timeoutInterval: TimeInterval? = nil,
+        operation: String? = nil
     ) async throws -> T {
         guard let configuration else { throw APIError.notConfigured }
         guard let url = configuration.endpointURL(for: path) else {
@@ -192,7 +194,7 @@ actor APIClient {
         }
         var request = URLRequest(url: url)
         if let timeoutInterval { request.timeoutInterval = timeoutInterval }
-        let sendIdentity = try await SendRecoveryStore.shared.identity(server: configuration.baseURL, path: path, method: method, body: body)
+        let sendIdentity = try await SendRecoveryStore.shared.identity(server: configuration.baseURL, path: path, method: method, body: body, operation: operation)
         if let sendIdentity { request.setValue(sendIdentity.key, forHTTPHeaderField: "Idempotency-Key") }
         request.httpMethod = method
         request.httpBody = body

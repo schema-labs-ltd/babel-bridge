@@ -102,9 +102,10 @@ struct ConversationView: View {
     #endif
 
     var messages: [ChatMessage] {
-        if let selectedTopicID { return session.preferences.visible(session.topicPages[selectedTopicID]?.messages ?? []) }
-        // Messages still sending sit in the chat with a spinner, as in WhatsApp.
-        return PendingSend.merged(session.pendingMessages(for: contact.id), into: session.preferences.visible(session.messages[contact.id] ?? []))
+        let loaded = selectedTopicID.map { session.topicPages[$0]?.messages ?? [] } ?? (session.messages[contact.id] ?? [])
+        // Messages still sending sit in the chat with a spinner, as in WhatsApp, whatever the
+        // filter, so a failed one always keeps its resend button in view.
+        return PendingSend.merged(session.pendingMessages(for: contact.id), into: session.preferences.visible(loaded))
     }
     var activePhotoSend: PhotoSendProgress? {
         session.photoSendProgress.values
@@ -115,6 +116,7 @@ struct ConversationView: View {
     private var visibleMessages: [ChatMessage] {
         let query = messageSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         return messages.filter { message in
+            if session.pendingSends[message.id] != nil { return true }
             let starMatches = !starredOnly || session.preferences.isStarred(messageID: message.id, contactID: contact.id)
             let searchMatches = query.isEmpty
                 || message.displayText.localizedCaseInsensitiveContains(query)

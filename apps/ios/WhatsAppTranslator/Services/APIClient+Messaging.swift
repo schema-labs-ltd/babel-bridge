@@ -94,7 +94,9 @@ extension APIClient {
         return try await authorizedRequest("/api/feed?" + (components.percentEncodedQuery ?? ""))
     }
 
-    func send(contactID: String, text: String, reply: MessageReplyTarget? = nil, replyOnlyIfNotLatest: Bool = false) async throws -> SendMessageResponse {
+    /// `operation` names one message being sent, so its retries reuse its idempotency key and
+    /// another message with the same words gets its own.
+    func send(contactID: String, text: String, reply: MessageReplyTarget? = nil, replyOnlyIfNotLatest: Bool = false, operation: String? = nil) async throws -> SendMessageResponse {
         let payload = SendMessageRequest(
             replyOnlyIfNotLatest: replyOnlyIfNotLatest ? true : nil,
             contactId: contactID,
@@ -107,7 +109,8 @@ extension APIClient {
         return try await authorizedRequest(
             "/api/send",
             method: "POST",
-            body: JSONEncoder.backend.encode(payload)
+            body: JSONEncoder.backend.encode(payload),
+            operation: operation
         )
     }
 

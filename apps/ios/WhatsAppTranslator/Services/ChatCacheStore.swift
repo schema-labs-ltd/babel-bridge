@@ -10,6 +10,8 @@ struct ChatCacheSnapshot: Codable, Equatable, Sendable {
     /// The newest messages of the combined Messages feed, so it shows at launch before the
     /// server answers. Older cache files have none, and decode with `nil`.
     var feed: [ChatMessage]? = nil
+    /// Messages that hadn't reached the server when the app closed, offered again for resending.
+    var pendingSends: [PendingSend]? = nil
 
     static let maximumMessagesPerChat = 100
     static let maximumFeedMessages = 200
@@ -30,7 +32,8 @@ struct ChatCacheSnapshot: Codable, Equatable, Sendable {
             messages: nextMessages,
             updatedAt: now,
             pendingReadReceipts: pendingReadReceipts,
-            feed: feed
+            feed: feed,
+            pendingSends: pendingSends
         )
     }
 
