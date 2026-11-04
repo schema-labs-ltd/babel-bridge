@@ -86,3 +86,122 @@ struct MessageReactionPicker: View {
         dismiss()
     }
 }
+
+/// WhatsApp's Forward picker: choose up to five chats, then send.
+struct ForwardMessageSheet: View {
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    let messages: [ChatMessage]
+    @State private var search = ""
+    @State private var selected: [String] = []
+    @State private var sending = false
+    static let limit = 5
+
+    private var chats: [Contact] {
+        session.contacts
+            .filter { !$0.id.hasSuffix("@broadcast") && !$0.id.hasSuffix("@newsletter") }
+            .filter { search.isEmpty || session.displayName(for: $0).localizedCaseInsensitiveContains(search) }
+            .sorted { $0.lastMessageTime > $1.lastMessageTime }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(chats) { contact in
+                let isSelected = selected.contains(contact.id)
+                Button { toggle(contact.id) } label: {
+                    HStack(spacing: 12) {
+                        ContactAvatar(contact: contact, url: session.avatarURLs[contact.id], size: 36)
+                        Text(session.displayName(for: contact))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer()
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    }
+                }
+                .disabled(!isSelected && selected.count >= Self.limit)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+            .searchable(text: $search)
+            .navigationTitle("Forward to…")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if sending {
+                        ProgressView()
+                    } else {
+                        Button("Send") { send() }
+                            .disabled(selected.isEmpty)
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled(sending)
+    }
+
+    private func toggle(_ id: String) {
+        if let index = selected.firstIndex(of: id) {
+            selected.remove(at: index)
+        } else if selected.count < Self.limit {
+            selected.append(id)
+        }
+    }
+
+    private func send() {
+        sending = true
+        Task {
+            await session.forward(messages, to: selected)
+            sending = false
+            dismiss()
+        }
+    }
+}
+
+/// WhatsApp's Message info for a message you sent: when it went and how far it has got.
+struct MessageInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let message: ChatMessage
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(message.displayText)
+                        .lineLimit(8)
+                }
+                Section {
+                    stage("Read", reached: message.deliveryState == .read, state: .read)
+                    stage("Delivered", reached: [.delivered, .read].contains(message.deliveryState), state: .delivered)
+                    LabeledContent {
+                        Text(message.date.formatted(date: .abbreviated, time: .shortened))
+                    } label: {
+                        Label { Text("Sent") } icon: { MessageDeliveryIndicator(state: .sent) }
+                    }
+                }
+            }
+            .navigationTitle("Message info")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func stage(_ title: String, reached: Bool, state: MessageDeliveryState) -> some View {
+        LabeledContent {
+            Text(reached ? "Yes" : "Not yet")
+                .foregroundStyle(.secondary)
+        } label: {
+            Label { Text(title) } icon: { MessageDeliveryIndicator(state: state) }
+        }
+    }
+}

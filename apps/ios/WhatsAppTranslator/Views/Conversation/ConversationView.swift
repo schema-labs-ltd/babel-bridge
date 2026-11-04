@@ -102,8 +102,8 @@ struct ConversationView: View {
     #endif
 
     var messages: [ChatMessage] {
-        if let selectedTopicID { return session.topicPages[selectedTopicID]?.messages ?? [] }
-        return session.messages[contact.id] ?? []
+        if let selectedTopicID { return session.preferences.visible(session.topicPages[selectedTopicID]?.messages ?? []) }
+        return session.preferences.visible(session.messages[contact.id] ?? [])
     }
     var activePhotoSend: PhotoSendProgress? {
         session.photoSendProgress.values

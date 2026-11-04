@@ -214,3 +214,74 @@ extension AppSession {
         return try! JSONDecoder().decode(ChatMessage.self, from: JSONSerialization.data(withJSONObject: json))
     }
 }
+
+extension AppSession {
+    /// Whether WhatsApp's Forward can resend this message from here: text, photos, videos and files.
+    nonisolated static func canForward(_ message: ChatMessage) -> Bool {
+        guard !message.isReaction else { return false }
+        switch message.mediaKind {
+        case .image, .video, .document: return true
+        case .audio, .sticker: return false
+        case nil:
+            return ["text", "conversation", "extendedtextmessage"].contains(message.normalizedContentType)
+                && !message.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    /// Sends the messages to each chosen chat in their original order, as WhatsApp's Forward
+    /// does; several photos go as one album. Returns how many chats received all of them.
+    @discardableResult
+    func forward(_ originals: [ChatMessage], to contactIDs: [String]) async -> Int {
+        let items = originals.filter(Self.canForward).sorted { $0.timestamp < $1.timestamp }
+        guard !items.isEmpty else { return 0 }
+        var media: [String: (data: Data, mimeType: String)] = [:]
+        for message in items where message.mediaKind != nil {
+            do {
+                if demoMode, let base64 = message.content?.mediaData, let data = Data(base64Encoded: base64) {
+                    media[message.id] = (data, message.content?.mimeType ?? "application/octet-stream")
+                    continue
+                }
+                let response = try await api.media(messageID: message.id)
+                guard let data = Data(base64Encoded: response.mediaData) else {
+                    throw APIError.decoding("The media payload was invalid.")
+                }
+                media[message.id] = (data, response.mimeType)
+            } catch {
+                presentError("Couldn’t forward", error)
+                return 0
+            }
+        }
+        var delivered = 0
+        for contactID in contactIDs {
+            var sentAll = true
+            if items.count > 1, items.allSatisfy({ $0.mediaKind == .image }) {
+                let images = items.compactMap { media[$0.id].map { OutgoingImage(data: $0.data, mimeType: $0.mimeType) } }
+                let caption = items.lazy.compactMap { $0.content?.caption?.nilIfBlank }.first
+                sentAll = await sendImages(images, caption: caption, to: contactID)
+            } else {
+                for message in items where sentAll {
+                    let caption = message.content?.caption?.nilIfBlank
+                    switch message.mediaKind {
+                    case .image:
+                        guard let file = media[message.id] else { sentAll = false; break }
+                        sentAll = await sendImage(data: file.data, mimeType: file.mimeType, caption: caption, to: contactID)
+                    case .video, .document:
+                        guard let file = media[message.id] else { sentAll = false; break }
+                        let isVideo = message.mediaKind == .video
+                        let attachment = OutgoingAttachment(
+                            data: file.data,
+                            mimeType: file.mimeType,
+                            fileName: isVideo ? "video.mp4" : (message.content?.fileName?.nilIfBlank ?? "Document"),
+                            kind: isVideo ? "video" : "document"
+                        )
+                        sentAll = await sendAttachment(attachment, caption: caption, to: contactID, reply: nil)
+                    default:
+                        sentAll = await send(text: message.displayText, to: contactID)
+                    }
+                }
+            }
+            if sentAll { delivered += 1 }
+        }
+        return delivered
+    }
+}

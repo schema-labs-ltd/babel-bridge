@@ -350,4 +350,28 @@ extension WhatsAppTranslatorTests {
         )
         XCTAssertEqual(revoked.displayText, "This message was deleted")
     }
+
+    func testForwardCoversTextPhotosVideosAndFilesOnly() throws {
+        let text = try decodeMessage(id: "t", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
+        let photo = try decodeMessage(id: "p", contentType: "image", content: #"{"type":"image","mime_type":"image/jpeg"}"#)
+        let voice = try decodeMessage(id: "v", contentType: "audio", content: #"{"type":"audio","is_voice_note":true}"#)
+        let deleted = try decodeMessage(id: "d", contentType: "revoked", content: #"{"type":"revoked"}"#)
+        XCTAssertTrue(AppSession.canForward(text))
+        XCTAssertTrue(AppSession.canForward(photo))
+        XCTAssertFalse(AppSession.canForward(voice))
+        XCTAssertFalse(AppSession.canForward(deleted))
+    }
+
+    func testDeleteForMeHidesMessagesOnThisDeviceOnly() throws {
+        let suite = "delete-for-me-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"One"}"#)
+        let second = try decodeMessage(id: "b", contentType: "text", content: #"{"type":"text","body":"Two"}"#)
+        let preferences = AppPreferencesStore(defaults: defaults)
+        XCTAssertEqual(preferences.visible([first, second]).map(\.id), ["a", "b"])
+        preferences.hide(messageIDs: ["a"])
+        XCTAssertEqual(preferences.visible([first, second]).map(\.id), ["b"])
+        XCTAssertEqual(AppPreferencesStore(defaults: defaults).visible([first, second]).map(\.id), ["b"])
+    }
 }
