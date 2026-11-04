@@ -214,7 +214,8 @@ struct ChatListView: View {
                     avatarURL: session.avatarURLs[contact.id],
                     isMuted: session.preferences.isMuted(contact.id),
                     isMarkedUnread: session.preferences.isMarkedUnread(contact.id),
-                    latestMessage: session.messages[contact.id]?.last { !$0.isReaction }
+                    latestMessage: session.messages[contact.id]?.last { !$0.isReaction },
+                    typingLabel: session.typingLabel(for: contact)
                 )
                 .tag(Optional(contact.id))
                 .accessibilityAddTraits(.isButton)

@@ -101,6 +101,10 @@ type Client struct {
 	closed        bool
 	connectedNote chan struct{}
 	lossNote      chan connectionLoss
+	// Whether the server last asked for the account to show as online. presenceMu also
+	// serialises every presence send, so a resend can't land after a later change.
+	presenceMu    sync.Mutex
+	wantsPresence bool
 }
 
 // stderrLogger creates a logger that writes to stderr (not stdout)

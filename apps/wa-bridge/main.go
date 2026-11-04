@@ -252,6 +252,11 @@ func handleCommand(ctx context.Context, client *Client, cmd Command, cancel cont
 		}
 		SendEvent(result)
 
+	case "set_presence":
+		if err := client.SetPresence(ctx, cmd.Available); err != nil {
+			SendEvent(NewLogEvent("warn", fmt.Sprintf("set_presence failed: %v", err)))
+		}
+
 	default:
 		SendEvent(NewLogEvent("warn", fmt.Sprintf("Unknown command type: %s", cmd.Type)))
 	}

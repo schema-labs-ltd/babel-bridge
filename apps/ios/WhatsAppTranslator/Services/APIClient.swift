@@ -8,6 +8,8 @@ actor APIClient {
     var receiveTask: Task<Void, Never>?
     var liveGeneration = UUID()
     var lastLiveMessage = Date()
+    /// Whether the app is in front of the user, which the live socket reports to the server.
+    var liveForeground = true
 
     init(session: URLSession = .shared) {
         self.session = session

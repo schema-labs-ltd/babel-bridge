@@ -159,6 +159,7 @@ func TestBridgeReadsServerCommandFixtures(t *testing.T) {
 		"send_reaction":       {Type: "send_reaction", RequestID: 8, To: "120363000000000001@g.us", MessageID: "3EB0IMAGE", SenderJID: "447700900001@s.whatsapp.net", Emoji: "👍"},
 		"mark_read":           {Type: "mark_read", To: "120363000000000001@g.us", MessageID: "3EB0IMAGE", Timestamp: 1767225700, SenderJID: "447700900001@s.whatsapp.net"},
 		"get_profile_picture": {Type: "get_profile_picture", RequestID: 7, To: "447700900001@s.whatsapp.net"},
+		"set_presence":        {Type: "set_presence", Available: true},
 		"disconnect":          {Type: "disconnect"},
 		"logout":              {Type: "logout"},
 	}

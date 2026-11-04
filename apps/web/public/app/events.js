@@ -228,6 +228,7 @@ export const eventsMethods = {
 
     // Handle visibility change (for reconnecting on mobile)
     document.addEventListener('visibilitychange', () => {
+      this.sendPresence();
       void this.refreshAfterBecomingVisible();
     });
     window.addEventListener('online', () => this.connectWebSocket());
