@@ -235,6 +235,11 @@ extension AppSession {
     func forward(_ originals: [ChatMessage], to contactIDs: [String]) async -> Int {
         let items = originals.filter(Self.canForward).sorted { $0.timestamp < $1.timestamp }
         guard !items.isEmpty else { return 0 }
+        // Every file is held in memory until each chat has it, so keep a forward to album size.
+        guard items.count <= 30 else {
+            presentError("Couldn’t forward", "Forward up to 30 messages at a time.")
+            return 0
+        }
         let epoch = topicAccountEpoch
         var current: Bool { topicAccountEpoch == epoch && !Task.isCancelled }
         var media: [String: (data: Data, mimeType: String)] = [:]

@@ -314,7 +314,7 @@ extension MessageBubble {
         }
         Divider()
         // An unconfirmed send gets a new ID once confirmed, which would bring it back.
-        if ![.sending, .uncertain].contains(message.deliveryState) {
+        if !actionTargets.contains(where: { [.sending, .uncertain].contains($0.deliveryState) }) {
             Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
         }
     }
