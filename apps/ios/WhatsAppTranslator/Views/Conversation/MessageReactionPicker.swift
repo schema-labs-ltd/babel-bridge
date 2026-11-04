@@ -119,7 +119,7 @@ struct ForwardMessageSheet: View {
                             .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                     }
                 }
-                .disabled(!isSelected && selected.count >= Self.limit)
+                .disabled(sending || (!isSelected && selected.count >= Self.limit))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
             .searchable(text: $search)

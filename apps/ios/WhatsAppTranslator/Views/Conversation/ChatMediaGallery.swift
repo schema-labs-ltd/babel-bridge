@@ -49,8 +49,10 @@ final class ChatMediaGalleryModel {
         return message.editRevision >= previous.editRevision
     }
 
-    func load(using fetch: (ChatMessage?) async throws -> MessagesResponse) async {
-        guard !isLoading, hasMore else { return }
+    /// Loads the next page; false when nothing was loaded, such as a cancelled request.
+    @discardableResult
+    func load(using fetch: (ChatMessage?) async throws -> MessagesResponse) async -> Bool {
+        guard !isLoading, hasMore else { return false }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -64,10 +66,12 @@ final class ChatMediaGalleryModel {
             cursor = page.first ?? cursor
             hasMore = response.hasMore && !page.isEmpty
             hasLoaded = true
+            return true
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = "Couldn’t load the gallery. Please try again." }
         }
+        return false
     }
 }
 
@@ -193,8 +197,9 @@ struct ChatMediaGallery: View {
         let shown = model.messages.count
         repeat {
             guard !model.isLoading, model.hasMore, !Task.isCancelled else { return }
-            await model.load { cursor in try await session.galleryPage(contactID: contact.id, before: cursor) }
-        } while model.error == nil && model.messages.count == shown
+            // A cancelled or failed page stops here rather than being asked for again.
+            guard await model.load(using: { cursor in try await session.galleryPage(contactID: contact.id, before: cursor) }) else { return }
+        } while model.messages.count == shown
     }
 }
 

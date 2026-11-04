@@ -313,7 +313,10 @@ extension MessageBubble {
             }
         }
         Divider()
-        Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+        // An unconfirmed send gets a new ID once confirmed, which would bring it back.
+        if ![.sending, .uncertain].contains(message.deliveryState) {
+            Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+        }
     }
 
     /// The messages Forward and Delete act on: every photo of an album, as in WhatsApp.
