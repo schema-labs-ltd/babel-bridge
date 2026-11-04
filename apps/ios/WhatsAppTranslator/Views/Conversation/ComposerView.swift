@@ -17,6 +17,7 @@ struct ComposerView: View {
     let sendImages: ([OutgoingImage], String?) -> Bool
     let send: () -> Void
     @State private var showVoiceComposer = false
+    @State private var showStickers = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingPhotos: PendingPhotoSelection?
     @State private var photoLibraryPresented = false
@@ -129,6 +130,10 @@ struct ComposerView: View {
         } onFailure: {
             pickerError = "The photo couldn’t be captured. Please try again."
         }
+        .sheet(isPresented: $showStickers) {
+            StickerPickerSheet(contactID: contactID, reply: reply, onSent: cancelReply)
+                .modifier(ReadReceiptCover())
+        }
         .sheet(isPresented: $showVoiceComposer) {
             VoiceComposerView(contactID: contactID, reply: reply, onSent: cancelReply)
         }
@@ -174,7 +179,23 @@ struct ComposerView: View {
             focused = false
             imagePaste.begin(providers, reply: reply, send: sendImages)
         }
+        // Room for the sticker button, which sits inside the field as in WhatsApp.
+        .padding(.trailing, 28)
         .modifier(ComposerInputStyle())
+        .overlay(alignment: .trailing) {
+            Button { showStickers = true } label: {
+                Image(systemName: "face.smiling")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 6)
+            .disabled(isSending)
+            .accessibilityLabel("Stickers")
+            .help("Stickers")
+        }
     }
 
     @ViewBuilder

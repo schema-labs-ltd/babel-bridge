@@ -339,3 +339,86 @@ private struct CameraCaptureView: UIViewControllerRepresentable {
     }
 }
 #endif
+
+/// WhatsApp's sticker tray: the stickers sent and received in your chats, newest first.
+struct StickerPickerSheet: View {
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    let contactID: String
+    let reply: MessageReplyTarget?
+    let onSent: () -> Void
+    @State private var sendingID: String?
+
+    var body: some View {
+        let stickers = session.recentStickers()
+        NavigationStack {
+            Group {
+                if stickers.isEmpty {
+                    ContentUnavailableView(
+                        "No stickers yet",
+                        systemImage: "face.smiling",
+                        description: Text("Stickers sent or received in your chats appear here.")
+                    )
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 12)], spacing: 12) {
+                            ForEach(stickers) { sticker in
+                                Button { send(sticker) } label: { thumbnail(sticker) }
+                                    .buttonStyle(.plain)
+                                    .disabled(sendingID != nil)
+                                    .accessibilityLabel("Send sticker")
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle("Stickers")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(sendingID != nil)
+                }
+            }
+        }
+        .interactiveDismissDisabled(sendingID != nil)
+        .task { await session.prepareStickerTray() }
+    }
+
+    private func thumbnail(_ sticker: ChatMessage) -> some View {
+        ZStack {
+            if let image = session.messageImages[sticker.id] {
+                Image(platformImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .opacity(sendingID == sticker.id ? 0.4 : 1)
+            } else if session.mediaErrorIDs.contains(sticker.id) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+            }
+            if sendingID == sticker.id { ProgressView() }
+        }
+        .frame(width: 76, height: 76)
+        .contentShape(Rectangle())
+        .task {
+            await session.loadMedia(for: sticker)
+            await session.fingerprintSticker(sticker)
+        }
+    }
+
+    private func send(_ sticker: ChatMessage) {
+        sendingID = sticker.id
+        Task {
+            let sent = await session.sendSticker(sticker, to: contactID, reply: reply)
+            sendingID = nil
+            if sent {
+                onSent()
+                dismiss()
+            }
+        }
+    }
+}

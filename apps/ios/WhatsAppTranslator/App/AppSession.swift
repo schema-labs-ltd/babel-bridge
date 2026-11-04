@@ -77,6 +77,8 @@ final class AppSession {
     var rememberedImageSizes: [String: CGSize] = [:]
     var mediaLoadingIDs: Set<String> = []
     var mediaErrorIDs: Set<String> = []
+    /// SHA-256 of each loaded sticker's file, so the tray lists a sticker sent many times once.
+    var stickerDigests: [String: String] = [:]
     var loadingCompleteHistoryContactIDs: Set<String> = []
     var linkPreviews: [URL: LinkPreview] = [:]
 

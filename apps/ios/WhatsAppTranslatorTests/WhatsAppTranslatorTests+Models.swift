@@ -363,4 +363,10 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(preferences.visible([first, second]).map(\.id), ["b"])
         XCTAssertEqual(AppPreferencesStore(defaults: defaults).visible([first, second]).map(\.id), ["b"])
     }
+
+    func testOnlyWebPFilesSendAsStickers() {
+        XCTAssertTrue(AppSession.isWebP(Data("RIFF\0\0\0\0WEBPVP8 ".utf8)))
+        XCTAssertFalse(AppSession.isWebP(Data("GIF89a-not-a-webp".utf8)))
+        XCTAssertFalse(AppSession.isWebP(Data("RIFF".utf8)))
+    }
 }

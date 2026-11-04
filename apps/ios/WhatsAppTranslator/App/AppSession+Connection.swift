@@ -145,6 +145,7 @@ extension AppSession {
         galleryDemoMessages = []
         mediaLoadingIDs = []
         mediaErrorIDs = []
+        stickerDigests = [:]
         linkPreviews = [:]
         messages = [:]
         reactionEvents = [:]
