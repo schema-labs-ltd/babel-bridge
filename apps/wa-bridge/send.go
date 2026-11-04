@@ -456,6 +456,11 @@ func (c *Client) SendMediaMessage(ctx context.Context, cmd Command) (string, int
 		if cmd.FileName == "" || strings.ContainsAny(cmd.FileName, "/\\\r\n") {
 			return "", 0, fmt.Errorf("invalid file name")
 		}
+	case "sticker":
+		if !isWebP(data) || len(data) > 1024*1024 {
+			return "", 0, fmt.Errorf("invalid WebP sticker")
+		}
+		mediaType = whatsmeow.MediaImage
 	default:
 		return "", 0, fmt.Errorf("unsupported attachment type")
 	}
@@ -463,7 +468,7 @@ func (c *Client) SendMediaMessage(ctx context.Context, cmd Command) (string, int
 	if err != nil {
 		return "", 0, fmt.Errorf("attachment upload failed: %w", err)
 	}
-	msg := buildMediaMessage(cmd, jid, uploaded)
+	msg := buildMediaMessage(cmd, jid, uploaded, data)
 	resp, err := c.client.SendMessage(ctx, jid, msg)
 	if err != nil {
 		return "", 0, fmt.Errorf("attachment send failed: %w", err)
@@ -471,8 +476,16 @@ func (c *Client) SendMediaMessage(ctx context.Context, cmd Command) (string, int
 	return resp.ID, resp.Timestamp.Unix(), nil
 }
 
-func buildMediaMessage(cmd Command, jid types.JID, uploaded whatsmeow.UploadResponse) *waE2E.Message {
+func buildMediaMessage(cmd Command, jid types.JID, uploaded whatsmeow.UploadResponse, data []byte) *waE2E.Message {
 	context := buildReplyContext(jid, cmd.ReplyTo, cmd.ReplyToSender, cmd.ReplyToText)
+	if cmd.MediaKind == "sticker" {
+		return &waE2E.Message{StickerMessage: &waE2E.StickerMessage{
+			Mimetype: proto.String("image/webp"), IsAnimated: proto.Bool(isAnimatedWebP(data)),
+			URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey,
+			FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256,
+			FileLength: &uploaded.FileLength, ContextInfo: context,
+		}}
+	}
 	if cmd.MediaKind == "video" {
 		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
 			Mimetype: proto.String(cmd.MimeType), Caption: proto.String(cmd.Caption),
@@ -487,4 +500,14 @@ func buildMediaMessage(cmd Command, jid types.JID, uploaded whatsmeow.UploadResp
 		FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256,
 		FileLength: &uploaded.FileLength, ContextInfo: context,
 	}}
+}
+
+// isWebP reports whether data is a RIFF WebP file, the format WhatsApp stickers use.
+func isWebP(data []byte) bool {
+	return len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP"
+}
+
+// isAnimatedWebP reports whether a WebP file has the animation flag in its VP8X header.
+func isAnimatedWebP(data []byte) bool {
+	return isWebP(data) && len(data) >= 21 && string(data[12:16]) == "VP8X" && data[20]&0x02 != 0
 }

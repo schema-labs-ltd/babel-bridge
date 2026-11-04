@@ -1,5 +1,7 @@
 use super::*;
 
+const MAX_STICKER_BYTES: usize = 1024 * 1024;
+
 pub(in crate::web) async fn translate_caption(
     state: &AppState,
     contact_id: &str,
@@ -56,7 +58,7 @@ pub(in crate::web) fn validate_attachment_payload(
     if kind == "image" {
         return validate_image_payload(data, mime);
     }
-    if !matches!(kind, "video" | "document") {
+    if !matches!(kind, "video" | "document" | "sticker") {
         return Err("Unsupported attachment type".into());
     }
     let mime = mime.trim().to_ascii_lowercase();
@@ -70,6 +72,9 @@ pub(in crate::web) fn validate_attachment_payload(
     }
     if kind == "video" && mime != "video/mp4" {
         return Err("Choose an MP4 video".into());
+    }
+    if kind == "sticker" && mime != "image/webp" {
+        return Err("A sticker must be a WebP image".into());
     }
     if kind == "document"
         && !filename.is_some_and(|name| {
@@ -93,6 +98,17 @@ pub(in crate::web) fn validate_attachment_payload(
     }
     if kind == "video" && decoded.get(4..8) != Some(b"ftyp".as_slice()) {
         return Err("The video is not an MP4 file".into());
+    }
+    if kind == "sticker" {
+        if decoded.get(0..4) != Some(b"RIFF".as_slice())
+            || decoded.get(8..12) != Some(b"WEBP".as_slice())
+        {
+            return Err("The sticker is not a WebP image".into());
+        }
+        // WhatsApp's own limit for animated stickers; still ones are far smaller.
+        if decoded.len() > MAX_STICKER_BYTES {
+            return Err("Stickers must be smaller than 1 MB".into());
+        }
     }
     Ok(ValidatedImagePayload {
         mime_type: mime,

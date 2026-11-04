@@ -4,6 +4,50 @@ import OSLog
 import UniformTypeIdentifiers
 
 extension AppSession {
+    /// The sticker tray, as in WhatsApp: stickers sent and received in the loaded chats and feed,
+    /// newest first, each sticker once.
+    func recentStickers(limit: Int = 60) -> [ChatMessage] {
+        let all = (messages.values.flatMap { $0 } + Array(feedByID.values))
+            .filter { $0.mediaKind == .sticker && !$0.isReaction }
+            .sorted { $0.timestamp > $1.timestamp }
+        var seen = Set<String>()
+        var result: [ChatMessage] = []
+        for sticker in all where result.count < limit {
+            // The same sticker sent again is a new message with the same file.
+            let content = sticker.content
+            let key = content?.fileSize.map { "\($0)-\(content?.width ?? 0)x\(content?.height ?? 0)-\(content?.isAnimated == true)" } ?? sticker.id
+            if seen.insert(key).inserted { result.append(sticker) }
+        }
+        return result
+    }
+
+    /// Sends a sticker from the tray again, here.
+    func sendSticker(_ sticker: ChatMessage, to contactID: String, reply: MessageReplyTarget?) async -> Bool {
+        var data: Data?
+        if let url = try? await mediaCache.cachedURL(for: sticker.id) { data = try? Data(contentsOf: url) }
+        if data == nil, let base64 = sticker.content?.mediaData { data = Data(base64Encoded: base64) }
+        if data == nil, !demoMode {
+            do {
+                let response = try await api.media(messageID: sticker.id)
+                data = Data(base64Encoded: response.mediaData)
+            } catch {
+                presentError("Couldn’t send sticker", error)
+                return false
+            }
+        }
+        guard let data, Self.isWebP(data) else {
+            presentError("Couldn’t send sticker", "This sticker isn’t in a format WhatsApp accepts.")
+            return false
+        }
+        let attachment = OutgoingAttachment(data: data, mimeType: "image/webp", fileName: "sticker.webp", kind: "sticker")
+        return await sendAttachment(attachment, caption: nil, to: contactID, reply: reply)
+    }
+
+    /// WhatsApp stickers are WebP files.
+    nonisolated static func isWebP(_ data: Data) -> Bool {
+        data.count >= 12 && data.prefix(4) == Data("RIFF".utf8) && data.dropFirst(8).prefix(4) == Data("WEBP".utf8)
+    }
+
     func loadMedia(for message: ChatMessage) async {
         guard message.mediaKind != nil,
               messageImages[message.id] == nil,

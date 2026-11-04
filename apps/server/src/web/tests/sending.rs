@@ -480,3 +480,16 @@ fn attachment_validation_rejects_invalid_kind_video_and_filename() {
         validate_attachment_payload(&data, "bad\nvalue", "document", Some("Note.txt")).is_err()
     );
 }
+
+#[test]
+fn attachment_validation_accepts_only_webp_stickers() {
+    let webp = BASE64_STANDARD.encode(b"RIFF\0\0\0\0WEBPVP8 \0\0\0\0");
+    let gif = BASE64_STANDARD.encode(b"GIF89a-not-a-webp-file");
+    assert!(validate_attachment_payload(&webp, "image/webp", "sticker", None).is_ok());
+    assert!(validate_attachment_payload(&webp, "image/png", "sticker", None).is_err());
+    assert!(validate_attachment_payload(&gif, "image/webp", "sticker", None).is_err());
+    let mut large = b"RIFF\0\0\0\0WEBP".to_vec();
+    large.resize(1024 * 1024 + 1, 0);
+    let large = BASE64_STANDARD.encode(large);
+    assert!(validate_attachment_payload(&large, "image/webp", "sticker", None).is_err());
+}
