@@ -19,8 +19,13 @@ pub(in crate::web) async fn send_image(
     let content_type = match kind {
         "video" => "Video",
         "document" => "Document",
+        "sticker" => "Sticker",
         _ => "Image",
     };
+    // WhatsApp stickers have no caption.
+    if kind == "sticker" {
+        req.caption = None;
+    }
     let validated_image = match validate_attachment_payload(
         &req.media_data,
         &req.mime_type,

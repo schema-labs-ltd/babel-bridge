@@ -1,9 +1,105 @@
+import CryptoKit
 import Foundation
 import Observation
 import OSLog
 import UniformTypeIdentifiers
 
 extension AppSession {
+    /// The sticker tray, as in WhatsApp: stickers sent and received in the loaded chats and feed,
+    /// newest first, each sticker once.
+    func recentStickers(limit: Int = 60) -> [ChatMessage] {
+        var seen = Set<String>()
+        var result: [ChatMessage] = []
+        // Only stickers whose file can be had: from the server, inline, or already on this device.
+        for sticker in stickerCandidates() where result.count < limit && stickerIsAvailable(sticker) {
+            // The same sticker sent again is a new message with the same file.
+            if seen.insert(stickerDigests[sticker.id] ?? sticker.id).inserted { result.append(sticker) }
+        }
+        return result
+    }
+
+    /// A sticker whose last load failed is left out until a later tray opening loads it again,
+    /// so a passing network error doesn't hide it for good.
+    private func stickerIsAvailable(_ sticker: ChatMessage) -> Bool {
+        guard !mediaErrorIDs.contains(sticker.id) else { return false }
+        return sticker.content?.hasMedia == true || sticker.content?.mediaData != nil
+            || messageImages[sticker.id] != nil || stickerDigests[sticker.id] != nil
+    }
+
+    /// Loads the tray's stickers and fingerprints their files, so repeats collapse into one.
+    func prepareStickerTray() async {
+        for sticker in stickerCandidates() where stickerDigests[sticker.id] == nil {
+            await loadMedia(for: sticker)
+            await fingerprintSticker(sticker)
+        }
+    }
+
+    /// Records a sticker's file digest once its file is on this device. Whichever of the tray
+    /// and a thumbnail downloads the file records it, so a shared download is never missed.
+    func fingerprintSticker(_ sticker: ChatMessage) async {
+        let epoch = topicAccountEpoch
+        guard stickerDigests[sticker.id] == nil,
+              let url = try? await mediaCache.cachedURL(for: sticker.id) else { return }
+        // Read and hash off the main actor; the tray fingerprints up to 150 files.
+        let digest = await Task.detached(priority: .utility) { () -> String? in
+            guard let data = try? Data(contentsOf: url), !data.isEmpty else { return nil }
+            return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        }.value
+        guard let digest, topicAccountEpoch == epoch else { return }
+        stickerDigests[sticker.id] = digest
+    }
+
+    /// Recent WebP stickers that can be sent again; animated Lottie ones can't. Failed loads are
+    /// kept here, so preparing the tray tries them again.
+    private func stickerCandidates(limit: Int = 150) -> [ChatMessage] {
+        let all = (messages.values.flatMap { $0 } + Array(feedByID.values)).filter {
+            $0.mediaKind == .sticker && !$0.isReaction
+                && ($0.content?.mimeType.map { $0.lowercased() == "image/webp" } ?? true)
+        }
+        var ids = Set<String>()
+        return Array(all.sorted { $0.timestamp > $1.timestamp }.filter { ids.insert($0.id).inserted }.prefix(limit))
+    }
+
+    /// Sends a sticker from the tray again, here.
+    func sendSticker(_ sticker: ChatMessage, to contactID: String, reply: MessageReplyTarget?) async -> Bool {
+        guard !sendingContactIDs.contains(contactID) else {
+            presentError("Couldn’t send sticker", "Wait for the message that’s sending to finish, then try again.")
+            return false
+        }
+        // A server change while the file loads must not send it through the new account.
+        let epoch = topicAccountEpoch
+        var current: Bool { topicAccountEpoch == epoch && phase == .ready && !Task.isCancelled }
+        var loaded: Data?
+        if let url = try? await mediaCache.cachedURL(for: sticker.id) { loaded = try? Data(contentsOf: url) }
+        if loaded == nil, let base64 = sticker.content?.mediaData { loaded = Data(base64Encoded: base64) }
+        if loaded == nil, !demoMode {
+            do {
+                let response = try await api.media(messageID: sticker.id)
+                loaded = Data(base64Encoded: response.mediaData)
+            } catch {
+                if current { presentError("Couldn’t send sticker", error) }
+                return false
+            }
+        }
+        guard current else { return false }
+        guard let data = loaded, Self.isWebP(data) else {
+            presentError("Couldn’t send sticker", "This sticker isn’t in a format WhatsApp accepts.")
+            return false
+        }
+        // Another window may have started sending here while the file loaded.
+        guard !sendingContactIDs.contains(contactID) else {
+            presentError("Couldn’t send sticker", "Wait for the message that’s sending to finish, then try again.")
+            return false
+        }
+        let attachment = OutgoingAttachment(data: data, mimeType: "image/webp", fileName: "sticker.webp", kind: "sticker")
+        return await sendAttachment(attachment, caption: nil, to: contactID, reply: reply)
+    }
+
+    /// WhatsApp stickers are WebP files.
+    nonisolated static func isWebP(_ data: Data) -> Bool {
+        data.count >= 12 && data.prefix(4) == Data("RIFF".utf8) && data.dropFirst(8).prefix(4) == Data("WEBP".utf8)
+    }
+
     func loadMedia(for message: ChatMessage) async {
         guard message.mediaKind != nil,
               messageImages[message.id] == nil,
