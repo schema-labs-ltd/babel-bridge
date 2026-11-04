@@ -234,7 +234,8 @@ extension AppSession {
         restoreCachedFeed(snapshot.feed)
         // Whatever was sending when the app closed waits for a tap on its resend button; its
         // retry reuses its idempotency key, so one that did go out isn't sent twice.
-        for var send in snapshot.pendingSends ?? [] where pendingSends[send.id] == nil {
+        // One the server had already accepted is left for the chat's next load to show.
+        for var send in snapshot.pendingSends ?? [] where pendingSends[send.id] == nil && !send.confirmed {
             send.failure = send.failure ?? "Not sent before Babel Bridge closed."
             pendingSends[send.id] = send
         }

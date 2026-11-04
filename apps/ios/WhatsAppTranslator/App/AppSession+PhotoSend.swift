@@ -205,6 +205,9 @@ struct PendingSend: Codable, Equatable, Sendable {
     /// even when they say the same, as a second "ok" does.
     var earlierIDs: Set<String> = []
     var failure: String?
+    /// Set once the server accepted it, so a copy restored after a relaunch is never resent
+    /// under a new idempotency key.
+    var confirmed = false
 
     var failed: Bool { failure != nil }
 
@@ -296,6 +299,8 @@ extension AppSession {
 
     func retrySend(_ id: String) {
         guard pendingSends[id]?.failed == true else { return }
+        // The server may already have it, for one restored after the app closed mid-send.
+        if settle(id) { persistCacheSoon(); return }
         pendingSends[id]?.failure = nil
         deliver(id)
         persistCacheSoon()
@@ -333,13 +338,18 @@ extension AppSession {
     /// next loads. Returns whether a copy was found.
     private func settle(_ id: String) -> Bool {
         guard let send = pendingSends[id], let copy = send.copy(in: loadedMessages(in: [send.contactID])) else { return false }
+        resolve(id, with: copy)
+        return true
+    }
+
+    /// Replaces a pending send with its server copy. That copy belongs to this send alone,
+    /// never to another one with the same words.
+    private func resolve(_ id: String, with copy: ChatMessage) {
+        guard let send = pendingSends.removeValue(forKey: id) else { return }
         place(copy)
-        pendingSends[id] = nil
-        // That copy belongs to this send alone, never to a later one with the same words.
         for (otherID, other) in pendingSends where other.contactID == send.contactID {
             pendingSends[otherID]?.earlierIDs.insert(copy.id)
         }
-        return true
     }
 
     /// Puts a sent message in the Messages feed, kept through a feed load already under way
@@ -369,6 +379,9 @@ extension AppSession {
                 await loadMessages(for: contactID, quietly: true)
                 _ = settle(id)
             case .sent(let response):
+                // Saved before anything else, as the idempotency key is already gone.
+                pendingSends[id]?.confirmed = true
+                await persistCache()
                 await loadMessages(for: contactID)
                 if !settle(id), let send = pendingSends[id] {
                     // The chat didn't reload: show the message as the server confirmed it, so it
@@ -378,9 +391,10 @@ extension AppSession {
                         if messages[contactID]?.contains(where: { $0.id == confirmed.id }) != true {
                             messages[contactID, default: []].append(confirmed)
                         }
-                        place(confirmed)
+                        resolve(id, with: confirmed)
+                    } else {
+                        pendingSends[id] = nil
                     }
-                    pendingSends[id] = nil
                 }
                 Task { await loadFeed(); await refresh() }
             }
