@@ -252,9 +252,14 @@ extension AppSession {
         var reached = Set(contactIDs)
         // An album needs every photo at once (at most 30, within 64 MB).
         if Self.forwardsAsAlbum(items, sizes: items.map { _ in 0 }) {
+            // Stop loading once the photos can't fit, so the fallback below needn't start
+            // with every file in memory; it loads the rest one at a time.
+            var total = 0
             for message in items {
                 guard let loaded = await file(for: message) else { return 0 }
                 media[message.id] = loaded
+                total += loaded.data.count
+                if loaded.data.count > 16 * 1_024 * 1_024 || total > 64 * 1_024 * 1_024 { break }
             }
             if Self.forwardsAsAlbum(items, sizes: items.compactMap { media[$0.id]?.data.count }) {
                 let images = items.compactMap { media[$0.id].map { OutgoingImage(data: $0.data, mimeType: $0.mimeType) } }

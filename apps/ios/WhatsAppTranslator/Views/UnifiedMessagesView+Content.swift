@@ -137,7 +137,8 @@ extension UnifiedMessagesView {
             if let selectedTopicID { await session.loadTopicMessages(selectedTopicID) }
         }
         .onChange(of: selectedTopicID) { _, _ in cancelReply() }
-        .onChange(of: session.preferences.hiddenMessageIDs) { _, hidden in
+        // Initial too: a reply chosen here may have been deleted from Chats while this was away.
+        .onChange(of: session.preferences.hiddenMessageIDs, initial: true) { _, hidden in
             if let id = replyDraft.selected?.id, hidden.contains(id) { cancelReply() }
         }
         .onChange(of: session.topicCatalog.topics) { _, topics in
