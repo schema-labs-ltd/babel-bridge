@@ -34,9 +34,11 @@ extension AppSession {
     /// Records a sticker's file digest once its file is on this device. Whichever of the tray
     /// and a thumbnail downloads the file records it, so a shared download is never missed.
     func fingerprintSticker(_ sticker: ChatMessage) async {
+        let epoch = topicAccountEpoch
         guard stickerDigests[sticker.id] == nil,
               let url = try? await mediaCache.cachedURL(for: sticker.id),
-              let data = try? Data(contentsOf: url), !data.isEmpty else { return }
+              let data = try? Data(contentsOf: url), !data.isEmpty,
+              topicAccountEpoch == epoch else { return }
         stickerDigests[sticker.id] = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
@@ -56,6 +58,9 @@ extension AppSession {
             presentError("Couldn’t send sticker", "Wait for the message that’s sending to finish, then try again.")
             return false
         }
+        // A server change while the file loads must not send it through the new account.
+        let epoch = topicAccountEpoch
+        var current: Bool { topicAccountEpoch == epoch && phase == .ready && !Task.isCancelled }
         var loaded: Data?
         if let url = try? await mediaCache.cachedURL(for: sticker.id) { loaded = try? Data(contentsOf: url) }
         if loaded == nil, let base64 = sticker.content?.mediaData { loaded = Data(base64Encoded: base64) }
@@ -64,10 +69,11 @@ extension AppSession {
                 let response = try await api.media(messageID: sticker.id)
                 loaded = Data(base64Encoded: response.mediaData)
             } catch {
-                presentError("Couldn’t send sticker", error)
+                if current { presentError("Couldn’t send sticker", error) }
                 return false
             }
         }
+        guard current else { return false }
         guard let data = loaded, Self.isWebP(data) else {
             presentError("Couldn’t send sticker", "This sticker isn’t in a format WhatsApp accepts.")
             return false
