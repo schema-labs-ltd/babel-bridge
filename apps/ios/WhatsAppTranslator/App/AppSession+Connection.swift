@@ -148,6 +148,8 @@ extension AppSession {
         stickerDigests = [:]
         linkPreviews = [:]
         messages = [:]
+        pendingSends = [:]
+        cancelSendQueues()
         reactionEvents = [:]
         topicCatalog = .empty
         topicPages = [:]
@@ -181,6 +183,8 @@ extension AppSession {
         readReceiptTask?.cancel(); readReceiptTask = nil
         if self.configuration?.baseURL != configuration.baseURL {
             pendingReadReceipts = [:]; viewedReceiptMessageIDs = []
+            pendingSends = [:]
+            cancelSendQueues()
         }
         self.configuration = configuration
         topicAccountEpoch = UUID()

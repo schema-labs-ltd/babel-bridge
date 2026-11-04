@@ -44,6 +44,64 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(draft.selected?.id, elsewhere.id)
     }
 
+    @MainActor
+    func testSendShowsInTheChatAtOnceAndCanBeResentAfterFailing() async throws {
+        let session = AppSession(demoMode: true)
+        session.messages = ["friend@s.whatsapp.net": []]
+        session.demoSendsFail = true
+        XCTAssertTrue(session.startSend(text: "  Hello  ", to: "friend@s.whatsapp.net"))
+        let pending = try XCTUnwrap(session.pendingMessages(for: "friend@s.whatsapp.net").first)
+        XCTAssertEqual(pending.displayText, "Hello")
+        XCTAssertTrue(pending.isFromMe)
+        XCTAssertEqual(session.pendingMessages(for: nil).map(\.id), [pending.id])
+        XCTAssertEqual(session.pendingSends[pending.id]?.failed, false)
+
+        await session.sendQueues["friend@s.whatsapp.net"]?.value
+        XCTAssertEqual(session.pendingSends[pending.id]?.failed, true)
+        XCTAssertEqual(session.messages["friend@s.whatsapp.net"]?.count, 0)
+
+        session.demoSendsFail = false
+        session.retrySend(pending.id)
+        XCTAssertEqual(session.pendingSends[pending.id]?.failed, false)
+        await session.sendQueues["friend@s.whatsapp.net"]?.value
+        XCTAssertNil(session.pendingSends[pending.id])
+        XCTAssertEqual(session.messages["friend@s.whatsapp.net"]?.map(\.displayText), ["Hello"])
+        XCTAssertTrue(session.pendingMessages(for: nil).isEmpty)
+
+        session.demoSendsFail = true
+        session.startSend(text: "Gone", to: "friend@s.whatsapp.net")
+        await session.sendQueues["friend@s.whatsapp.net"]?.value
+        let failed = try XCTUnwrap(session.pendingSends.values.first)
+        session.discardSend(failed.id)
+        XCTAssertTrue(session.pendingSends.isEmpty)
+    }
+
+    func testPendingSendGivesWayToTheServersCopyAndKeepsItsPlace() throws {
+        func message(_ id: String, _ timestamp: Int64, fromMe: Bool, body: String) throws -> ChatMessage {
+            let data = try JSONSerialization.data(withJSONObject: ["id": id, "contactId": "friend", "timestamp": timestamp, "isFromMe": fromMe, "isForwarded": false, "chatType": "private", "contentType": "Text", "isTranslated": false, "content": ["type": "text", "body": body]])
+            return try JSONDecoder().decode(ChatMessage.self, from: data)
+        }
+        func send(_ id: String, _ timestamp: Int64, _ text: String) -> PendingSend {
+            PendingSend(id: id, contactID: "friend", text: text, reply: nil, replyOnlyIfNotLatest: false, timestamp: timestamp, quote: nil, contactName: nil, chatType: "private")
+        }
+        let first = send("p1", 1_000_000, "ok")
+        let second = send("p2", 1_000_500, "ok")
+        let other = send("p3", 1_000_600, "later")
+        // The server's copy of one "ok" stands in for one send only; an older "ok" for none.
+        let old = try message("old", 1_000_000 - 200_000, fromMe: true, body: "ok")
+        let copy = try message("copy", 1_000_100, fromMe: true, body: "ok")
+        let incoming = try message("in", 1_000_200, fromMe: false, body: "later")
+        XCTAssertEqual(PendingSend.unconfirmed([second, other, first], loaded: [old, copy, incoming]).map(\.id), ["p2", "p3"])
+
+        // A message already in the chat when Send was tapped is never this send's copy.
+        var repeated = send("p4", 1_000_050, "ok")
+        repeated.earlierIDs = ["copy"]
+        XCTAssertEqual(PendingSend.unconfirmed([repeated], loaded: [old, copy]).map(\.id), ["p4"])
+
+        let merged = PendingSend.merged([other.message, first.message], into: [old, copy, incoming])
+        XCTAssertEqual(merged.map(\.id), ["old", "p1", "copy", "in", "p3"])
+    }
+
     func testUnifiedQuickReplyManualSelectionAndEmptyFeedStaySafe() throws {
         func message(_ id: String, _ contact: String) throws -> ChatMessage {
             let data = try JSONSerialization.data(withJSONObject: ["id": id, "contactId": contact, "timestamp": 100, "isFromMe": false, "isForwarded": false, "chatType": "group", "contentType": "Text", "isTranslated": false])

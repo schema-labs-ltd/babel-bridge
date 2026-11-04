@@ -103,7 +103,8 @@ struct ConversationView: View {
 
     var messages: [ChatMessage] {
         if let selectedTopicID { return session.preferences.visible(session.topicPages[selectedTopicID]?.messages ?? []) }
-        return session.preferences.visible(session.messages[contact.id] ?? [])
+        // Messages still sending sit in the chat with a spinner, as in WhatsApp.
+        return PendingSend.merged(session.pendingMessages(for: contact.id), into: session.preferences.visible(session.messages[contact.id] ?? []))
     }
     var activePhotoSend: PhotoSendProgress? {
         session.photoSendProgress.values
@@ -383,13 +384,12 @@ struct ConversationView: View {
     func send() {
         // An emoticon that ends the message never had a space typed after it to convert it.
         let value = Emoticons.replacingTrailing(in: draft)
-        let reply = replyTarget
-        Task {
-            if await session.send(text: value, to: contact.id, reply: reply) {
-                sentCount += 1
-                draft = ""
-                cancelReply()
-            }
+        // The message joins the chat straight away and sends in the background, so the
+        // conversation stays in view and the composer is free for the next one.
+        if session.startSend(text: value, to: contact.id, reply: replyTarget) {
+            sentCount += 1
+            draft = ""
+            cancelReply()
         }
     }
 
@@ -408,22 +408,6 @@ struct ConversationView: View {
             selectReply(message)
             draft = suggestion
         }
-    }
-
-    /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
-    /// when the quoted message is older than what's loaded.
-    func activateSearch() async {
-        await session.loadAllMessages(for: contact.id)
-        showSearch = true
-    }
-
-    func toggleStarredFilter() async {
-        if starredOnly {
-            starredOnly = false
-            return
-        }
-        await session.loadAllMessages(for: contact.id)
-        starredOnly = true
     }
 }
 

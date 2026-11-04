@@ -185,3 +185,186 @@ extension AppSession {
         #endif
     }
 }
+
+/// A text message shown in its chat from the moment Send is tapped, as WhatsApp does: a spinner
+/// beside it while it sends, and a resend button in its place if the send fails.
+struct PendingSend: Equatable, Sendable {
+    static let idPrefix = "pending-send-"
+
+    let id: String
+    let contactID: String
+    let text: String
+    let reply: MessageReplyTarget?
+    let replyOnlyIfNotLatest: Bool
+    let timestamp: Int64
+    /// The quote the bubble shows; a feed reply to the latest message goes without one.
+    let quote: MessageReplyTarget?
+    let contactName: String?
+    let chatType: String
+    /// The chat's messages already loaded when Send was tapped, which can't be this send's copy
+    /// even when they say the same, as a second "ok" does.
+    var earlierIDs: Set<String> = []
+    var failure: String?
+
+    var failed: Bool { failure != nil }
+
+    var message: ChatMessage {
+        ChatMessage(
+            id: id, contactId: contactID, timestamp: timestamp, isFromMe: true, isForwarded: false,
+            senderName: nil, senderPhone: nil, contactName: contactName, contactPhone: nil,
+            chatType: chatType, contentType: "Text",
+            content: MessageContent(type: "text", body: text, showTranslatedPrimary: nil, replyContext: quote.map { ReplyContext(messageId: $0.messageID, senderName: $0.senderName, text: $0.text) }),
+            originalText: nil, translatedText: nil, sourceLanguage: nil, isTranslated: false,
+            deliveryStatus: "sending"
+        )
+    }
+
+    /// The sends the server has no copy of yet. The server stores what was typed as soon as it
+    /// starts sending, so a loaded message with the same words, sent from here since this send
+    /// began, takes its place; each loaded message stands in for one send at most.
+    static func unconfirmed(_ pending: [PendingSend], loaded: [ChatMessage]) -> [PendingSend] {
+        var claimed = Set<String>()
+        return pending.sorted { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }.filter { send in
+            guard let match = send.copy(in: loaded, excluding: claimed) else { return true }
+            claimed.insert(match.id)
+            return false
+        }
+    }
+
+    /// The server's copy of this send among the loaded messages, if it has arrived.
+    func copy(in loaded: [ChatMessage], excluding claimed: Set<String> = []) -> ChatMessage? {
+        loaded.first { message in
+            message.isFromMe && message.contactId == contactID
+                && !claimed.contains(message.id) && !earlierIDs.contains(message.id)
+                // Allow for the phone's clock running ahead of the server's.
+                && message.timestamp >= timestamp - 120_000
+                && (message.content?.body ?? message.originalText)?.trimmingCharacters(in: .whitespacesAndNewlines) == text
+        }
+    }
+
+    /// Places each pending message by its time among the loaded ones, keeping their order.
+    static func merged(_ pending: [ChatMessage], into loaded: [ChatMessage]) -> [ChatMessage] {
+        var result = loaded
+        for message in pending.sorted(by: { ($0.timestamp, $0.id) < ($1.timestamp, $1.id) }) {
+            let index = result.lastIndex { $0.timestamp <= message.timestamp }.map { $0 + 1 } ?? 0
+            result.insert(message, at: index)
+        }
+        return result
+    }
+}
+
+extension AppSession {
+    /// Shows the message in its chat straight away and sends it in the background; sends to one
+    /// chat go one at a time so they arrive in the order they were written.
+    @discardableResult
+    func startSend(text: String, to contactID: String, reply: MessageReplyTarget? = nil, replyOnlyIfNotLatest: Bool = false) -> Bool {
+        guard checkReplyOnly(contactID, reply: reply) else { return false }
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return false }
+        var quote = reply
+        if replyOnlyIfNotLatest, let reply {
+            let target = ((messages[contactID] ?? []) + Array(feedByID.values)).first { $0.id == reply.messageID && $0.contactId == contactID }
+            if let target, !feedReplyNeedsQuote(target) { quote = nil }
+        }
+        let contact = contacts.first { $0.id == contactID }
+        var send = PendingSend(
+            id: PendingSend.idPrefix + UUID().uuidString, contactID: contactID, text: clean,
+            reply: reply, replyOnlyIfNotLatest: replyOnlyIfNotLatest,
+            timestamp: Int64(Date().timeIntervalSince1970 * 1_000), quote: quote,
+            contactName: contact?.name, chatType: contact?.isGroup == true ? "group" : "private"
+        )
+        send.earlierIDs = Set(loadedMessages(in: [contactID]).map(\.id))
+        pendingSends[send.id] = send
+        deliver(send.id)
+        return true
+    }
+
+    func retrySend(_ id: String) {
+        guard pendingSends[id]?.failed == true else { return }
+        pendingSends[id]?.failure = nil
+        deliver(id)
+    }
+
+    /// Stops waiting sends after signing out or switching server, so a new send to the same
+    /// chat doesn't queue behind a request to the old one.
+    func cancelSendQueues() {
+        sendQueues.values.forEach { $0.cancel() }
+        sendQueues = [:]
+    }
+
+    func discardSend(_ id: String) {
+        guard pendingSends[id]?.failed == true else { return }
+        pendingSends[id] = nil
+    }
+
+    /// The chat's sends still waiting for the server's copy, as messages to show. For the
+    /// Messages feed (no chat given) only the feed's own copy counts, as only that shows there.
+    func pendingMessages(for contactID: String?) -> [ChatMessage] {
+        let sends = pendingSends.values.filter { contactID == nil || $0.contactID == contactID }
+        guard !sends.isEmpty else { return [] }
+        let contactIDs = Set(sends.map(\.contactID))
+        let loaded = contactID == nil ? feedByID.values.filter { contactIDs.contains($0.contactId) } : loadedMessages(in: contactIDs)
+        return PendingSend.unconfirmed(Array(sends), loaded: loaded).map(\.message)
+    }
+
+    private func loadedMessages(in contactIDs: Set<String>) -> [ChatMessage] {
+        contactIDs.flatMap { messages[$0] ?? [] } + feedByID.values.filter { contactIDs.contains($0.contactId) }
+    }
+
+    /// Settles a send once its chat has reloaded: the server's copy, sent or marked uncertain,
+    /// takes its place in the chat and the Messages feed alike, so the feed has no gap until it
+    /// next loads. Returns whether a copy was found.
+    private func settle(_ id: String) -> Bool {
+        guard let send = pendingSends[id], let copy = send.copy(in: loadedMessages(in: [send.contactID])) else { return false }
+        if feedHasLoaded, feedByID[copy.id] == nil { feedByID[copy.id] = copy }
+        pendingSends[id] = nil
+        return true
+    }
+
+    private func deliver(_ id: String) {
+        guard let contactID = pendingSends[id]?.contactID else { return }
+        let previous = sendQueues[contactID]
+        sendQueues[contactID] = Task {
+            await previous?.value
+            // Signing out or switching server drops what was waiting.
+            guard let send = pendingSends[id] else { return }
+            let failure = await transmit(send)
+            guard pendingSends[id] != nil else { return }
+            if let failure {
+                pendingSends[id]?.failure = failure
+                // A send that timed out may still be on the server, marked as uncertain; showing
+                // that copy instead of a resend button avoids sending the message twice. Offline,
+                // the resend button says enough without an alert as well.
+                await loadMessages(for: contactID, quietly: true)
+                _ = settle(id)
+            } else {
+                await loadMessages(for: contactID)
+                if !settle(id) { pendingSends[id] = nil }
+                Task { await loadFeed(); await refresh() }
+            }
+        }
+    }
+
+    /// Returns why the send failed, or nil once WhatsApp has it.
+    private func transmit(_ send: PendingSend) async -> String? {
+        if demoMode {
+            try? await Task.sleep(for: .seconds(1.5))
+            if demoSendsFail { return "The demo server is offline." }
+            let message = ChatMessage.demoOutgoing(contactID: send.contactID, text: send.text, reply: send.quote)
+            messages[send.contactID, default: []].append(message)
+            feedByID[message.id] = message
+            updateContactPreview(contactID: send.contactID, preview: "You: \(send.text)", timestamp: message.timestamp)
+            return nil
+        }
+        do {
+            let response = try await api.send(contactID: send.contactID, text: send.text, reply: send.reply, replyOnlyIfNotLatest: send.replyOnlyIfNotLatest)
+            if let contact = contacts.first(where: { $0.id == send.contactID }) {
+                MessagingIntentDonor.donateOutgoing(originalText: send.text, response: response, contact: contact, displayName: displayName(for: contact))
+            }
+            return nil
+        } catch {
+            AppLog.ui.error("Couldn’t send message: \(AppLog.kind(of: error), privacy: .public)")
+            return error.localizedDescription
+        }
+    }
+}

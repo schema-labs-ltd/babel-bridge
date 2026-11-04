@@ -2,7 +2,7 @@ import SwiftUI
 
 extension UnifiedMessagesView {
     func messagesContent(layout: FoldableLayoutContext) -> some View {
-        let sections = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: displayedMessages))
+        let sections = UnifiedFeedSectionBuilder.sections(from: ConversationTimelineBuilder.items(from: renderedMessages))
         // On a partially open iPhone Duo the feed reads on one pane and the composer rests on the other.
         let arrangement = FoldAwareChatLayout.arrangement(for: layout.division, in: layout.size)
         let bottomSafeArea = layout.safeAreaInsets.bottom
@@ -73,7 +73,7 @@ extension UnifiedMessagesView {
                         if let selectedTopicID { await session.loadTopicMessages(selectedTopicID) }
                         else { await session.loadFeed() }
                     }
-                    .onChange(of: displayedMessages.last?.id) { _, _ in
+                    .onChange(of: renderedMessages.last?.id) { _, _ in
                         if atBottom { withAnimation { proxy.scrollTo("feed-bottom", anchor: .bottom) } }
                     }
                 }
@@ -83,7 +83,7 @@ extension UnifiedMessagesView {
                 .allowsHitTesting(!replyDraft.isFocused)
                 .accessibilityHidden(replyDraft.isFocused)
                 if replyDraft.isFocused, let selected = replyDraft.selected {
-                    FocusedReplyOverlay(destination: name(selected), isSending: sending, cancel: cancelReply) {
+                    FocusedReplyOverlay(destination: name(selected), cancel: cancelReply) {
                         bubble(session.unifiedMessages.first(where: { $0.id == selected.id && $0.contactId == selected.contactId }) ?? selected)
                             .modifier(ViewedMessageTask(messages: [selected], enabled: !showSettings && settingsContact == nil))
                     }
@@ -201,7 +201,6 @@ extension UnifiedMessagesView {
     }
 
     private func select(_ message: ChatMessage) {
-        guard !sending else { return }
         replyDraft.select(message)
         composerFocused = true
     }
@@ -221,7 +220,7 @@ extension UnifiedMessagesView {
             aiReply: {
                 select(message)
                 Task {
-                    if let suggestion = await session.generateAIReply(to: message), replyDraft.selected?.id == message.id, !sending {
+                    if let suggestion = await session.generateAIReply(to: message), replyDraft.selected?.id == message.id {
                         replyDraft.drafts[message.contactId] = suggestion
                     }
                 }
@@ -236,7 +235,7 @@ extension UnifiedMessagesView {
             albumAIReply: { photo in
                 select(photo)
                 Task {
-                    if let suggestion = await session.generateAIReply(to: photo), replyDraft.selected?.id == photo.id, !sending {
+                    if let suggestion = await session.generateAIReply(to: photo), replyDraft.selected?.id == photo.id {
                         replyDraft.drafts[photo.contactId] = suggestion
                     }
                 }

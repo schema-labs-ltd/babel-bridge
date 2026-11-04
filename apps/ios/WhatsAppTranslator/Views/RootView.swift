@@ -92,12 +92,11 @@ private struct LaunchView: View {
 private struct MainMessagesView: View {
     @Environment(AppSession.self) private var session
     @State private var replyDraft = UnifiedReplyDraft()
-    @State private var sending = false
 
     var body: some View {
         Group {
             if session.mainTab == .messages {
-                UnifiedMessagesView(replyDraft: $replyDraft, sending: $sending)
+                UnifiedMessagesView(replyDraft: $replyDraft)
             } else {
                 ChatListView()
             }

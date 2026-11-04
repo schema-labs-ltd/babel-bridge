@@ -56,7 +56,14 @@ extension MessageBubble {
             Text(message.date.formatted(date: .omitted, time: .shortened))
                 .fixedSize(horizontal: true, vertical: false)
             if message.isFromMe {
-                MessageDeliveryIndicator(state: message.deliveryState)
+                if pendingSend?.failed == true {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Not sent")
+                } else if pendingSend == nil {
+                    // A message still sending has its spinner beside the bubble instead.
+                    MessageDeliveryIndicator(state: message.deliveryState)
+                }
             }
 
         }
@@ -73,7 +80,14 @@ extension MessageBubble {
             if message.isEdited { Text("Edited") }
             Text(message.date.formatted(date: .omitted, time: .shortened))
             if message.isFromMe {
-                MessageDeliveryIndicator(state: message.deliveryState)
+                if pendingSend?.failed == true {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Not sent")
+                } else if pendingSend == nil {
+                    // A message still sending has its spinner beside the bubble instead.
+                    MessageDeliveryIndicator(state: message.deliveryState)
+                }
             }
         }
         .font(.caption2)
@@ -259,6 +273,25 @@ extension MessageBubble {
 
     @ViewBuilder
     var actionMenu: some View {
+        if let pendingSend {
+            // Until the server has it, a message can only be copied, or resent or removed after a failure.
+            if pendingSend.failed {
+                Button("Resend", systemImage: "arrow.clockwise") { session.retrySend(pendingSend.id) }
+            }
+            if let copyText {
+                Button("Copy", systemImage: "doc.on.doc") { copyToPasteboard(copyText) }
+            }
+            if pendingSend.failed {
+                Divider()
+                Button("Delete", systemImage: "trash", role: .destructive) { session.discardSend(pendingSend.id) }
+            }
+        } else {
+            sentMessageActions
+        }
+    }
+
+    @ViewBuilder
+    private var sentMessageActions: some View {
         #if os(macOS)
         Menu("React", systemImage: "face.smiling") {
             ForEach(MessageReactionChoices.quick, id: \.self) { emoji in

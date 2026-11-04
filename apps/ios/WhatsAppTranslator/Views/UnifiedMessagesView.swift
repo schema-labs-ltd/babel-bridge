@@ -4,7 +4,6 @@ struct UnifiedMessagesView: View {
     @Environment(AppSession.self) var session
     @Environment(\.translatorPalette) var palette
     @Binding var replyDraft: UnifiedReplyDraft
-    @Binding var sending: Bool
     @State var showSettings = false
     @State var settingsContact: Contact?
     @State var selectedTopicID: String?
@@ -13,6 +12,11 @@ struct UnifiedMessagesView: View {
     var displayedMessages: [ChatMessage] {
         if let selectedTopicID { return session.preferences.visible(session.topicPages[selectedTopicID]?.messages ?? []) }
         return session.preferences.visible(session.unifiedMessages)
+    }
+    /// What the feed shows: messages still sending join the end with a spinner, as in WhatsApp.
+    /// They stay out of `displayedMessages`, which picks the chat that typing replies to.
+    var renderedMessages: [ChatMessage] {
+        selectedTopicID == nil ? PendingSend.merged(session.pendingMessages(for: nil), into: displayedMessages) : displayedMessages
     }
     @State var atBottom = true
     @State var composerFocused = false
@@ -39,7 +43,7 @@ struct UnifiedMessagesView: View {
 
     private var draft: Binding<String> {
         Binding(get: { replyDraft.text }, set: { value in
-            guard !sending, !composerUnavailable else { return }
+            guard !composerUnavailable else { return }
             replyDraft.updateText(value, latestMessage: displayedMessages.last)
         })
     }
@@ -77,7 +81,7 @@ struct UnifiedMessagesView: View {
                     }
                     Spacer(minLength: 0)
                     Button("Cancel reply", systemImage: "xmark.circle.fill", action: cancelReply)
-                        .labelStyle(.iconOnly).foregroundStyle(.secondary).disabled(sending)
+                        .labelStyle(.iconOnly).foregroundStyle(.secondary)
                 }.fixedSize(horizontal: false, vertical: true)
                     .padding(12)
                     .translatorGlass(in: RoundedRectangle(cornerRadius: 20))
@@ -91,7 +95,7 @@ struct UnifiedMessagesView: View {
             ComposerGlassGroup {
                 HStack(alignment: .bottom, spacing: 7) {
                     UnifiedMediaControls(
-                        disabled: composerUnavailable || sending || session.sendingContactIDs.contains((replyDraft.selected ?? displayedMessages.last)?.contactId ?? "") || (replyDraft.selected == nil && displayedMessages.isEmpty),
+                        disabled: composerUnavailable || session.sendingContactIDs.contains((replyDraft.selected ?? displayedMessages.last)?.contactId ?? "") || (replyDraft.selected == nil && displayedMessages.isEmpty),
                         begin: {
                             guard !composerUnavailable, let target = replyDraft.beginAttachment(latestMessage: displayedMessages.last) else { return nil }
                             composerFocused = false
@@ -99,8 +103,8 @@ struct UnifiedMessagesView: View {
                         },
                         onSent: { target in replyDraft.finishMediaSending(to: target); composerFocused = false }
                     )
-                    MessageComposerTextInput(text: draft, focus: $composerFocused, allowsImagePaste: !composerUnavailable && !sending && !imagePaste.isLoading) { providers in
-                        guard !sending, !composerUnavailable,
+                    MessageComposerTextInput(text: draft, focus: $composerFocused, allowsImagePaste: !composerUnavailable && !imagePaste.isLoading) { providers in
+                        guard !composerUnavailable,
                               let target = replyDraft.beginAttachment(latestMessage: displayedMessages.last),
                               !session.sendingContactIDs.contains(target.contactId) else { return }
                         composerFocused = false
@@ -117,18 +121,16 @@ struct UnifiedMessagesView: View {
                         .padding(.vertical, 12)
                         .frame(minHeight: 46)
                         .translatorGlassControl(in: RoundedRectangle(cornerRadius: 24))
-                        .disabled(composerUnavailable || sending || (replyDraft.selected == nil && displayedMessages.isEmpty))
+                        .disabled(composerUnavailable || (replyDraft.selected == nil && displayedMessages.isEmpty))
                     Button(action: send) {
-                        Group {
-                            if sending { ProgressView().tint(.white) }
-                            else { Image(systemName: "arrow.up").font(.system(size: 19, weight: .semibold)) }
-                        }.frame(width: 46, height: 46).foregroundStyle(.white)
+                        Image(systemName: "arrow.up").font(.system(size: 19, weight: .semibold))
+                            .frame(width: 46, height: 46).foregroundStyle(.white)
                             .contentShape(Circle())
                             .translatorGlassControl(in: Circle(), tint: palette.accent)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(replyDraft.selected.map { "Send to \(name($0))" } ?? "Send message")
-                    .disabled(composerUnavailable || sending || replyDraft.selected == nil || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(composerUnavailable || replyDraft.selected == nil || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -143,16 +145,13 @@ struct UnifiedMessagesView: View {
     }
 
     private func send() {
-        guard let target = replyDraft.selected, !sending, !composerUnavailable else { return }
+        guard let target = replyDraft.selected, !composerUnavailable else { return }
         let text = Emoticons.replacingTrailing(in: replyDraft.drafts[target.contactId] ?? "")
-        sending = true
-        Task {
-            let sent = await session.send(text: text, to: target.contactId, reply: session.replyTarget(for: target), replyOnlyIfNotLatest: true)
-            sending = false
-            if sent {
-                replyDraft.finishSending(to: target)
-                composerFocused = false
-            }
+        // The message joins the feed straight away and sends in the background, so the
+        // conversation stays in view while it goes.
+        if session.startSend(text: text, to: target.contactId, reply: session.replyTarget(for: target), replyOnlyIfNotLatest: true) {
+            replyDraft.finishSending(to: target)
+            composerFocused = false
         }
     }
 }
