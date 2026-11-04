@@ -304,10 +304,10 @@ extension ChatListView {
         // this message's summary is the deleted one.
         let preview = contact.lastMessagePreview ?? ""
         // The server names these kinds without their details, which `summarises` can't match.
-        let serverLabel = ["location": "[ Location ]", "revoked": "[ Message deleted ]"][newest.normalizedContentType]
+        let serverLabel = ["location": "[ Location ]", "revoked": "[ Message deleted ]", "contact": "[ Contact: "][newest.normalizedContentType]
         return newest.timestamp > contact.lastMessageTime
             || ChatListPreview.summarises(preview, newest, label: ChatListPreview.label(for: newest))
-            || serverLabel.map { preview.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix($0) } == true
+            || serverLabel.map { preview.contains($0) } == true
     }
 
     fileprivate func readStateButton(for contact: Contact) -> some View {
