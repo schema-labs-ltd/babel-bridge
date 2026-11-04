@@ -40,6 +40,8 @@ struct MessageBubble: View {
     @State var showActions = false
     @State var showReactionPicker = false
     @State var showForward = false
+    /// The messages chosen when Forward or Delete was tapped, so a photo arriving meanwhile isn't included.
+    @State var chosenTargets: [ChatMessage] = []
     @State var showInfo = false
     @State var confirmDelete = false
     @State private var demoSwipeOffset: CGFloat = 0
@@ -201,14 +203,14 @@ struct MessageBubble: View {
             MessageReactionPicker(selected: message.ownReactionEmoji, choose: react).modifier(ReadReceiptCover())
         }
         .sheet(isPresented: $showForward) {
-            ForwardMessageSheet(messages: actionTargets).modifier(ReadReceiptCover())
+            ForwardMessageSheet(messages: chosenTargets).modifier(ReadReceiptCover())
         }
         .sheet(isPresented: $showInfo) {
             MessageInfoSheet(message: message).modifier(ReadReceiptCover())
         }
         .confirmationDialog("Delete message?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete for me", role: .destructive) {
-                session.preferences.hide(messageIDs: actionTargets.map(\.id))
+                session.preferences.hide(messageIDs: chosenTargets.map(\.id))
             }
         } message: {
             Text("It's removed from this device only.")

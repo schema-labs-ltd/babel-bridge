@@ -288,7 +288,7 @@ extension MessageBubble {
         Divider()
         Button("Reply", systemImage: "arrowshape.turn.up.left", action: reply)
         if actionTargets.contains(where: AppSession.canForward) {
-            Button("Forward", systemImage: "arrowshape.turn.up.right") { showForward = true }
+            Button("Forward", systemImage: "arrowshape.turn.up.right") { chosenTargets = actionTargets; showForward = true }
         }
         if let copyText {
             Button("Copy", systemImage: "doc.on.doc") { copyToPasteboard(copyText) }
@@ -315,7 +315,7 @@ extension MessageBubble {
         Divider()
         // An unconfirmed send gets a new ID once confirmed, which would bring it back.
         if !actionTargets.contains(where: { [.sending, .uncertain].contains($0.deliveryState) }) {
-            Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+            Button("Delete", systemImage: "trash", role: .destructive) { chosenTargets = actionTargets; confirmDelete = true }
         }
     }
 
