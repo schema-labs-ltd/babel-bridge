@@ -214,7 +214,8 @@ struct ChatListView: View {
                     avatarURL: session.avatarURLs[contact.id],
                     isMuted: session.preferences.isMuted(contact.id),
                     isMarkedUnread: session.preferences.isMarkedUnread(contact.id),
-                    latestMessage: session.messages[contact.id]?.last { !$0.isReaction },
+                    latestMessage: session.preferences.visible(session.messages[contact.id] ?? []).last { !$0.isReaction },
+                    newestIsHidden: newestIsHidden(contact),
                     typingLabel: session.typingLabel(for: contact)
                 )
                 .tag(Optional(contact.id))
@@ -292,6 +293,21 @@ extension ChatListView {
             .listRowSeparator(.hidden)
             .accessibilityLabel("Archived chats, \(archivedCount)")
         }
+    }
+
+    /// Whether the newest loaded message is one deleted for me, and at least as new as the one
+    /// the server's preview describes, so that preview must not be shown.
+    fileprivate func newestIsHidden(_ contact: Contact) -> Bool {
+        guard let newest = session.messages[contact.id]?.last(where: { !$0.isReaction }) else { return false }
+        guard newest.timestamp >= contact.lastMessageTime, session.preferences.hiddenMessageIDs.contains(newest.id) else { return false }
+        // In the same second the preview may describe another message; only one that reads as
+        // this message's summary is the deleted one.
+        let preview = contact.lastMessagePreview ?? ""
+        // The server names these kinds without their details, which `summarises` can't match.
+        let serverLabel = ["location": "[ Location ]", "revoked": "[ Message deleted ]", "contact": "[ Contact: "][newest.normalizedContentType]
+        return newest.timestamp > contact.lastMessageTime
+            || ChatListPreview.summarises(preview, newest, label: ChatListPreview.label(for: newest))
+            || serverLabel.map { preview.contains($0) } == true
     }
 
     fileprivate func readStateButton(for contact: Contact) -> some View {

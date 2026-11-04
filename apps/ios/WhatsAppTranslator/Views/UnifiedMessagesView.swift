@@ -11,8 +11,8 @@ struct UnifiedMessagesView: View {
     @State var showTopicManagement = false
     var selectedTopic: ChatTopic? { session.topics().first { $0.id == selectedTopicID } }
     var displayedMessages: [ChatMessage] {
-        if let selectedTopicID { return session.topicPages[selectedTopicID]?.messages ?? [] }
-        return session.unifiedMessages
+        if let selectedTopicID { return session.preferences.visible(session.topicPages[selectedTopicID]?.messages ?? []) }
+        return session.preferences.visible(session.unifiedMessages)
     }
     @State var atBottom = true
     @State var composerFocused = false

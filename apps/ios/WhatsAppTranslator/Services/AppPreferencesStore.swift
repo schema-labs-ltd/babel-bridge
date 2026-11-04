@@ -57,6 +57,7 @@ final class AppPreferencesStore {
         var mutedChatIDs: Set<String>? = nil
         var archivedChatIDs: Set<String>? = nil
         var markedUnreadChatIDs: Set<String>? = nil
+        var hiddenMessageIDs: Set<String>? = nil
     }
 
     private let defaults: UserDefaults
@@ -67,6 +68,8 @@ final class AppPreferencesStore {
     private(set) var mutedChatIDs: Set<String>
     private(set) var archivedChatIDs: Set<String>
     private(set) var markedUnreadChatIDs: Set<String>
+    /// Messages removed with WhatsApp's "Delete for me", which only ever affects this device.
+    private(set) var hiddenMessageIDs: Set<String>
 
     var theme: AppTheme { didSet { persist() } }
     var colorMode: AppColorMode { didSet { persist() } }
@@ -82,6 +85,7 @@ final class AppPreferencesStore {
         mutedChatIDs = state.mutedChatIDs ?? []
         archivedChatIDs = state.archivedChatIDs ?? []
         markedUnreadChatIDs = state.markedUnreadChatIDs ?? []
+        hiddenMessageIDs = state.hiddenMessageIDs ?? []
         theme = state.theme
         colorMode = state.colorMode
         wallpaper = state.wallpaper ?? .classic
@@ -96,6 +100,16 @@ final class AppPreferencesStore {
         if values.contains(messageID) { values.remove(messageID) } else { values.insert(messageID) }
         starredMessageIDs[contactID] = values
         persist()
+    }
+
+    func hide(messageIDs: [String]) {
+        hiddenMessageIDs.formUnion(messageIDs)
+        persist()
+    }
+
+    /// The messages a chat shows, without those deleted for me.
+    func visible(_ messages: [ChatMessage]) -> [ChatMessage] {
+        hiddenMessageIDs.isEmpty ? messages : messages.filter { !hiddenMessageIDs.contains($0.id) }
     }
 
     func isMuted(_ contactID: String) -> Bool { mutedChatIDs.contains(contactID) }
@@ -151,7 +165,8 @@ final class AppPreferencesStore {
             wallpaper: wallpaper,
             mutedChatIDs: mutedChatIDs,
             archivedChatIDs: archivedChatIDs,
-            markedUnreadChatIDs: markedUnreadChatIDs
+            markedUnreadChatIDs: markedUnreadChatIDs,
+            hiddenMessageIDs: hiddenMessageIDs
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         defaults.set(data, forKey: storageKey)

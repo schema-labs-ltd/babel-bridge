@@ -351,6 +351,19 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(revoked.displayText, "This message was deleted")
     }
 
+    func testDeleteForMeHidesMessagesOnThisDeviceOnly() throws {
+        let suite = "delete-for-me-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = try decodeMessage(id: "a", contentType: "text", content: #"{"type":"text","body":"One"}"#)
+        let second = try decodeMessage(id: "b", contentType: "text", content: #"{"type":"text","body":"Two"}"#)
+        let preferences = AppPreferencesStore(defaults: defaults)
+        XCTAssertEqual(preferences.visible([first, second]).map(\.id), ["a", "b"])
+        preferences.hide(messageIDs: ["a"])
+        XCTAssertEqual(preferences.visible([first, second]).map(\.id), ["b"])
+        XCTAssertEqual(AppPreferencesStore(defaults: defaults).visible([first, second]).map(\.id), ["b"])
+    }
+
     func testOnlyWebPFilesSendAsStickers() {
         XCTAssertTrue(AppSession.isWebP(Data("RIFF\0\0\0\0WEBPVP8 ".utf8)))
         XCTAssertFalse(AppSession.isWebP(Data("GIF89a-not-a-webp".utf8)))

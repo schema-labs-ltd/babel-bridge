@@ -12,6 +12,10 @@ final class ChatMediaGalleryModel {
     private(set) var error: String?
     private var cursor: ChatMessage?
     private var records: [String: ChatMessage] = [:]
+    /// Messages deleted for me. They stay in `records` so paging is unaffected, but are not shown.
+    var hiddenIDs: Set<String> = [] {
+        didSet { if hiddenIDs != oldValue { refresh() } }
+    }
 
     init(contactID: String) { self.contactID = contactID }
 
@@ -31,7 +35,11 @@ final class ChatMediaGalleryModel {
             if let previous = records[message.id], !Self.shouldReplace(previous, with: message) { continue }
             records[message.id] = message
         }
-        messages = Self.ordered(Array(records.values), contactID: contactID)
+        refresh()
+    }
+
+    private func refresh() {
+        messages = Self.ordered(Array(records.values), contactID: contactID).filter { !hiddenIDs.contains($0.id) }
     }
 
     private static func shouldReplace(_ previous: ChatMessage, with message: ChatMessage) -> Bool {
@@ -41,8 +49,10 @@ final class ChatMediaGalleryModel {
         return message.editRevision >= previous.editRevision
     }
 
-    func load(using fetch: (ChatMessage?) async throws -> MessagesResponse) async {
-        guard !isLoading, hasMore else { return }
+    /// Loads the next page; false when nothing was loaded, such as a cancelled request.
+    @discardableResult
+    func load(using fetch: (ChatMessage?) async throws -> MessagesResponse) async -> Bool {
+        guard !isLoading, hasMore else { return false }
         isLoading = true
         error = nil
         defer { isLoading = false }
@@ -56,10 +66,12 @@ final class ChatMediaGalleryModel {
             cursor = page.first ?? cursor
             hasMore = response.hasMore && !page.isEmpty
             hasLoaded = true
+            return true
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = "Couldn’t load the gallery. Please try again." }
         }
+        return false
     }
 }
 
@@ -115,6 +127,7 @@ struct ChatMediaGallery: View {
                         } else if model.hasMore {
                             ProgressView("Loading photos and videos…")
                                 .frame(maxWidth: .infinity).padding()
+                                .onAppear { Task { await loadMore() } }
                         }
                     }
                     .padding(.top, 12).padding(.bottom, 24)
@@ -140,8 +153,12 @@ struct ChatMediaGallery: View {
                 }
             }
         }
-        .task { await loadMore() }
+        .task {
+            model.hiddenIDs = session.preferences.hiddenMessageIDs
+            await loadMore()
+        }
         .onChange(of: session.messages[contact.id]) { _, messages in model.merge(messages ?? []) }
+        .onChange(of: session.preferences.hiddenMessageIDs) { _, hidden in model.hiddenIDs = hidden }
         #if os(iOS)
         .fullScreenCover(item: $selectedMedia) { selected in
             GalleryMediaViewer(model: model, initialID: selected.id, close: { selectedMedia = nil }, loadMore: loadMore)
@@ -175,8 +192,14 @@ struct ChatMediaGallery: View {
         FoldAwareChatLayout.galleryGrid(width: layout.size.width, division: layout.division).gridItems
     }
 
+    /// Loads pages until one shows something, so pages of media deleted for me don't stall paging.
     private func loadMore() async {
-        await model.load { cursor in try await session.galleryPage(contactID: contact.id, before: cursor) }
+        let shown = model.messages.count
+        repeat {
+            guard !model.isLoading, model.hasMore, !Task.isCancelled else { return }
+            // A cancelled or failed page stops here rather than being asked for again.
+            guard await model.load(using: { cursor in try await session.galleryPage(contactID: contact.id, before: cursor) }) else { return }
+        } while model.messages.count == shown
     }
 }
 

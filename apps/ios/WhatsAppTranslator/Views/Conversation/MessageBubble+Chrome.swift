@@ -287,8 +287,14 @@ extension MessageBubble {
         Label(session.messageTopicLabel(for: message), systemImage: "tag")
         Divider()
         Button("Reply", systemImage: "arrowshape.turn.up.left", action: reply)
+        if actionTargets.contains(where: AppSession.canForward) {
+            Button("Forward", systemImage: "arrowshape.turn.up.right") { chosenTargets = actionTargets; showForward = true }
+        }
         if let copyText {
             Button("Copy", systemImage: "doc.on.doc") { copyToPasteboard(copyText) }
+        }
+        if message.isFromMe {
+            Button("Info", systemImage: "info.circle") { showInfo = true }
         }
         if message.canTranslate {
             Button("Translate", systemImage: "character.bubble", action: translate)
@@ -306,5 +312,13 @@ extension MessageBubble {
                 showAlternate.toggle()
             }
         }
+        Divider()
+        // An unconfirmed send gets a new ID once confirmed, which would bring it back.
+        if !actionTargets.contains(where: { [.sending, .uncertain].contains($0.deliveryState) }) {
+            Button("Delete", systemImage: "trash", role: .destructive) { chosenTargets = actionTargets; confirmDelete = true }
+        }
     }
+
+    /// The messages Forward and Delete act on: every photo of an album, as in WhatsApp.
+    var actionTargets: [ChatMessage] { albumMessages.count > 1 ? albumMessages : [message] }
 }
