@@ -52,7 +52,7 @@ extension AppSession {
         let server = configuration?.baseURL
         let response = try await api.gallery(contactID: contactID, before: before?.timestamp, beforeID: before?.id)
         guard phase == .ready, configuration?.baseURL == server, !Task.isCancelled else { throw CancellationError() }
-        return MessagesResponse(messages: preferences.visible(normalizeMessages(response.messages)), hasMore: response.hasMore)
+        return MessagesResponse(messages: normalizeMessages(response.messages), hasMore: response.hasMore)
     }
 
     func galleryThumbnail(for message: ChatMessage) async throws -> PlatformImage {

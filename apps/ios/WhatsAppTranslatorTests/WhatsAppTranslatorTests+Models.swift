@@ -361,6 +361,16 @@ extension WhatsAppTranslatorTests {
         XCTAssertFalse(AppSession.canForward(voice))
         XCTAssertFalse(AppSession.canForward(deleted))
         XCTAssertEqual(AppSession.forwardedText(text), "Hi")
+
+        // Photos go as one album only when no caption after the first would be lost.
+        let captioned = try decodeMessage(id: "c", contentType: "image", content: #"{"type":"image","mime_type":"image/jpeg","caption":"Look"}"#)
+        XCTAssertEqual(AppSession.forwardedCaption(captioned), "Look")
+        XCTAssertNil(AppSession.forwardedCaption(photo))
+        XCTAssertTrue(AppSession.forwardsAsAlbum([captioned, photo]))
+        XCTAssertFalse(AppSession.forwardsAsAlbum([photo, captioned]))
+        XCTAssertFalse(AppSession.forwardsAsAlbum([photo]))
+        XCTAssertFalse(AppSession.forwardsAsAlbum(Array(repeating: photo, count: 31)))
+        XCTAssertFalse(AppSession.forwardsAsAlbum([photo, text]))
     }
 
     func testDeleteForMeHidesMessagesOnThisDeviceOnly() throws {

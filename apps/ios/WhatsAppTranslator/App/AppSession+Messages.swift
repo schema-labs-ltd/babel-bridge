@@ -229,11 +229,14 @@ extension AppSession {
     }
 
     /// Sends the messages to each chosen chat in their original order, as WhatsApp's Forward
-    /// does; several photos go as one album. Returns how many chats received all of them.
+    /// does; up to 30 photos with at most a first caption go as one album. Returns how many
+    /// chats received all of them.
     @discardableResult
     func forward(_ originals: [ChatMessage], to contactIDs: [String]) async -> Int {
         let items = originals.filter(Self.canForward).sorted { $0.timestamp < $1.timestamp }
         guard !items.isEmpty else { return 0 }
+        let epoch = topicAccountEpoch
+        var current: Bool { topicAccountEpoch == epoch && !Task.isCancelled }
         var media: [String: (data: Data, mimeType: String)] = [:]
         for message in items where message.mediaKind != nil {
             do {
@@ -254,20 +257,24 @@ extension AppSession {
                 }
                 media[message.id] = (data, response.mimeType)
             } catch {
-                presentError("Couldn’t forward", error)
+                if current { presentError("Couldn’t forward", error) }
                 return 0
             }
+            // Signing out or switching account while media loads must not send from the new one.
+            guard current else { return 0 }
         }
+        let asAlbum = Self.forwardsAsAlbum(items)
         var delivered = 0
         for contactID in contactIDs {
+            guard current else { return delivered }
             var sentAll = true
-            if items.count > 1, items.allSatisfy({ $0.mediaKind == .image }) {
+            if asAlbum {
                 let images = items.compactMap { media[$0.id].map { OutgoingImage(data: $0.data, mimeType: $0.mimeType) } }
-                let caption = items.lazy.compactMap { $0.content?.caption?.nilIfBlank }.first
-                sentAll = await sendImages(images, caption: caption, to: contactID)
+                sentAll = await sendImages(images, caption: Self.forwardedCaption(items[0]), to: contactID)
             } else {
                 for message in items where sentAll {
-                    let caption = message.content?.caption?.nilIfBlank
+                    guard current else { return delivered }
+                    let caption = Self.forwardedCaption(message)
                     switch message.mediaKind {
                     case .image:
                         guard let file = media[message.id] else { sentAll = false; break }
@@ -289,17 +296,29 @@ extension AppSession {
             }
             if sentAll { delivered += 1 }
         }
-        if delivered < contactIDs.count, errorMessage == nil {
+        if current, delivered < contactIDs.count, errorMessage == nil {
             presentError("Couldn’t forward", "The message didn’t reach every chat you chose. Try again in a moment.")
         }
         return delivered
     }
 
-    /// The words as they were written: an incoming message's original, not this app's translation
-    /// of it, so the chosen chat's own translation setting applies as for anything you send.
+    /// Several photos go as one album only when the album keeps every caption: at most 30
+    /// photos, and none but the first captioned. Otherwise each goes on its own.
+    nonisolated static func forwardsAsAlbum(_ items: [ChatMessage]) -> Bool {
+        (2...30).contains(items.count)
+            && items.allSatisfy { $0.mediaKind == .image }
+            && items.dropFirst().allSatisfy { forwardedCaption($0) == nil }
+    }
+
+    /// The words as they were written, not a translation of them, so the chosen chat's own
+    /// translation setting applies as for anything you send. `originalText` holds what you
+    /// typed when your message was translated, and the sender's words for incoming messages.
     nonisolated static func forwardedText(_ message: ChatMessage) -> String {
-        guard !message.isFromMe else { return message.displayText }
-        return message.content?.body?.nilIfBlank ?? message.originalText?.nilIfBlank ?? message.displayText
+        message.originalText?.nilIfBlank ?? message.content?.body?.nilIfBlank ?? message.displayText
+    }
+
+    nonisolated static func forwardedCaption(_ message: ChatMessage) -> String? {
+        message.originalText?.nilIfBlank ?? message.content?.caption?.nilIfBlank
     }
 }
 

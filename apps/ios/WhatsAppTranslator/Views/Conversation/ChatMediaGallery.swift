@@ -12,6 +12,10 @@ final class ChatMediaGalleryModel {
     private(set) var error: String?
     private var cursor: ChatMessage?
     private var records: [String: ChatMessage] = [:]
+    /// Messages deleted for me. They stay in `records` so paging is unaffected, but are not shown.
+    var hiddenIDs: Set<String> = [] {
+        didSet { if hiddenIDs != oldValue { refresh() } }
+    }
 
     init(contactID: String) { self.contactID = contactID }
 
@@ -31,7 +35,11 @@ final class ChatMediaGalleryModel {
             if let previous = records[message.id], !Self.shouldReplace(previous, with: message) { continue }
             records[message.id] = message
         }
-        messages = Self.ordered(Array(records.values), contactID: contactID)
+        refresh()
+    }
+
+    private func refresh() {
+        messages = Self.ordered(Array(records.values), contactID: contactID).filter { !hiddenIDs.contains($0.id) }
     }
 
     private static func shouldReplace(_ previous: ChatMessage, with message: ChatMessage) -> Bool {
@@ -115,6 +123,7 @@ struct ChatMediaGallery: View {
                         } else if model.hasMore {
                             ProgressView("Loading photos and videos…")
                                 .frame(maxWidth: .infinity).padding()
+                                .onAppear { Task { await loadMore() } }
                         }
                     }
                     .padding(.top, 12).padding(.bottom, 24)
@@ -140,8 +149,12 @@ struct ChatMediaGallery: View {
                 }
             }
         }
-        .task { await loadMore() }
-        .onChange(of: session.messages[contact.id]) { _, messages in model.merge(session.preferences.visible(messages ?? [])) }
+        .task {
+            model.hiddenIDs = session.preferences.hiddenMessageIDs
+            await loadMore()
+        }
+        .onChange(of: session.messages[contact.id]) { _, messages in model.merge(messages ?? []) }
+        .onChange(of: session.preferences.hiddenMessageIDs) { _, hidden in model.hiddenIDs = hidden }
         #if os(iOS)
         .fullScreenCover(item: $selectedMedia) { selected in
             GalleryMediaViewer(model: model, initialID: selected.id, close: { selectedMedia = nil }, loadMore: loadMore)

@@ -10,6 +10,12 @@ struct ChatRow: View {
     var isMuted = false
     var isMarkedUnread = false
     var latestMessage: ChatMessage? = nil
+    /// The chat's newest message is deleted for me, so the server's preview and time are stale.
+    var newestIsHidden = false
+
+    private var listTime: Int64 {
+        newestIsHidden ? (latestMessage?.timestamp ?? contact.lastMessageTime) : contact.lastMessageTime
+    }
 
     private var showsUnread: Bool { contact.unreadCount > 0 || isMarkedUnread }
     private var unreadTint: Color { isMuted ? Color.platformSecondaryLabel : palette.accent }
@@ -41,7 +47,7 @@ struct ChatRow: View {
                         .truncationMode(.tail)
                         .layoutPriority(1)
                     Spacer(minLength: 8)
-                    Text(contact.lastMessageTime.chatListDate)
+                    Text(listTime.chatListDate)
                         .font(.caption)
                         .foregroundStyle(showsUnread && !isMuted ? palette.accent : Color.platformSecondaryLabel)
                         .fixedSize(horizontal: true, vertical: false)
@@ -68,7 +74,7 @@ struct ChatRow: View {
                 previewText(lineLimit: 2)
                     .font(.subheadline)
                 HStack(spacing: 9) {
-                    Text(contact.lastMessageTime.chatListDate)
+                    Text(listTime.chatListDate)
                         .foregroundStyle(showsUnread && !isMuted ? palette.accent : Color.platformSecondaryLabel)
                     statusIndicators
                 }
@@ -89,7 +95,7 @@ struct ChatRow: View {
                 .truncationMode(.tail)
                 .layoutPriority(1)
         } else {
-            let line = ChatListPreview.line(for: contact, latest: latestMessage)
+            let line = ChatListPreview.line(for: contact, latest: latestMessage, newestIsHidden: newestIsHidden)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 if let delivery = line.delivery {
                     MessageDeliveryIndicator(state: delivery)
@@ -184,7 +190,12 @@ enum ChatListPreview {
         return false
     }
 
-    static func line(for contact: Contact, latest: ChatMessage?) -> Line {
+    static func line(for contact: Contact, latest: ChatMessage?, newestIsHidden: Bool = false) -> Line {
+        // The server's preview would show a message deleted for me: use the newest one left.
+        if newestIsHidden {
+            guard let latest, !latest.isReaction else { return Line(text: "No messages yet") }
+            return line(for: latest, in: contact)
+        }
         let serverLine = Line(text: tidy(contact.lastMessagePreview ?? "No messages yet"))
         guard let latest, !latest.isReaction, latest.timestamp >= contact.lastMessageTime else {
             return serverLine
@@ -196,6 +207,11 @@ enum ChatListPreview {
            !summarises(contact.lastMessagePreview ?? "", latest, label: body) {
             return serverLine
         }
+        return line(for: latest, in: contact)
+    }
+
+    private static func line(for latest: ChatMessage, in contact: Contact) -> Line {
+        let body = label(for: latest)
         if latest.isFromMe {
             switch latest.deliveryState {
             case .sending, .sent, .delivered, .read:

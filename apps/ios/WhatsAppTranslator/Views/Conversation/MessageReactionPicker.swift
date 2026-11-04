@@ -129,7 +129,7 @@ struct ForwardMessageSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.disabled(sending)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if sending {

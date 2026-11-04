@@ -214,7 +214,8 @@ struct ChatListView: View {
                     avatarURL: session.avatarURLs[contact.id],
                     isMuted: session.preferences.isMuted(contact.id),
                     isMarkedUnread: session.preferences.isMarkedUnread(contact.id),
-                    latestMessage: session.preferences.visible(session.messages[contact.id] ?? []).last { !$0.isReaction }
+                    latestMessage: session.preferences.visible(session.messages[contact.id] ?? []).last { !$0.isReaction },
+                    newestIsHidden: newestIsHidden(contact)
                 )
                 .tag(Optional(contact.id))
                 .accessibilityAddTraits(.isButton)
@@ -291,6 +292,13 @@ extension ChatListView {
             .listRowSeparator(.hidden)
             .accessibilityLabel("Archived chats, \(archivedCount)")
         }
+    }
+
+    /// Whether the newest loaded message is one deleted for me, and at least as new as the one
+    /// the server's preview describes, so that preview must not be shown.
+    fileprivate func newestIsHidden(_ contact: Contact) -> Bool {
+        guard let newest = session.messages[contact.id]?.last(where: { !$0.isReaction }) else { return false }
+        return newest.timestamp >= contact.lastMessageTime && session.preferences.hiddenMessageIDs.contains(newest.id)
     }
 
     fileprivate func readStateButton(for contact: Contact) -> some View {

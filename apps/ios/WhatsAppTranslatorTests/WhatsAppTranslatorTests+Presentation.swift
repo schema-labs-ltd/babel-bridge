@@ -296,5 +296,8 @@ extension WhatsAppTranslatorTests {
         let notOK = Contact(id: "chat@g.us", name: "Family", phone: nil, type: "group", lastMessageTime: 1_700_000_000_000,
                             unreadCount: 1, pinnedAt: nil, lastMessagePreview: "Bence: No, not OK")
         XCTAssertEqual(ChatListPreview.line(for: notOK, latest: ok).text, "Bence: No, not OK")
+        // When the newest message is deleted for me, the preview never falls back to it.
+        XCTAssertEqual(ChatListPreview.line(for: notOK, latest: incoming, newestIsHidden: true), .init(text: "Virag: Szia"))
+        XCTAssertEqual(ChatListPreview.line(for: notOK, latest: nil, newestIsHidden: true), .init(text: "No messages yet"))
     }
 }
