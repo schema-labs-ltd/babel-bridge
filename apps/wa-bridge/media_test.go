@@ -46,6 +46,9 @@ func TestStickersSendAsWebPStickerMessages(t *testing.T) {
 	if sticker == nil || sticker.GetMimetype() != "image/webp" || !sticker.GetIsAnimated() || sticker.GetFileLength() != 42 {
 		t.Fatalf("sticker fields lost: %+v", sticker)
 	}
+	if w, h := webPSize(append([]byte("RIFF\x00\x00\x00\x00WEBPVP8X\x0a\x00\x00\x00\x02\x00\x00\x00"), 0xff, 0x01, 0x00, 0xff, 0x01, 0x00)); w != 512 || h != 512 {
+		t.Fatalf("VP8X size read as %dx%d", w, h)
+	}
 	if buildMediaMessage(Command{MediaKind: "sticker"}, jid, upload, still).GetStickerMessage().GetIsAnimated() {
 		t.Fatal("a still sticker was marked animated")
 	}

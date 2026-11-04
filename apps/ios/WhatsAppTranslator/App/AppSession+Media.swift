@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Observation
 import OSLog
@@ -7,35 +8,54 @@ extension AppSession {
     /// The sticker tray, as in WhatsApp: stickers sent and received in the loaded chats and feed,
     /// newest first, each sticker once.
     func recentStickers(limit: Int = 60) -> [ChatMessage] {
-        let all = (messages.values.flatMap { $0 } + Array(feedByID.values))
-            .filter { $0.mediaKind == .sticker && !$0.isReaction }
-            .sorted { $0.timestamp > $1.timestamp }
         var seen = Set<String>()
         var result: [ChatMessage] = []
-        for sticker in all where result.count < limit {
+        for sticker in stickerCandidates() where result.count < limit {
             // The same sticker sent again is a new message with the same file.
-            let content = sticker.content
-            let key = content?.fileSize.map { "\($0)-\(content?.width ?? 0)x\(content?.height ?? 0)-\(content?.isAnimated == true)" } ?? sticker.id
-            if seen.insert(key).inserted { result.append(sticker) }
+            if seen.insert(stickerDigests[sticker.id] ?? sticker.id).inserted { result.append(sticker) }
         }
         return result
     }
 
+    /// Loads the tray's stickers and fingerprints their files, so repeats collapse into one.
+    func prepareStickerTray() async {
+        for sticker in stickerCandidates() where stickerDigests[sticker.id] == nil {
+            await loadMedia(for: sticker)
+            guard let url = try? await mediaCache.cachedURL(for: sticker.id),
+                  let data = try? Data(contentsOf: url), !data.isEmpty else { continue }
+            stickerDigests[sticker.id] = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        }
+    }
+
+    /// Recent WebP stickers that can be sent again; animated Lottie ones and expired media can't.
+    private func stickerCandidates(limit: Int = 150) -> [ChatMessage] {
+        let all = (messages.values.flatMap { $0 } + Array(feedByID.values)).filter {
+            $0.mediaKind == .sticker && !$0.isReaction && !mediaErrorIDs.contains($0.id)
+                && ($0.content?.mimeType.map { $0.lowercased() == "image/webp" } ?? true)
+        }
+        var ids = Set<String>()
+        return Array(all.sorted { $0.timestamp > $1.timestamp }.filter { ids.insert($0.id).inserted }.prefix(limit))
+    }
+
     /// Sends a sticker from the tray again, here.
     func sendSticker(_ sticker: ChatMessage, to contactID: String, reply: MessageReplyTarget?) async -> Bool {
-        var data: Data?
-        if let url = try? await mediaCache.cachedURL(for: sticker.id) { data = try? Data(contentsOf: url) }
-        if data == nil, let base64 = sticker.content?.mediaData { data = Data(base64Encoded: base64) }
-        if data == nil, !demoMode {
+        guard !sendingContactIDs.contains(contactID) else {
+            presentError("Couldn’t send sticker", "Wait for the message that’s sending to finish, then try again.")
+            return false
+        }
+        var loaded: Data?
+        if let url = try? await mediaCache.cachedURL(for: sticker.id) { loaded = try? Data(contentsOf: url) }
+        if loaded == nil, let base64 = sticker.content?.mediaData { loaded = Data(base64Encoded: base64) }
+        if loaded == nil, !demoMode {
             do {
                 let response = try await api.media(messageID: sticker.id)
-                data = Data(base64Encoded: response.mediaData)
+                loaded = Data(base64Encoded: response.mediaData)
             } catch {
                 presentError("Couldn’t send sticker", error)
                 return false
             }
         }
-        guard let data, Self.isWebP(data) else {
+        guard let data = loaded, Self.isWebP(data) else {
             presentError("Couldn’t send sticker", "This sticker isn’t in a format WhatsApp accepts.")
             return false
         }

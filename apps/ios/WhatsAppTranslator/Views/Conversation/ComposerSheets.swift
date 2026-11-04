@@ -384,6 +384,7 @@ struct StickerPickerSheet: View {
             }
         }
         .interactiveDismissDisabled(sendingID != nil)
+        .task { await session.prepareStickerTray() }
     }
 
     private func thumbnail(_ sticker: ChatMessage) -> some View {
@@ -393,6 +394,9 @@ struct StickerPickerSheet: View {
                     .resizable()
                     .scaledToFit()
                     .opacity(sendingID == sticker.id ? 0.4 : 1)
+            } else if session.mediaErrorIDs.contains(sticker.id) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
             } else {
                 ProgressView()
             }
