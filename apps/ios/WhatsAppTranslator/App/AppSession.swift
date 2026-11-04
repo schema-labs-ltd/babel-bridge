@@ -88,6 +88,7 @@ final class AppSession {
     /// Messages that arrived over the live connection, per chat, so a conversation can tell them
     /// from history pages and refreshes whatever their timestamps.
     var liveArrivals: [String: LiveArrivals] = [:]
+    var typing = TypingIndicators()
     var pendingReadReceipts: [String: Set<String>] = [:]
     var readReceiptTask: Task<Void, Never>?
 
@@ -97,6 +98,13 @@ final class AppSession {
     let mediaCache: MediaCacheStore
     let demoMode: Bool
     var liveUpdatesReconnecting = false
+    /// The iOS app is in the background, where it holds no live socket (see `enteredBackground`).
+    var isInBackground = false
+    /// The live socket was closed for the background. Unlike `liveUpdatesReconnecting`, no late
+    /// live event can clear it, so becoming active always reconnects.
+    var liveClosedForBackground = false
+    /// The Mac app's activation observers, kept for the app's lifetime rather than a window's.
+    var activationObservers: [any NSObjectProtocol] = []
     /// True only once a reconnect has lasted longer than `connectingIndicatorDelay`,
     /// so the routine reconnect after the app returns to the foreground stays silent.
     var showsConnectingIndicator = false

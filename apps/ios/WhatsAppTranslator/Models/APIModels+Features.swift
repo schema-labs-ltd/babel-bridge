@@ -171,6 +171,9 @@ struct LiveEvent: Decodable, Sendable {
     var phone: String? = nil
     var name: String? = nil
     var data: String? = nil
+    /// Who is typing in `chatId`, and whether they are "typing", "recording" or have "paused".
+    var userId: String? = nil
+    var state: String? = nil
     let type: String
     let connected: Bool?
     let chatId: String?
@@ -205,6 +208,8 @@ struct LiveEvent: Decodable, Sendable {
         case chatId = "chat_id"
         case messageIds = "message_ids"
         case messageId = "message_id"
+        case userId = "user_id"
+        case state
     }
 }
 

@@ -200,8 +200,14 @@ extension AppSession {
             if feedHasLoaded || mainTab == .messages { Task { await loadFeed() } }
             await persistCache()
             await PushNotificationCoordinator.shared.activate(for: self)
-            try await api.connectLiveEvents { [weak self] event in
-                self?.handle(event)
+            // A setup that finishes in the background connects when the app is active again.
+            if isInBackground {
+                liveClosedForBackground = true
+                liveUpdatesReconnecting = true
+            } else {
+                try await api.connectLiveEvents { [weak self] event in
+                    self?.handle(event)
+                }
             }
         } catch {
             presentError("Couldn’t connect", error)
@@ -229,8 +235,41 @@ extension AppSession {
         return true
     }
 
+    /// The server shows the account online while an app holds a live socket, as WhatsApp Web
+    /// does, so a suspended app drops it and the phone gets its notifications back. Becoming
+    /// active reconnects and catches up on what arrived meanwhile.
+    func enteredBackground() async {
+        isInBackground = true
+        guard phase == .ready, !demoMode else { return }
+        // Set before the await, so becoming active again meanwhile still reconnects.
+        liveClosedForBackground = true
+        liveUpdatesReconnecting = true
+        connectingIndicatorTask?.cancel()
+        connectingIndicatorTask = nil
+        await api.disconnectLiveEvents()
+    }
+
+    /// The Mac app stays connected in the background for its notifications, so it only tells the
+    /// server whether it is in front of the user. It watches activation for the app's lifetime,
+    /// so closing the window can't leave it reporting "in front".
+    func observeAppActivation(isActive: Bool, didBecomeActive: Notification.Name, didResignActive: Notification.Name) async {
+        guard activationObservers.isEmpty else { return }
+        await api.setLiveForeground(isActive)
+        for (name, inFront) in [(didBecomeActive, true), (didResignActive, false)] {
+            activationObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in await self?.api.setLiveForeground(inFront) }
+            })
+        }
+    }
+
     func becameActive() async {
+        isInBackground = false
         guard phase == .ready, !demoMode, !isConnecting else { return }
+        // A live event queued before the socket closed may have cleared the reconnect flag.
+        if liveClosedForBackground {
+            liveClosedForBackground = false
+            liveUpdatesReconnecting = true
+        }
         await reconnectLiveEventsOnResume()
         _ = await restoreCachedState()
         await refresh()

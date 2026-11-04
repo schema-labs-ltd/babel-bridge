@@ -34,11 +34,16 @@ extension APIClient {
                 webSocket = socket
                 lastLiveMessage = Date()
                 socket.resume()
+                sendLivePresence(on: socket)
                 let watchdog = Task { [weak self] in
+                    var ticks = 0
                     while !Task.isCancelled {
                         do { try await Task.sleep(for: .seconds(10)) } catch { return }
                         guard let self else { return }
                         await self.checkLiveHealth(generation: generation, socket: socket)
+                        ticks += 1
+                        // The server stops counting an app that hasn't said so in 75 seconds.
+                        if ticks % 3 == 0 { await self.sendLivePresence(on: socket) }
                     }
                 }
                 defer { watchdog.cancel(); socket.cancel(with: .goingAway, reason: nil) }
@@ -74,6 +79,19 @@ extension APIClient {
     /// suspended, and the server is fine. Later retries back off to 2, 4, 8, 16 and then 30 seconds.
     static func reconnectDelay(attempt: Int) -> Double {
         attempt <= 1 ? 0.25 : min(30, pow(2, Double(min(attempt - 1, 5))))
+    }
+
+    /// While the app is in front of the user, the server keeps the account online, as WhatsApp
+    /// Web does, so WhatsApp sends typing indicators.
+    func setLiveForeground(_ foreground: Bool) {
+        guard liveForeground != foreground else { return }
+        liveForeground = foreground
+        if let webSocket { sendLivePresence(on: webSocket) }
+    }
+
+    private func sendLivePresence(on socket: URLSessionWebSocketTask) {
+        let message = #"{"type":"presence","active":\#(liveForeground)}"#
+        socket.send(.string(message)) { _ in }
     }
 
     private func checkLiveHealth(generation: UUID, socket: URLSessionWebSocketTask) {

@@ -228,3 +228,36 @@ private final class MarkReadState: @unchecked Sendable {
         set { lock.withLock { storedHandler = newValue } }
     }
 }
+
+/// Typing indicators come over the same live events as reactions.
+extension LiveReactionTests {
+    func testTypingIndicatorsFollowPresenceAndExpire() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        var typing = TypingIndicators()
+        let none: (String) -> String? = { _ in nil }
+        typing.apply(chatID: "ana", userID: "ana", state: "typing", now: now)
+        XCTAssertEqual(typing.label(in: "ana", isGroup: false, now: now, name: none), "typing…")
+        typing.apply(chatID: "ana", userID: "ana", state: "recording", now: now)
+        XCTAssertEqual(typing.label(in: "ana", isGroup: false, now: now, name: none), "recording audio…")
+        typing.apply(chatID: "ana", userID: "ana", state: "paused", now: now)
+        XCTAssertNil(typing.label(in: "ana", isGroup: false, now: now, name: none))
+
+        typing.apply(chatID: "family", userID: "alex", state: "typing", now: now)
+        XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now) { _ in "Alex" }, "Alex is typing…")
+        typing.apply(chatID: "family", userID: "sam", state: "typing", now: now)
+        XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now, name: none), "2 people are typing…")
+        typing.stop(chatID: "family", userID: "sam", now: now)
+        XCTAssertEqual(typing.active(in: "family", now: now).map(\.userID), ["alex"])
+        // A group message with no known sender leaves everyone else's indicator alone.
+        typing.apply(chatID: "1@g.us", userID: "alex", state: "typing", now: now)
+        typing.stop(chatID: "1@g.us", userID: nil, now: now)
+        XCTAssertEqual(typing.active(in: "1@g.us", now: now).map(\.userID), ["alex"])
+        typing.stop(chatID: "1@g.us", userID: "alex", now: now)
+
+        // A typing state not heard again lapses, as it does in WhatsApp.
+        let later = now.addingTimeInterval(TypingIndicators.lifetime + 1)
+        XCTAssertNil(typing.label(in: "family", isGroup: true, now: later, name: none))
+        typing.prune(now: later)
+        XCTAssertEqual(typing.chats, [:])
+    }
+}

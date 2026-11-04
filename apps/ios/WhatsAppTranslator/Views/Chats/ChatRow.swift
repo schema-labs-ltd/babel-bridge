@@ -10,6 +10,8 @@ struct ChatRow: View {
     var isMuted = false
     var isMarkedUnread = false
     var latestMessage: ChatMessage? = nil
+    /// "typing…" while someone in the chat types, shown in place of the preview as WhatsApp does.
+    var typingLabel: String? = nil
 
     private var showsUnread: Bool { contact.unreadCount > 0 || isMarkedUnread }
     private var unreadTint: Color { isMuted ? Color.platformSecondaryLabel : palette.accent }
@@ -81,7 +83,13 @@ struct ChatRow: View {
 
     @ViewBuilder
     private func previewText(lineLimit: Int) -> some View {
-        if !draft.isEmpty {
+        if let typingLabel {
+            Text(typingLabel)
+                .foregroundStyle(palette.accent)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+        } else if !draft.isEmpty {
             Text("Draft: \(draft)")
                 .foregroundStyle(.orange)
                 .italic()
