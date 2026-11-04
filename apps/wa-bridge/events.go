@@ -78,10 +78,12 @@ func (c *Client) handleEvent(evt interface{}) {
 		}
 		SendEvent(NewLogEvent("info", chatPresenceLog(fmt.Sprint(v.State), fmt.Sprint(v.Media))))
 		// Send chat presence event
-		// Typing can arrive under a hidden (LID) address; the app knows chats by phone address.
-		chat := c.phoneAddress(normalizeAddress(v.Chat, types.JID{}))
+		// Typing can arrive under a hidden (LID) address, and a chat can be stored under either
+		// its phone or its LID address, so the indicator goes to each address the chat has.
 		sender := c.phoneAddress(normalizeAddress(v.Sender, v.SenderAlt))
-		SendEvent(NewChatPresenceEvent(chat.String(), sender.String(), state))
+		for _, chat := range c.presenceChatIDs(v.MessageSource) {
+			SendEvent(NewChatPresenceEvent(chat, sender.String(), state))
+		}
 
 	case *events.HistorySync:
 		// History sync - import historical messages

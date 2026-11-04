@@ -156,7 +156,11 @@ pub struct AppState {
     /// Set to true once, when the process should stop background work and sockets.
     pub shutdown: watch::Sender<bool>,
     /// How many apps are in front of the user. WhatsApp sees the account online while any are.
-    pub active_apps: tokio::sync::Mutex<usize>,
+    pub active_apps: std::sync::Mutex<usize>,
+    /// The presence the bridge should have, sent in order by one worker so that no socket or
+    /// bridge event waits for room in the command channel.
+    pub presence: watch::Sender<Option<bool>>,
+    pub presence_worker: std::sync::Once,
 }
 
 /// Bridge send result normalized for Rust/web consumers.

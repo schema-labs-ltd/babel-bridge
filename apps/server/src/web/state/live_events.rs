@@ -166,36 +166,51 @@ impl AppState {
     /// An app came to the front of the user, or left it. The first one in front marks the
     /// account online, as WhatsApp Web does, because WhatsApp only sends typing indicators to
     /// an online device. When none is left the account goes offline again, so the phone gets
-    /// its notifications back. The lock keeps the commands in the order of the changes.
-    pub async fn app_presence_changed(&self, active: bool) {
-        let mut apps = self.active_apps.lock().await;
+    /// its notifications back.
+    pub fn app_presence_changed(self: &Arc<Self>, active: bool) {
+        let mut apps = self.active_apps.lock().unwrap_or_else(|e| e.into_inner());
         if active {
             *apps += 1;
             if *apps == 1 {
-                self.send_presence(true).await;
+                self.want_presence(true);
             }
         } else if *apps > 0 {
             *apps -= 1;
             if *apps == 0 {
-                self.send_presence(false).await;
+                self.want_presence(false);
             }
         }
     }
 
     /// Resend the presence the apps need, after the bridge reconnects.
-    pub async fn refresh_presence(&self) {
-        let apps = self.active_apps.lock().await;
+    pub fn refresh_presence(self: &Arc<Self>) {
+        let apps = self.active_apps.lock().unwrap_or_else(|e| e.into_inner());
         if *apps > 0 {
-            self.send_presence(true).await;
+            self.want_presence(true);
         }
     }
 
-    async fn send_presence(&self, available: bool) {
-        if let Err(error) = self
-            .send_bridge_command(BridgeCommand::SetPresence { available })
-            .await
-        {
-            tracing::debug!(%error, "Presence not sent");
-        }
+    /// Hands the wanted presence to the worker, which sends the latest one once the bridge
+    /// takes commands. Changes made meanwhile collapse into that latest one, in order.
+    fn want_presence(self: &Arc<Self>, available: bool) {
+        self.presence_worker.call_once(|| {
+            let mut wanted = self.presence.subscribe();
+            let state = Arc::downgrade(self);
+            tokio::spawn(async move {
+                while wanted.changed().await.is_ok() {
+                    let Some(available) = *wanted.borrow_and_update() else {
+                        continue;
+                    };
+                    let Some(state) = state.upgrade() else { break };
+                    if let Err(error) = state
+                        .send_bridge_command(BridgeCommand::SetPresence { available })
+                        .await
+                    {
+                        tracing::debug!(%error, "Presence not sent");
+                    }
+                }
+            });
+        });
+        self.presence.send_replace(Some(available));
     }
 }

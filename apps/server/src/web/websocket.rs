@@ -21,20 +21,20 @@ struct SocketPresence {
 }
 
 impl SocketPresence {
-    async fn set(&mut self, active: bool) {
+    fn set(&mut self, active: bool) {
         let was_active = self.active_until.is_some();
         self.active_until = active.then(|| tokio::time::Instant::now() + ACTIVE_FOR);
         if was_active != active {
-            self.state.app_presence_changed(active).await;
+            self.state.app_presence_changed(active);
         }
     }
 
-    async fn expire(&mut self) {
+    fn expire(&mut self) {
         if self
             .active_until
             .is_some_and(|until| until <= tokio::time::Instant::now())
         {
-            self.set(false).await;
+            self.set(false);
         }
     }
 }
@@ -43,8 +43,7 @@ impl Drop for SocketPresence {
     // Covers a handler that ends without passing `set(false)`, such as a panic.
     fn drop(&mut self) {
         if self.active_until.take().is_some() {
-            let state = self.state.clone();
-            tokio::spawn(async move { state.app_presence_changed(false).await });
+            self.state.app_presence_changed(false);
         }
     }
 }
@@ -121,7 +120,7 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
                 }
             }
             _ = heartbeat.tick() => {
-                presence.expire().await;
+                presence.expire();
                 if !send_within(&mut sender, Message::Text("{\"type\":\"heartbeat\"}".into())).await { break; }
             }
             // Broadcast events to client
@@ -147,7 +146,7 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
                     }
                     Some(Ok(Message::Text(text))) => {
                         if let Some(active) = client_presence(&text) {
-                            presence.set(active).await;
+                            presence.set(active);
                         }
                     }
                     _ => {}
@@ -155,5 +154,5 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
             }
         }
     }
-    presence.set(false).await;
+    presence.set(false);
 }

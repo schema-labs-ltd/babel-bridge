@@ -202,6 +202,7 @@ extension AppSession {
             await PushNotificationCoordinator.shared.activate(for: self)
             // A setup that finishes in the background connects when the app is active again.
             if isInBackground {
+                liveClosedForBackground = true
                 liveUpdatesReconnecting = true
             } else {
                 try await api.connectLiveEvents { [weak self] event in
@@ -241,6 +242,7 @@ extension AppSession {
         isInBackground = true
         guard phase == .ready, !demoMode else { return }
         // Set before the await, so becoming active again meanwhile still reconnects.
+        liveClosedForBackground = true
         liveUpdatesReconnecting = true
         connectingIndicatorTask?.cancel()
         connectingIndicatorTask = nil
@@ -263,6 +265,11 @@ extension AppSession {
     func becameActive() async {
         isInBackground = false
         guard phase == .ready, !demoMode, !isConnecting else { return }
+        // A live event queued before the socket closed may have cleared the reconnect flag.
+        if liveClosedForBackground {
+            liveClosedForBackground = false
+            liveUpdatesReconnecting = true
+        }
         await reconnectLiveEventsOnResume()
         _ = await restoreCachedState()
         await refresh()
