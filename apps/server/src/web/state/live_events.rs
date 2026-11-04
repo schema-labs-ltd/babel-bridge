@@ -163,30 +163,29 @@ impl AppState {
 }
 
 impl AppState {
-    /// An app opened a live-events socket. The first one marks the account online, as WhatsApp
-    /// Web does, because WhatsApp only sends typing indicators to an online device.
-    pub async fn live_client_joined(&self) {
-        let mut clients = self.live_clients.lock().await;
-        *clients += 1;
-        if *clients == 1 {
-            self.send_presence(true).await;
+    /// An app came to the front of the user, or left it. The first one in front marks the
+    /// account online, as WhatsApp Web does, because WhatsApp only sends typing indicators to
+    /// an online device. When none is left the account goes offline again, so the phone gets
+    /// its notifications back. The lock keeps the commands in the order of the changes.
+    pub async fn app_presence_changed(&self, active: bool) {
+        let mut apps = self.active_apps.lock().await;
+        if active {
+            *apps += 1;
+            if *apps == 1 {
+                self.send_presence(true).await;
+            }
+        } else if *apps > 0 {
+            *apps -= 1;
+            if *apps == 0 {
+                self.send_presence(false).await;
+            }
         }
     }
 
-    /// An app closed its socket. When none are left the account goes offline again, so the
-    /// phone gets its notifications back.
-    pub async fn live_client_left(&self) {
-        let mut clients = self.live_clients.lock().await;
-        *clients = clients.saturating_sub(1);
-        if *clients == 0 {
-            self.send_presence(false).await;
-        }
-    }
-
-    /// Resend the presence the open apps need, after the bridge reconnects.
+    /// Resend the presence the apps need, after the bridge reconnects.
     pub async fn refresh_presence(&self) {
-        let clients = self.live_clients.lock().await;
-        if *clients > 0 {
+        let apps = self.active_apps.lock().await;
+        if *apps > 0 {
             self.send_presence(true).await;
         }
     }

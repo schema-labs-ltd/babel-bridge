@@ -6,11 +6,60 @@ pub(super) async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| async move {
-        state.live_client_joined().await;
-        handle_websocket(socket, state.clone()).await;
-        state.live_client_left().await;
-    })
+    ws.on_upgrade(|socket| handle_websocket(socket, state))
+}
+
+/// How long an app counts as in front of the user after it last said so. Apps repeat it every
+/// 30 seconds, so a suspended or vanished app stops counting even if its socket lingers.
+const ACTIVE_FOR: Duration = Duration::from_secs(75);
+
+/// Whether this socket's app is in front of the user. While any is, WhatsApp sees the account
+/// online, as with WhatsApp Web, and sends typing indicators.
+struct SocketPresence {
+    state: Arc<AppState>,
+    active_until: Option<tokio::time::Instant>,
+}
+
+impl SocketPresence {
+    async fn set(&mut self, active: bool) {
+        let was_active = self.active_until.is_some();
+        self.active_until = active.then(|| tokio::time::Instant::now() + ACTIVE_FOR);
+        if was_active != active {
+            self.state.app_presence_changed(active).await;
+        }
+    }
+
+    async fn expire(&mut self) {
+        if self
+            .active_until
+            .is_some_and(|until| until <= tokio::time::Instant::now())
+        {
+            self.set(false).await;
+        }
+    }
+}
+
+impl Drop for SocketPresence {
+    // Covers a handler that ends without passing `set(false)`, such as a panic.
+    fn drop(&mut self) {
+        if self.active_until.take().is_some() {
+            let state = self.state.clone();
+            tokio::spawn(async move { state.app_presence_changed(false).await });
+        }
+    }
+}
+
+/// An app's `{"type":"presence","active":true}`, sent while it is in front of the user.
+pub(super) fn client_presence(text: &str) -> Option<bool> {
+    #[derive(Deserialize)]
+    struct ClientPresence {
+        r#type: String,
+        active: bool,
+    }
+    serde_json::from_str::<ClientPresence>(text)
+        .ok()
+        .filter(|message| message.r#type == "presence")
+        .map(|message| message.active)
 }
 
 async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
@@ -43,6 +92,10 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
     // Handle incoming messages and broadcast events
     let mut heartbeat = tokio::time::interval(Duration::from_secs(20));
     let mut shutdown = state.shutdown.subscribe();
+    let mut presence = SocketPresence {
+        state: state.clone(),
+        active_until: None,
+    };
     if *shutdown.borrow() {
         let _ = sender.send(Message::Close(None)).await;
         return;
@@ -56,6 +109,7 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
                 }
             }
             _ = heartbeat.tick() => {
+                presence.expire().await;
                 if sender.send(Message::Text("{\"type\":\"heartbeat\"}".into())).await.is_err() { break; }
             }
             // Broadcast events to client
@@ -72,16 +126,22 @@ async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {
                 }
             }
 
-            // Handle client messages (for future use)
+            // Handle client messages
             msg = receiver.next() => {
                 match msg {
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(Message::Ping(data))) => {
                         let _ = sender.send(Message::Pong(data)).await;
                     }
+                    Some(Ok(Message::Text(text))) => {
+                        if let Some(active) = client_presence(&text) {
+                            presence.set(active).await;
+                        }
+                    }
                     _ => {}
                 }
             }
         }
     }
+    presence.set(false).await;
 }

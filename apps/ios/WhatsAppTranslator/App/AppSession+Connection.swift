@@ -234,10 +234,17 @@ extension AppSession {
     /// active reconnects and catches up on what arrived meanwhile.
     func enteredBackground() async {
         guard phase == .ready, !demoMode else { return }
-        await api.disconnectLiveEvents()
+        // Set before the await, so becoming active again meanwhile still reconnects.
         liveUpdatesReconnecting = true
         connectingIndicatorTask?.cancel()
         connectingIndicatorTask = nil
+        await api.disconnectLiveEvents()
+    }
+
+    /// The Mac app stays connected in the background for its notifications, so it only tells the
+    /// server whether it is in front of the user.
+    func setInFront(_ inFront: Bool) async {
+        await api.setLiveForeground(inFront)
     }
 
     func becameActive() async {

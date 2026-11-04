@@ -381,20 +381,6 @@ func confirmedReactionEvent(chat, sender types.JID, id string, sentAt time.Time,
 }
 
 // MarkRead marks a message as read in WhatsApp.
-// SetPresence marks the account online while an app is open, as WhatsApp Web does. WhatsApp
-// only sends typing indicators to an online device, and an online device also takes the
-// phone's notifications, so the server sets it back to unavailable when the last app closes.
-func (c *Client) SetPresence(ctx context.Context, available bool) error {
-	if c.client == nil || !c.client.IsConnected() {
-		return fmt.Errorf("not connected")
-	}
-	state := types.PresenceUnavailable
-	if available {
-		state = types.PresenceAvailable
-	}
-	return c.client.SendPresence(ctx, state)
-}
-
 func (c *Client) MarkRead(ctx context.Context, chatJIDStr string, messageID string, timestamp int64, senderJIDStr string) error {
 	chatJID, senderJID, readAt, err := readReceiptTarget(chatJIDStr, senderJIDStr, timestamp)
 	if err != nil {
@@ -501,4 +487,48 @@ func buildMediaMessage(cmd Command, jid types.JID, uploaded whatsmeow.UploadResp
 		FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256,
 		FileLength: &uploaded.FileLength, ContextInfo: context,
 	}}
+}
+
+// SetPresence marks the account online while an app is in front of the user, as WhatsApp Web
+// does. WhatsApp only sends typing indicators to an online device, and an online device also
+// takes the phone's notifications, so the server sets it back to unavailable when no app is.
+// The wish is kept, so it is sent again after a reconnect or once the push name is known.
+func (c *Client) SetPresence(ctx context.Context, available bool) error {
+	c.wantsPresence.Store(available)
+	return c.sendPresence(ctx)
+}
+
+func (c *Client) sendPresence(ctx context.Context) error {
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+	state := types.PresenceUnavailable
+	if c.wantsPresence.Load() {
+		state = types.PresenceAvailable
+	}
+	return c.client.SendPresence(ctx, state)
+}
+
+// resendPresence restores an online state WhatsApp dropped, such as after a reconnect.
+func (c *Client) resendPresence() {
+	if !c.wantsPresence.Load() {
+		return
+	}
+	go func() {
+		if err := c.sendPresence(c.ctx); err != nil {
+			SendEvent(NewLogEvent("warn", fmt.Sprintf("presence not restored: %v", err)))
+		}
+	}()
+}
+
+// phoneAddress turns a hidden (LID) user address into the phone address the app uses for
+// contacts and senders, when WhatsApp has told this device the mapping.
+func (c *Client) phoneAddress(jid types.JID) types.JID {
+	if jid.Server != types.HiddenUserServer || c.client == nil || c.client.Store == nil || c.client.Store.LIDs == nil {
+		return jid
+	}
+	if phone, err := c.client.Store.LIDs.GetPNForLID(c.ctx, jid); err == nil && phone.User != "" {
+		return phone.ToNonAD()
+	}
+	return jid
 }

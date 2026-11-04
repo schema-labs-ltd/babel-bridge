@@ -26,6 +26,14 @@ struct BabelBridgeMacApp: App {
                     guard phase == .active else { return }
                     Task { await session.becameActive() }
                 }
+                // WhatsApp shows the account online only while the app is frontmost, as with
+                // WhatsApp Desktop, so the phone keeps its notifications otherwise.
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    Task { await session.setInFront(true) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                    Task { await session.setInFront(false) }
+                }
         }
         .defaultSize(
             width: MacChatLayoutMetrics.defaultWindowWidth,

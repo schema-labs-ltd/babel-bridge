@@ -29,6 +29,11 @@ func (c *Client) handleEvent(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Connected:
 		c.sendConnectedEvent()
+		c.resendPresence()
+
+	case *events.PushNameSetting:
+		// WhatsApp refuses presence until the account's push name is known.
+		c.resendPresence()
 
 	case *events.KeepAliveRestored:
 		if c.client.IsConnected() && c.client.IsLoggedIn() {
@@ -73,7 +78,10 @@ func (c *Client) handleEvent(evt interface{}) {
 		}
 		SendEvent(NewLogEvent("info", chatPresenceLog(fmt.Sprint(v.State), fmt.Sprint(v.Media))))
 		// Send chat presence event
-		SendEvent(NewChatPresenceEvent(normalizeAddress(v.Chat, types.JID{}).String(), normalizeAddress(v.Sender, types.JID{}).String(), state))
+		// Typing can arrive under a hidden (LID) address; the app knows chats by phone address.
+		chat := c.phoneAddress(normalizeAddress(v.Chat, types.JID{}))
+		sender := c.phoneAddress(normalizeAddress(v.Sender, v.SenderAlt))
+		SendEvent(NewChatPresenceEvent(chat.String(), sender.String(), state))
 
 	case *events.HistorySync:
 		// History sync - import historical messages

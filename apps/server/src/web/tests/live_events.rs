@@ -389,7 +389,7 @@ fn clear_orphaned_session_sidecars_keeps_sidecars_with_session_db() {
 }
 
 #[tokio::test]
-async fn the_account_is_online_only_while_an_app_holds_a_live_socket() {
+async fn the_account_is_online_only_while_an_app_is_in_front() {
     let (state, data_dir) = test_state(None);
     let (command_tx, mut command_rx) = mpsc::channel(8);
     state.set_command_tx(command_tx).await;
@@ -398,20 +398,37 @@ async fn the_account_is_online_only_while_an_app_holds_a_live_socket() {
         other => panic!("unexpected command {other:?}"),
     };
 
-    state.live_client_joined().await;
+    state.app_presence_changed(true).await;
     assert!(presence(command_rx.try_recv().expect("online")));
     // A second app changes nothing; the account goes offline only when both have left.
-    state.live_client_joined().await;
-    state.live_client_left().await;
+    state.app_presence_changed(true).await;
+    state.app_presence_changed(false).await;
     assert!(command_rx.try_recv().is_err());
     state.refresh_presence().await;
     assert!(presence(
         command_rx.try_recv().expect("restored after reconnect")
     ));
-    state.live_client_left().await;
+    state.app_presence_changed(false).await;
     assert!(!presence(command_rx.try_recv().expect("offline")));
     state.refresh_presence().await;
     assert!(command_rx.try_recv().is_err());
+    // A stray "inactive" can't drive the count below zero.
+    state.app_presence_changed(false).await;
+    assert!(command_rx.try_recv().is_err());
 
     let _ = std::fs::remove_dir_all(data_dir);
+}
+
+#[test]
+fn apps_report_presence_as_a_typed_message() {
+    assert_eq!(
+        client_presence(r#"{"type":"presence","active":true}"#),
+        Some(true)
+    );
+    assert_eq!(
+        client_presence(r#"{"type":"presence","active":false}"#),
+        Some(false)
+    );
+    assert_eq!(client_presence(r#"{"type":"other","active":true}"#), None);
+    assert_eq!(client_presence("hello"), None);
 }

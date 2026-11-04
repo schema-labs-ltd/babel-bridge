@@ -155,8 +155,8 @@ pub struct AppState {
     pub push_notifications: Option<Arc<ApnsClient>>,
     /// Set to true once, when the process should stop background work and sockets.
     pub shutdown: watch::Sender<bool>,
-    /// How many apps hold a live-events socket. WhatsApp sees the account online while any do.
-    pub live_clients: tokio::sync::Mutex<usize>,
+    /// How many apps are in front of the user. WhatsApp sees the account online while any are.
+    pub active_apps: tokio::sync::Mutex<usize>,
 }
 
 /// Bridge send result normalized for Rust/web consumers.
