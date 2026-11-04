@@ -234,79 +234,99 @@ extension AppSession {
     @discardableResult
     func forward(_ originals: [ChatMessage], to contactIDs: [String]) async -> Int {
         let items = originals.filter(Self.canForward).sorted { $0.timestamp < $1.timestamp }
-        guard !items.isEmpty else { return 0 }
-        // Every file is held in memory until each chat has it, so keep a forward to album size.
-        guard items.count <= 30 else {
-            presentError("Couldn’t forward", "Forward up to 30 messages at a time.")
-            return 0
-        }
+        guard !items.isEmpty, !contactIDs.isEmpty else { return 0 }
         let epoch = topicAccountEpoch
         var current: Bool { topicAccountEpoch == epoch && !Task.isCancelled }
         var media: [String: (data: Data, mimeType: String)] = [:]
-        for message in items where message.mediaKind != nil {
+        // Loads a file, unless the forward has already failed or the account changed meanwhile.
+        func file(for message: ChatMessage) async -> (data: Data, mimeType: String)? {
+            if let loaded = media[message.id] { return loaded }
             do {
-                // Media already on this device, or carried in the message, needs no download.
-                let mimeType = message.content?.mimeType?.nilIfBlank
-                if let mimeType, let url = try? await mediaCache.cachedURL(for: message.id),
-                   let data = await Task.detached(operation: { try? Data(contentsOf: url) }).value, !data.isEmpty {
-                    media[message.id] = (data, mimeType)
-                    continue
-                }
-                if let mimeType, let base64 = message.content?.mediaData, let data = Data(base64Encoded: base64) {
-                    media[message.id] = (data, mimeType)
-                    continue
-                }
-                let response = try await api.media(messageID: message.id)
-                guard let data = Data(base64Encoded: response.mediaData) else {
-                    throw APIError.decoding("The media payload was invalid.")
-                }
-                media[message.id] = (data, response.mimeType)
+                let loaded = try await forwardMedia(for: message)
+                return current ? loaded : nil
             } catch {
                 if current { presentError("Couldn’t forward", error) }
-                return 0
+                return nil
             }
-            // Signing out or switching account while media loads must not send from the new one.
-            guard current else { return 0 }
         }
-        let asAlbum = Self.forwardsAsAlbum(items, sizes: items.compactMap { media[$0.id]?.data.count })
-        var delivered = 0
-        for contactID in contactIDs {
-            guard current else { return delivered }
-            var sentAll = true
-            if asAlbum {
+        var reached = Set(contactIDs)
+        // An album needs every photo at once (at most 30, within 64 MB).
+        if Self.forwardsAsAlbum(items, sizes: items.map { _ in 0 }) {
+            for message in items {
+                guard let loaded = await file(for: message) else { return 0 }
+                media[message.id] = loaded
+            }
+            if Self.forwardsAsAlbum(items, sizes: items.compactMap { media[$0.id]?.data.count }) {
                 let images = items.compactMap { media[$0.id].map { OutgoingImage(data: $0.data, mimeType: $0.mimeType) } }
-                sentAll = await sendImages(images, caption: Self.forwardedCaption(items[0]), to: contactID)
-            } else {
-                for message in items where sentAll {
-                    guard current else { return delivered }
-                    let caption = Self.forwardedCaption(message)
-                    switch message.mediaKind {
-                    case .image:
-                        guard let file = media[message.id] else { sentAll = false; break }
-                        sentAll = await sendImage(data: file.data, mimeType: file.mimeType, caption: caption, to: contactID)
-                    case .video, .document:
-                        guard let file = media[message.id] else { sentAll = false; break }
-                        let isVideo = message.mediaKind == .video
-                        let attachment = OutgoingAttachment(
-                            data: file.data,
-                            mimeType: file.mimeType,
-                            fileName: message.content?.fileName?.nilIfBlank ?? (isVideo ? "video.mp4" : "Document"),
-                            kind: isVideo ? "video" : "document"
-                        )
-                        sentAll = await sendAttachment(attachment, caption: caption, to: contactID, reply: nil)
-                    default:
-                        sentAll = await send(text: Self.forwardedText(message), to: contactID)
+                for contactID in contactIDs {
+                    guard current else { return 0 }
+                    if !(await sendImages(images, caption: Self.forwardedCaption(items[0]), to: contactID)) {
+                        reached.remove(contactID)
                     }
                 }
+                return finishForward(items, to: contactIDs, reached: reached, current: current)
             }
-            if sentAll { delivered += 1 }
         }
+        // Otherwise each message goes to every chat in turn, holding only its own file, so a
+        // long run never keeps all its files in memory.
+        for message in items {
+            guard current, !reached.isEmpty else { break }
+            var loaded: (data: Data, mimeType: String)?
+            if message.mediaKind != nil {
+                loaded = await file(for: message)
+                media[message.id] = nil
+                guard loaded != nil else { return 0 }
+            }
+            let caption = Self.forwardedCaption(message)
+            for contactID in contactIDs where reached.contains(contactID) {
+                guard current else { return 0 }
+                let sent: Bool
+                switch (message.mediaKind, loaded) {
+                case (.image, let file?):
+                    sent = await sendImage(data: file.data, mimeType: file.mimeType, caption: caption, to: contactID)
+                case (.video, let file?), (.document, let file?):
+                    let isVideo = message.mediaKind == .video
+                    let attachment = OutgoingAttachment(
+                        data: file.data,
+                        mimeType: file.mimeType,
+                        fileName: message.content?.fileName?.nilIfBlank ?? (isVideo ? "video.mp4" : "Document"),
+                        kind: isVideo ? "video" : "document"
+                    )
+                    sent = await sendAttachment(attachment, caption: caption, to: contactID, reply: nil)
+                default:
+                    sent = await send(text: Self.forwardedText(message), to: contactID)
+                }
+                if !sent { reached.remove(contactID) }
+            }
+        }
+        return finishForward(items, to: contactIDs, reached: current ? reached : [], current: current)
+    }
+
+    /// Media already on this device, or carried in the message, needs no download.
+    private func forwardMedia(for message: ChatMessage) async throws -> (data: Data, mimeType: String) {
+        let mimeType = message.content?.mimeType?.nilIfBlank
+        if let mimeType, let url = try? await mediaCache.cachedURL(for: message.id),
+           let data = await Task.detached(operation: { try? Data(contentsOf: url) }).value, !data.isEmpty {
+            return (data, mimeType)
+        }
+        if let mimeType, let base64 = message.content?.mediaData, let data = Data(base64Encoded: base64) {
+            return (data, mimeType)
+        }
+        let response = try await api.media(messageID: message.id)
+        guard let data = Data(base64Encoded: response.mediaData) else {
+            throw APIError.decoding("The media payload was invalid.")
+        }
+        return (data, response.mimeType)
+    }
+
+    private func finishForward(_ items: [ChatMessage], to contactIDs: [String], reached: Set<String>, current: Bool) -> Int {
+        guard current else { return 0 }
         // Photo sends refresh only their chat; the Messages feed needs them too.
-        if current, delivered > 0, items.contains(where: { $0.mediaKind == .image }) { await loadFeed() }
-        if current, delivered < contactIDs.count, errorMessage == nil {
+        if !reached.isEmpty, items.contains(where: { $0.mediaKind == .image }) { Task { await loadFeed() } }
+        if reached.count < contactIDs.count, errorMessage == nil {
             presentError("Couldn’t forward", "The message didn’t reach every chat you chose. Try again in a moment.")
         }
-        return delivered
+        return reached.count
     }
 
     /// Several photos go as one album only when the album keeps every caption: at most 30
