@@ -17,7 +17,9 @@ actor SendRecoveryStore {
             || (path.hasPrefix("/api/photo-albums/") && path.hasSuffix("/send")))
     }
 
-    func identity(server: URL, path: String, method: String, body: Data?) throws -> Identity? {
+    /// `operation` tells apart sends whose bodies match, such as two messages saying "ok"; a
+    /// retry of one passes the same value, so it reuses that send's key.
+    func identity(server: URL, path: String, method: String, body: Data?, operation: String? = nil) throws -> Identity? {
         guard Self.isSend(path: path, method: method) else { return nil }
         if entries == nil {
             if FileManager.default.fileExists(atPath: file.path) {
@@ -28,6 +30,7 @@ actor SendRecoveryStore {
         if let body, let json = try? JSONSerialization.jsonObject(with: body) {
             bytes.append(try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]))
         } else { bytes.append(body ?? Data()) }
+        if let operation { bytes.append(Data("\n\(operation)".utf8)) }
         let fingerprint = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
         if let key = entries?[fingerprint] { return Identity(fingerprint: fingerprint, key: key) }
         let identity = Identity(fingerprint: fingerprint, key: UUID().uuidString)

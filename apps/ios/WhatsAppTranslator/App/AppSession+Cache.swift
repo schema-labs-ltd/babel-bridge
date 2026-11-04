@@ -107,7 +107,8 @@ extension AppSession {
             messages: trimmedMessages,
             updatedAt: Date(),
             pendingReadReceipts: pendingReadReceipts.mapValues { Array($0).sorted() },
-            feed: feedHasLoaded ? cachedFeed() : nil
+            feed: feedHasLoaded ? cachedFeed() : nil,
+            pendingSends: pendingSends.isEmpty ? nil : Array(pendingSends.values)
         )
     }
 

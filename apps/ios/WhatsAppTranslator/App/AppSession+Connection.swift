@@ -148,6 +148,8 @@ extension AppSession {
         stickerDigests = [:]
         linkPreviews = [:]
         messages = [:]
+        pendingSends = [:]
+        cancelSendQueues()
         reactionEvents = [:]
         topicCatalog = .empty
         topicPages = [:]
@@ -181,6 +183,8 @@ extension AppSession {
         readReceiptTask?.cancel(); readReceiptTask = nil
         if self.configuration?.baseURL != configuration.baseURL {
             pendingReadReceipts = [:]; viewedReceiptMessageIDs = []
+            pendingSends = [:]
+            cancelSendQueues()
         }
         self.configuration = configuration
         topicAccountEpoch = UUID()
@@ -228,6 +232,13 @@ extension AppSession {
         contacts = snapshot.contacts
         messages = snapshot.messages
         restoreCachedFeed(snapshot.feed)
+        // Whatever was sending when the app closed waits for a tap on its resend button; its
+        // retry reuses its idempotency key, so one that did go out isn't sent twice.
+        // One the server had already accepted is left for the chat's next load to show.
+        for var send in snapshot.pendingSends ?? [] where pendingSends[send.id] == nil && !send.confirmed {
+            send.failure = send.failure ?? "Not sent before Babel Bridge closed."
+            pendingSends[send.id] = send
+        }
         for (chat, ids) in snapshot.pendingReadReceipts ?? [:] {
             pendingReadReceipts[chat, default: []].formUnion(ids)
             viewedReceiptMessageIDs.formUnion(ids)

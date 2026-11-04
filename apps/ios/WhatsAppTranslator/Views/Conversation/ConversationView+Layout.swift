@@ -85,7 +85,7 @@ extension ConversationView {
                         .allowsHitTesting(focusedReplyMessage == nil)
                         .accessibilityHidden(focusedReplyMessage != nil)
                     if let focusedReplyMessage {
-                        FocusedReplyOverlay(destination: session.displayName(for: contact), isSending: session.sendingContactIDs.contains(contact.id), cancel: cancelReply) {
+                        FocusedReplyOverlay(destination: session.displayName(for: contact), cancel: cancelReply) {
                             messageBubble(message: session.messages[focusedReplyMessage.contactId]?.first(where: { $0.id == focusedReplyMessage.id }) ?? focusedReplyMessage, opensQuotes: false)
                                 .modifier(ViewedMessageTask(messages: [focusedReplyMessage], enabled: !showSettings && !showCost && !showGallery))
                         }
@@ -275,6 +275,22 @@ extension ConversationView {
         pendingScrollID = UnreadMessagesDivider.scrollID
     }
 
+    func activateSearch() async {
+        await session.loadAllMessages(for: contact.id)
+        showSearch = true
+    }
+
+    func toggleStarredFilter() async {
+        if starredOnly {
+            starredOnly = false
+            return
+        }
+        await session.loadAllMessages(for: contact.id)
+        starredOnly = true
+    }
+
+    /// Scrolls to and highlights the message a reply quotes, loading the whole conversation first
+    /// when the quoted message is older than what's loaded.
     func jumpToQuotedMessage(_ id: String) async {
         // A newer tap wins: an older one that is still loading history must not scroll back.
         let token = UUID()

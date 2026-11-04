@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 extension AppSession {
     /// Returns whether a page was fetched and applied.
     @discardableResult
-    func loadMessages(for contactID: String, older: Bool = false) async -> Bool {
+    func loadMessages(for contactID: String, older: Bool = false, quietly: Bool = false) async -> Bool {
         if demoMode { return false }
         do {
             let current = messages[contactID] ?? []
@@ -26,7 +26,7 @@ extension AppSession {
             await refreshMessageTopics(response.messages)
             return true
         } catch {
-            guard !Self.isExpectedCancellation(error) else { return false }
+            guard !quietly, !Self.isExpectedCancellation(error) else { return false }
             presentError("Couldn’t load messages", error)
             return false
         }

@@ -24,6 +24,19 @@ final class SendRecoveryTests: XCTestCase {
         XCTAssertEqual(nextSend?.key, afterStaleResult?.key)
     }
 
+    func testIdenticalMessagesGetTheirOwnRetryIdentity() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = URL(string: "https://translator.example.test")!
+        let store = SendRecoveryStore(directory: directory)
+        let body = Data(#"{"contactId":"one","text":"ok"}"#.utf8)
+        let first = try await store.identity(server: server, path: "/api/send", method: "POST", body: body, operation: "pending-send-a")
+        let second = try await store.identity(server: server, path: "/api/send", method: "POST", body: body, operation: "pending-send-b")
+        let firstRetry = try await store.identity(server: server, path: "/api/send", method: "POST", body: body, operation: "pending-send-a")
+        XCTAssertNotEqual(first?.key, second?.key)
+        XCTAssertEqual(first?.key, firstRetry?.key)
+    }
+
     func testDifferentRecipientsDoNotShareRetryIdentity() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

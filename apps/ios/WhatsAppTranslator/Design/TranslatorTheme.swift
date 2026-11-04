@@ -189,7 +189,6 @@ extension View {
 
 struct FocusedReplyOverlay<Content: View>: View {
     let destination: String
-    let isSending: Bool
     let cancel: () -> Void
     @ViewBuilder var content: () -> Content
 
@@ -210,7 +209,6 @@ struct FocusedReplyOverlay<Content: View>: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Close focused reply")
                     .keyboardShortcut(.cancelAction)
-                    .disabled(isSending)
                 }
                 Spacer(minLength: 0)
                 ScrollView {

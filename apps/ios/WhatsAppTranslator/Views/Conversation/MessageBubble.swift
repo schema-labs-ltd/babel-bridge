@@ -58,9 +58,15 @@ struct MessageBubble: View {
 
     private var isStandaloneEmoji: Bool { message.standaloneEmojiText != nil }
 
+    /// Set while this is a message of yours that is still sending, or failed to.
+    var pendingSend: PendingSend? { session.pendingSends[message.id] }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if message.isFromMe { Spacer(minLength: bubbleEdgeInset) }
+            if let pendingSend {
+                PendingSendStatus(send: pendingSend) { session.retrySend(pendingSend.id) }
+            }
             ZStack(alignment: .leading) {
                 Image(systemName: "arrowshape.turn.up.left.fill")
                     .font(.system(size: 17, weight: .semibold))
@@ -183,12 +189,14 @@ struct MessageBubble: View {
             .contentShape(Rectangle())
             .modifier(
                 MessageSwipeReplyModifier(translation: $swipeTranslation) {
+                    // A message still sending has no WhatsApp ID to quote yet.
+                    guard pendingSend == nil else { return }
                     performReplyFeedback()
                     reply()
                 }
             )
-            .accessibilityAction(named: "Reply") { reply() }
-            .accessibilityAction(named: "Message actions") { showActions.toggle() }
+            .accessibilityAction(named: "Reply") { if pendingSend == nil { reply() } }
+            .accessibilityAction(named: "Message actions") { if pendingSend == nil { showActions.toggle() } }
             if !message.isFromMe { Spacer(minLength: bubbleEdgeInset) }
         }
         .frame(maxWidth: .infinity)

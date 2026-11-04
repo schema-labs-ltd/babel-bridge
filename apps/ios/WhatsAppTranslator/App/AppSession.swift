@@ -64,6 +64,11 @@ final class AppSession {
     var errorMessage: String?
     var isRefreshing = false
     var sendingContactIDs: Set<String> = []
+    /// Text messages shown in their chat while they send, keyed by their local ID.
+    var pendingSends: [String: PendingSend] = [:]
+    @ObservationIgnored var sendQueues: [String: Task<Void, Never>] = [:]
+    /// Demo sends fail, to show the resend button.
+    var demoSendsFail = ProcessInfo.processInfo.arguments.contains("-demoSendFails")
     var photoSendProgress: [String: PhotoSendProgress] = [:]
     var voicePreferenceRevision = 0
     var messageToneRevision = 0

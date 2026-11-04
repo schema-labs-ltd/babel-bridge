@@ -96,6 +96,41 @@ struct MessageDeliveryIndicator: View {
     }
 }
 
+/// Sits beside a message of yours that hasn't reached the server: a small spinner while it sends,
+/// then a resend button if it fails, as WhatsApp marks a message it couldn't send.
+struct PendingSendStatus: View {
+    let send: PendingSend
+    let retry: () -> Void
+
+    var body: some View {
+        Group {
+            if send.failed {
+                Button(action: retry) {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .red)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Resend message")
+                .accessibilityHint(send.failure ?? "")
+                .help(send.failure.map { "Not sent: \($0). Tap to try again." } ?? "Tap to try again.")
+                .accessibilityIdentifier("resend-message")
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 22, height: 22)
+                    .padding(.bottom, 4)
+                    .accessibilityLabel("Sending")
+                    .accessibilityIdentifier("sending-message")
+            }
+        }
+        .transition(.opacity.combined(with: .scale))
+    }
+}
+
 struct LinkPreviewCard: View {
     @Environment(\.translatorPalette) private var palette
     let preview: LinkPreview
