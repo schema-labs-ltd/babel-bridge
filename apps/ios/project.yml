@@ -317,6 +317,7 @@ targets:
       - path: WhatsAppTranslatorTests
       - path: SharedTests/MessageToneTests.swift
       - path: SharedTests/ConversationTranslationTests.swift
+      - path: SharedTests/EmoticonsTests.swift
       - path: SharedTests/ReactionDeliveryTests.swift
       - path: SharedTests/MessageEditDeliveryTests.swift
       - path: SharedTests/WhatsAppConnectionTests.swift
@@ -351,6 +352,7 @@ targets:
       - path: BabelBridgeMacTests
       - path: SharedTests/MessageToneTests.swift
       - path: SharedTests/ConversationTranslationTests.swift
+      - path: SharedTests/EmoticonsTests.swift
       - path: SharedTests/ReactionDeliveryTests.swift
       - path: SharedTests/MessageEditDeliveryTests.swift
       - path: SharedTests/WhatsAppConnectionTests.swift

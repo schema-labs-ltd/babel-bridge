@@ -132,7 +132,7 @@ struct UnifiedMediaControls: View {
         .sheet(item: $pendingPhotos) { selection in
             if let context {
                 ImageComposerSheet(photos: selection.photos, reply: context.reply, destination: context.destination) { images, caption in
-                    if session.startPhotoSend(images, caption: caption, to: context.message.contactId, reply: context.reply, replyOnlyIfNotLatest: true) {
+                    if session.startPhotoSend(images, caption: caption.map(Emoticons.replacingTrailing(in:)), to: context.message.contactId, reply: context.reply, replyOnlyIfNotLatest: true) {
                         onSent(context.message)
                         return true
                     }

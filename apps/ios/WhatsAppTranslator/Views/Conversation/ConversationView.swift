@@ -381,7 +381,8 @@ struct ConversationView: View {
     }
 
     func send() {
-        let value = draft
+        // An emoticon that ends the message never had a space typed after it to convert it.
+        let value = Emoticons.replacingTrailing(in: draft)
         let reply = replyTarget
         Task {
             if await session.send(text: value, to: contact.id, reply: reply) {
@@ -394,7 +395,7 @@ struct ConversationView: View {
 
     func sendImages(_ images: [OutgoingImage], _ caption: String?) -> Bool {
         let reply = replyTarget
-        if session.startPhotoSend(images, caption: caption, to: contact.id, reply: reply) {
+        if session.startPhotoSend(images, caption: caption.map(Emoticons.replacingTrailing(in:)), to: contact.id, reply: reply) {
             cancelReply()
             return true
         }
