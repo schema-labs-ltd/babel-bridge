@@ -234,6 +234,19 @@ private struct NativeMessageTextInput: UIViewRepresentable {
         var parent: NativeMessageTextInput
         init(_ parent: NativeMessageTextInput) { self.parent = parent }
         func textViewDidChange(_ textView: UITextView) { parent.text = textView.text }
+        /// Turns `:)` into 🙂 as the space after it is typed, as WhatsApp does. The edit goes through
+        /// UITextInput, so the keyboard sees it and Undo brings the emoticon back.
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText typed: String) -> Bool {
+            guard range.length == 0, textView.markedTextRange == nil,
+                  let edit = Emoticons.replacement(forTyping: typed, at: range.location, in: textView.text),
+                  let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
+                  let end = textView.position(from: start, offset: edit.range.length),
+                  let target = textView.textRange(from: start, to: end) else { return true }
+            textView.replace(target, withText: edit.text)
+            textView.selectedRange = NSRange(location: edit.range.location + edit.text.utf16.count, length: 0)
+            parent.text = textView.text
+            return false
+        }
         func textViewDidBeginEditing(_ textView: UITextView) { parent.focused = true }
         func textViewDidEndEditing(_ textView: UITextView) { parent.focused = false }
     }
@@ -331,6 +344,20 @@ private struct NativeMessageTextInput: NSViewRepresentable {
         init(_ parent: NativeMessageTextInput) { self.parent = parent }
         func textDidChange(_ notification: Notification) {
             if let view = notification.object as? NSTextView { parent.text = view.string }
+        }
+        /// Turns `:)` into 🙂 as the space after it is typed, as WhatsApp does. The conversion is its own
+        /// undo step, so Undo brings the emoticon back without removing what was typed before it.
+        func textView(_ view: NSTextView, shouldChangeTextIn range: NSRange, replacementString typed: String?) -> Bool {
+            guard let typed, range.length == 0, !view.hasMarkedText(), let storage = view.textStorage,
+                  let edit = Emoticons.replacement(forTyping: typed, at: range.location, in: view.string) else { return true }
+            view.breakUndoCoalescing()
+            // Asking again with the whole replacement registers it for Undo; it isn't a single space, so it passes.
+            guard view.shouldChangeText(in: edit.range, replacementString: edit.text) else { return true }
+            storage.replaceCharacters(in: edit.range, with: edit.text)
+            view.didChangeText()
+            view.setSelectedRange(NSRange(location: edit.range.location + edit.text.utf16.count, length: 0))
+            view.breakUndoCoalescing()
+            return false
         }
     }
 }

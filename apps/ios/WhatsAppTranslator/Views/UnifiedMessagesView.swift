@@ -106,7 +106,7 @@ struct UnifiedMessagesView: View {
                         composerFocused = false
                         let reply = session.replyTarget(for: target)
                         imagePaste.begin(providers, reply: reply, destination: name(target)) { images, caption in
-                            guard session.startPhotoSend(images, caption: caption, to: target.contactId, reply: reply, replyOnlyIfNotLatest: true) else { return false }
+                            guard session.startPhotoSend(images, caption: caption.map(Emoticons.replacingTrailing(in:)), to: target.contactId, reply: reply, replyOnlyIfNotLatest: true) else { return false }
                             replyDraft.finishMediaSending(to: target)
                             composerFocused = false
                             return true
@@ -144,7 +144,7 @@ struct UnifiedMessagesView: View {
 
     private func send() {
         guard let target = replyDraft.selected, !sending, !composerUnavailable else { return }
-        let text = replyDraft.drafts[target.contactId] ?? ""
+        let text = Emoticons.replacingTrailing(in: replyDraft.drafts[target.contactId] ?? "")
         sending = true
         Task {
             let sent = await session.send(text: text, to: target.contactId, reply: session.replyTarget(for: target), replyOnlyIfNotLatest: true)
