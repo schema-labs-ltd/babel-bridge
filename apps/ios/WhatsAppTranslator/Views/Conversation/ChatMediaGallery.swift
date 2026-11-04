@@ -188,8 +188,13 @@ struct ChatMediaGallery: View {
         FoldAwareChatLayout.galleryGrid(width: layout.size.width, division: layout.division).gridItems
     }
 
+    /// Loads pages until one shows something, so pages of media deleted for me don't stall paging.
     private func loadMore() async {
-        await model.load { cursor in try await session.galleryPage(contactID: contact.id, before: cursor) }
+        let shown = model.messages.count
+        repeat {
+            guard !model.isLoading, model.hasMore, !Task.isCancelled else { return }
+            await model.load { cursor in try await session.galleryPage(contactID: contact.id, before: cursor) }
+        } while model.error == nil && model.messages.count == shown
     }
 }
 

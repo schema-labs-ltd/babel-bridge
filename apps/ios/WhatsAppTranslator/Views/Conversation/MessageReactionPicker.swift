@@ -177,10 +177,20 @@ struct MessageInfoSheet: View {
                 Section {
                     stage("Read", reached: message.deliveryState == .read, state: .read)
                     stage("Delivered", reached: [.delivered, .read].contains(message.deliveryState), state: .delivered)
-                    LabeledContent {
-                        Text(message.date.formatted(date: .abbreviated, time: .shortened))
-                    } label: {
-                        Label { Text("Sent") } icon: { MessageDeliveryIndicator(state: .sent) }
+                    if [.sent, .delivered, .read].contains(message.deliveryState) {
+                        LabeledContent {
+                            Text(message.date.formatted(date: .abbreviated, time: .shortened))
+                        } label: {
+                            Label { Text("Sent") } icon: { MessageDeliveryIndicator(state: .sent) }
+                        }
+                    } else {
+                        // A send that is still going, or timed out, isn't confirmed yet.
+                        LabeledContent {
+                            Text(message.deliveryState == .uncertain ? "Not confirmed" : "Sending…")
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label { Text("Status") } icon: { MessageDeliveryIndicator(state: message.deliveryState == .uncertain ? .uncertain : .sending) }
+                        }
                     }
                 }
             }

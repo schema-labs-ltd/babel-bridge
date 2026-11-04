@@ -298,7 +298,11 @@ extension ChatListView {
     /// the server's preview describes, so that preview must not be shown.
     fileprivate func newestIsHidden(_ contact: Contact) -> Bool {
         guard let newest = session.messages[contact.id]?.last(where: { !$0.isReaction }) else { return false }
-        return newest.timestamp >= contact.lastMessageTime && session.preferences.hiddenMessageIDs.contains(newest.id)
+        guard newest.timestamp >= contact.lastMessageTime, session.preferences.hiddenMessageIDs.contains(newest.id) else { return false }
+        // In the same second the preview may describe another message; only one that reads as
+        // this message's summary is the deleted one.
+        return newest.timestamp > contact.lastMessageTime
+            || ChatListPreview.summarises(contact.lastMessagePreview ?? "", newest, label: ChatListPreview.label(for: newest))
     }
 
     fileprivate func readStateButton(for contact: Contact) -> some View {

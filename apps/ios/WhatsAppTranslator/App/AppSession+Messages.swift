@@ -243,7 +243,7 @@ extension AppSession {
                 // Media already on this device, or carried in the message, needs no download.
                 let mimeType = message.content?.mimeType?.nilIfBlank
                 if let mimeType, let url = try? await mediaCache.cachedURL(for: message.id),
-                   let data = try? Data(contentsOf: url), !data.isEmpty {
+                   let data = await Task.detached(operation: { try? Data(contentsOf: url) }).value, !data.isEmpty {
                     media[message.id] = (data, mimeType)
                     continue
                 }
@@ -263,7 +263,7 @@ extension AppSession {
             // Signing out or switching account while media loads must not send from the new one.
             guard current else { return 0 }
         }
-        let asAlbum = Self.forwardsAsAlbum(items)
+        let asAlbum = Self.forwardsAsAlbum(items, sizes: items.compactMap { media[$0.id]?.data.count })
         var delivered = 0
         for contactID in contactIDs {
             guard current else { return delivered }
@@ -296,6 +296,8 @@ extension AppSession {
             }
             if sentAll { delivered += 1 }
         }
+        // Photo sends refresh only their chat; the Messages feed needs them too.
+        if current, delivered > 0, items.contains(where: { $0.mediaKind == .image }) { await loadFeed() }
         if current, delivered < contactIDs.count, errorMessage == nil {
             presentError("Couldn’t forward", "The message didn’t reach every chat you chose. Try again in a moment.")
         }
@@ -304,8 +306,12 @@ extension AppSession {
 
     /// Several photos go as one album only when the album keeps every caption: at most 30
     /// photos, and none but the first captioned. Otherwise each goes on its own.
-    nonisolated static func forwardsAsAlbum(_ items: [ChatMessage]) -> Bool {
+    /// An album must also fit `sendImages`' limits: 16 MB a photo and 64 MB in all.
+    nonisolated static func forwardsAsAlbum(_ items: [ChatMessage], sizes: [Int]) -> Bool {
         (2...30).contains(items.count)
+            && sizes.count == items.count
+            && sizes.allSatisfy { $0 <= 16 * 1_024 * 1_024 }
+            && sizes.reduce(0, +) <= 64 * 1_024 * 1_024
             && items.allSatisfy { $0.mediaKind == .image }
             && items.dropFirst().allSatisfy { forwardedCaption($0) == nil }
     }

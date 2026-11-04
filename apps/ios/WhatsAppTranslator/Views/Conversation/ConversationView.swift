@@ -151,6 +151,9 @@ struct ConversationView: View {
             .platformSwipeDownDismissesKeyboard()
             .defaultScrollAnchor(.bottom)
             .onChange(of: session.messages[contact.id]?.last?.id) { markUnread() }
+            .onChange(of: session.preferences.hiddenMessageIDs) { _, hidden in
+                if let id = replyTarget?.messageID, hidden.contains(id) { cancelReply() }
+            }
             // Keyed on live arrivals, so history pages, refreshes and topic pages never count as new.
             .onChange(of: session.liveArrivals[contact.id] ?? LiveArrivals()) { seen, now in
                 guard selectedTopicID == nil, messageSearch.isEmpty, !starredOnly, now.count > seen.count else { return }

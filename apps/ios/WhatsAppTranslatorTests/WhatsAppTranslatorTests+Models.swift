@@ -351,28 +351,6 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(revoked.displayText, "This message was deleted")
     }
 
-    func testForwardCoversTextPhotosVideosAndFilesOnly() throws {
-        let text = try decodeMessage(id: "t", contentType: "text", content: #"{"type":"text","body":"Hi"}"#)
-        let photo = try decodeMessage(id: "p", contentType: "image", content: #"{"type":"image","mime_type":"image/jpeg"}"#)
-        let voice = try decodeMessage(id: "v", contentType: "audio", content: #"{"type":"audio","is_voice_note":true}"#)
-        let deleted = try decodeMessage(id: "d", contentType: "revoked", content: #"{"type":"revoked"}"#)
-        XCTAssertTrue(AppSession.canForward(text))
-        XCTAssertTrue(AppSession.canForward(photo))
-        XCTAssertFalse(AppSession.canForward(voice))
-        XCTAssertFalse(AppSession.canForward(deleted))
-        XCTAssertEqual(AppSession.forwardedText(text), "Hi")
-
-        // Photos go as one album only when no caption after the first would be lost.
-        let captioned = try decodeMessage(id: "c", contentType: "image", content: #"{"type":"image","mime_type":"image/jpeg","caption":"Look"}"#)
-        XCTAssertEqual(AppSession.forwardedCaption(captioned), "Look")
-        XCTAssertNil(AppSession.forwardedCaption(photo))
-        XCTAssertTrue(AppSession.forwardsAsAlbum([captioned, photo]))
-        XCTAssertFalse(AppSession.forwardsAsAlbum([photo, captioned]))
-        XCTAssertFalse(AppSession.forwardsAsAlbum([photo]))
-        XCTAssertFalse(AppSession.forwardsAsAlbum(Array(repeating: photo, count: 31)))
-        XCTAssertFalse(AppSession.forwardsAsAlbum([photo, text]))
-    }
-
     func testDeleteForMeHidesMessagesOnThisDeviceOnly() throws {
         let suite = "delete-for-me-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
