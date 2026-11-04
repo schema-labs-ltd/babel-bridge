@@ -161,3 +161,42 @@ impl AppState {
         self.request_id_counter.fetch_add(1, Ordering::SeqCst)
     }
 }
+
+impl AppState {
+    /// An app opened a live-events socket. The first one marks the account online, as WhatsApp
+    /// Web does, because WhatsApp only sends typing indicators to an online device.
+    pub async fn live_client_joined(&self) {
+        let mut clients = self.live_clients.lock().await;
+        *clients += 1;
+        if *clients == 1 {
+            self.send_presence(true).await;
+        }
+    }
+
+    /// An app closed its socket. When none are left the account goes offline again, so the
+    /// phone gets its notifications back.
+    pub async fn live_client_left(&self) {
+        let mut clients = self.live_clients.lock().await;
+        *clients = clients.saturating_sub(1);
+        if *clients == 0 {
+            self.send_presence(false).await;
+        }
+    }
+
+    /// Resend the presence the open apps need, after the bridge reconnects.
+    pub async fn refresh_presence(&self) {
+        let clients = self.live_clients.lock().await;
+        if *clients > 0 {
+            self.send_presence(true).await;
+        }
+    }
+
+    async fn send_presence(&self, available: bool) {
+        if let Err(error) = self
+            .send_bridge_command(BridgeCommand::SetPresence { available })
+            .await
+        {
+            tracing::debug!(%error, "Presence not sent");
+        }
+    }
+}

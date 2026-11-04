@@ -350,4 +350,29 @@ extension WhatsAppTranslatorTests {
         )
         XCTAssertEqual(revoked.displayText, "This message was deleted")
     }
+
+    func testTypingIndicatorsFollowPresenceAndExpire() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        var typing = TypingIndicators()
+        let none: (String) -> String? = { _ in nil }
+        typing.apply(chatID: "ana", userID: "ana", state: "typing", now: now)
+        XCTAssertEqual(typing.label(in: "ana", isGroup: false, now: now, name: none), "typing…")
+        typing.apply(chatID: "ana", userID: "ana", state: "recording", now: now)
+        XCTAssertEqual(typing.label(in: "ana", isGroup: false, now: now, name: none), "recording audio…")
+        typing.apply(chatID: "ana", userID: "ana", state: "paused", now: now)
+        XCTAssertNil(typing.label(in: "ana", isGroup: false, now: now, name: none))
+
+        typing.apply(chatID: "family", userID: "alex", state: "typing", now: now)
+        XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now) { _ in "Alex" }, "Alex is typing…")
+        typing.apply(chatID: "family", userID: "sam", state: "typing", now: now)
+        XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now, name: none), "2 people are typing…")
+        typing.stop(chatID: "family", userID: "sam")
+        XCTAssertEqual(typing.active(in: "family", now: now).map(\.userID), ["alex"])
+
+        // A typing state not heard again lapses, as it does in WhatsApp.
+        let later = now.addingTimeInterval(TypingIndicators.lifetime + 1)
+        XCTAssertNil(typing.label(in: "family", isGroup: true, now: later, name: none))
+        typing.prune(now: later)
+        XCTAssertEqual(typing.chats, [:])
+    }
 }

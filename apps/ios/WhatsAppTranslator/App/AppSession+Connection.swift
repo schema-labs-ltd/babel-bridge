@@ -229,6 +229,17 @@ extension AppSession {
         return true
     }
 
+    /// The server shows the account online while an app holds a live socket, as WhatsApp Web
+    /// does, so a suspended app drops it and the phone gets its notifications back. Becoming
+    /// active reconnects and catches up on what arrived meanwhile.
+    func enteredBackground() async {
+        guard phase == .ready, !demoMode else { return }
+        await api.disconnectLiveEvents()
+        liveUpdatesReconnecting = true
+        connectingIndicatorTask?.cancel()
+        connectingIndicatorTask = nil
+    }
+
     func becameActive() async {
         guard phase == .ready, !demoMode, !isConnecting else { return }
         await reconnectLiveEventsOnResume()

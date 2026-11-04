@@ -23,6 +23,10 @@ extension AppSession {
                !conversation.contains(where: { $0.id == affectedID }) {
                 conversation.append(target)
             }
+            // A message from someone ends their typing, as it does in WhatsApp.
+            if event.type == "message", !message.isFromMe {
+                typing.stop(chatID: message.contactId, userID: message.senderJID)
+            }
             let normalized = normalizeMessages(conversation + [message])
             messages[message.contactId] = normalized
             // History sync also arrives as "message" events, but with old timestamps; only a message
@@ -113,6 +117,17 @@ extension AppSession {
                 updateViewedUnreadCount(contactID: id, count: count)
                 persistCacheSoon()
             }
+        case "typing":
+            guard let chatID = event.chatId, let userID = event.userId, let state = event.state else { return }
+            typing.apply(chatID: chatID, userID: userID, state: state)
+            // WhatsApp drops a typing state it hasn't heard again in about 25 seconds, so a lost
+            // "paused" can't leave the indicator on.
+            if typing.isActive(in: chatID) {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(TypingIndicators.lifetime + 1))
+                    self?.typing.prune()
+                }
+            }
         case "receipt":
             guard let status = event.status?.lowercased(),
                   matchesDeliveryStatus(status),
@@ -161,6 +176,19 @@ extension AppSession {
 }
 
 extension AppSession {
+    /// What the chat header and chat list show while someone in this chat is typing.
+    func typingLabel(for contact: Contact) -> String? {
+        typing.label(in: contact.id, isGroup: contact.isGroup) { userID in
+            let sender = messages[contact.id]?.last { $0.senderJID == userID && $0.senderName?.isEmpty == false }
+            if let name = sender?.senderName {
+                return name.first.map { $0 == "+" || $0.isNumber } == true
+                    ? name : (name.split(separator: " ").first.map(String.init) ?? name)
+            }
+            let user = userID.split(separator: "@").first.map(String.init) ?? ""
+            return userID.hasSuffix("@s.whatsapp.net") && !user.isEmpty && user.allSatisfy(\.isNumber) ? "+\(user)" : nil
+        }
+    }
+
     func scheduleConnectingIndicator(restart: Bool = false) {
         if restart { connectingIndicatorTask?.cancel(); connectingIndicatorTask = nil }
         guard connectingIndicatorTask == nil, !showsConnectingIndicator else { return }
@@ -190,5 +218,58 @@ extension AppSession {
         connectingIndicatorTask?.cancel()
         connectingIndicatorTask = nil
         showsConnectingIndicator = false
+    }
+}
+
+/// Who is typing or recording a voice note in each chat, from the bridge's chat presence events.
+struct TypingIndicators: Equatable {
+    static let lifetime: TimeInterval = 25
+
+    struct Entry: Equatable {
+        let userID: String
+        let recording: Bool
+        let until: Date
+    }
+
+    private(set) var chats: [String: [Entry]] = [:]
+
+    mutating func apply(chatID: String, userID: String, state: String, now: Date = .now) {
+        var entries = (chats[chatID] ?? []).filter { $0.userID != userID && $0.until > now }
+        if state == "typing" || state == "recording" {
+            entries.append(Entry(userID: userID, recording: state == "recording", until: now.addingTimeInterval(Self.lifetime)))
+        }
+        chats[chatID] = entries.isEmpty ? nil : entries
+    }
+
+    /// Ends one person's typing, or everyone's in the chat when the sender isn't known.
+    mutating func stop(chatID: String, userID: String?) {
+        guard let userID else { chats[chatID] = nil; return }
+        apply(chatID: chatID, userID: userID, state: "paused")
+    }
+
+    mutating func prune(now: Date = .now) {
+        let kept = chats.compactMapValues { entries -> [Entry]? in
+            let live = entries.filter { $0.until > now }
+            return live.isEmpty ? nil : live
+        }
+        if kept != chats { chats = kept }
+    }
+
+    func active(in chatID: String, now: Date = .now) -> [Entry] {
+        (chats[chatID] ?? []).filter { $0.until > now }
+    }
+
+    func isActive(in chatID: String, now: Date = .now) -> Bool { !active(in: chatID, now: now).isEmpty }
+
+    /// WhatsApp's words: "typing…" in a one-to-one chat, "Ana is typing…" in a group, and
+    /// "recording audio…" for a voice note. `name` gives a group member's name from their ID.
+    func label(in chatID: String, isGroup: Bool, now: Date = .now, name: (String) -> String?) -> String? {
+        let entries = active(in: chatID, now: now)
+        guard let latest = entries.last else { return nil }
+        let action = latest.recording ? "recording audio…" : "typing…"
+        guard isGroup else { return action }
+        if entries.count > 1 { return "\(entries.count) people are typing…" }
+        guard let who = name(latest.userID) else { return action }
+        return latest.recording ? "\(who) is recording audio…" : "\(who) is typing…"
     }
 }

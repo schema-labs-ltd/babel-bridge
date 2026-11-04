@@ -381,6 +381,20 @@ func confirmedReactionEvent(chat, sender types.JID, id string, sentAt time.Time,
 }
 
 // MarkRead marks a message as read in WhatsApp.
+// SetPresence marks the account online while an app is open, as WhatsApp Web does. WhatsApp
+// only sends typing indicators to an online device, and an online device also takes the
+// phone's notifications, so the server sets it back to unavailable when the last app closes.
+func (c *Client) SetPresence(ctx context.Context, available bool) error {
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+	state := types.PresenceUnavailable
+	if available {
+		state = types.PresenceAvailable
+	}
+	return c.client.SendPresence(ctx, state)
+}
+
 func (c *Client) MarkRead(ctx context.Context, chatJIDStr string, messageID string, timestamp int64, senderJIDStr string) error {
 	chatJID, senderJID, readAt, err := readReceiptTarget(chatJIDStr, senderJIDStr, timestamp)
 	if err != nil {

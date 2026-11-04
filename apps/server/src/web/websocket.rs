@@ -6,7 +6,11 @@ pub(super) async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_websocket(socket, state))
+    ws.on_upgrade(|socket| async move {
+        state.live_client_joined().await;
+        handle_websocket(socket, state.clone()).await;
+        state.live_client_left().await;
+    })
 }
 
 async fn handle_websocket(socket: WebSocket, state: Arc<AppState>) {

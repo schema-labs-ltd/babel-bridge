@@ -54,6 +54,7 @@ impl AppState {
             session_reset_requested: AtomicBool::new(false),
             push_notifications,
             shutdown: watch::channel(false).0,
+            live_clients: tokio::sync::Mutex::new(0),
         });
         crate::outbox::recover_receipts(&state).expect("Cannot reconcile durable send receipts");
         state

@@ -88,6 +88,7 @@ final class AppSession {
     /// Messages that arrived over the live connection, per chat, so a conversation can tell them
     /// from history pages and refreshes whatever their timestamps.
     var liveArrivals: [String: LiveArrivals] = [:]
+    var typing = TypingIndicators()
     var pendingReadReceipts: [String: Set<String>] = [:]
     var readReceiptTask: Task<Void, Never>?
 

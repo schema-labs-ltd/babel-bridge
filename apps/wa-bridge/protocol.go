@@ -230,6 +230,8 @@ type Command struct {
 	ReplyTo       string `json:"reply_to,omitempty"`        // Message ID to reply to
 	ReplyToSender string `json:"reply_to_sender,omitempty"` // JID of the sender of the replied message
 	ReplyToText   string `json:"reply_to_text,omitempty"`   // Text preview of the replied message (optional)
+	// For set_presence: whether an app is open, so WhatsApp sends typing indicators
+	Available bool `json:"available,omitempty"`
 }
 
 // Helper functions to create events

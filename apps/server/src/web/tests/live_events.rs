@@ -387,3 +387,31 @@ fn clear_orphaned_session_sidecars_keeps_sidecars_with_session_db() {
 
     let _ = std::fs::remove_dir_all(data_dir);
 }
+
+#[tokio::test]
+async fn the_account_is_online_only_while_an_app_holds_a_live_socket() {
+    let (state, data_dir) = test_state(None);
+    let (command_tx, mut command_rx) = mpsc::channel(8);
+    state.set_command_tx(command_tx).await;
+    let presence = |command: BridgeCommand| match command {
+        BridgeCommand::SetPresence { available } => available,
+        other => panic!("unexpected command {other:?}"),
+    };
+
+    state.live_client_joined().await;
+    assert!(presence(command_rx.try_recv().expect("online")));
+    // A second app changes nothing; the account goes offline only when both have left.
+    state.live_client_joined().await;
+    state.live_client_left().await;
+    assert!(command_rx.try_recv().is_err());
+    state.refresh_presence().await;
+    assert!(presence(
+        command_rx.try_recv().expect("restored after reconnect")
+    ));
+    state.live_client_left().await;
+    assert!(!presence(command_rx.try_recv().expect("offline")));
+    state.refresh_presence().await;
+    assert!(command_rx.try_recv().is_err());
+
+    let _ = std::fs::remove_dir_all(data_dir);
+}

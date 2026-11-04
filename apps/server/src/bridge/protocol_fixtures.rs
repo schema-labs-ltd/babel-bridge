@@ -340,6 +340,10 @@ fn fixture_commands() -> Vec<(&'static str, BridgeCommand)> {
                 to: chat,
             },
         ),
+        (
+            "set_presence",
+            BridgeCommand::SetPresence { available: true },
+        ),
         ("disconnect", BridgeCommand::Disconnect),
         ("logout", BridgeCommand::Logout),
     ]

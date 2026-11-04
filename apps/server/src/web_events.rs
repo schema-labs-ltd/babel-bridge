@@ -18,6 +18,8 @@ pub(crate) async fn handle_web_event(
         BridgeEvent::Connected { phone, name, .. } => {
             info!("WhatsApp session connected");
             state.set_connected(true, Some(phone), Some(name)).await;
+            // A new WhatsApp session starts offline; restore what the open apps need.
+            state.refresh_presence().await;
         }
 
         BridgeEvent::ConnectionState { state: conn_state } => match conn_state {
