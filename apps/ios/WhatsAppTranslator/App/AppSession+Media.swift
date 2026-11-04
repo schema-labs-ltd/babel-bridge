@@ -39,10 +39,14 @@ extension AppSession {
     func fingerprintSticker(_ sticker: ChatMessage) async {
         let epoch = topicAccountEpoch
         guard stickerDigests[sticker.id] == nil,
-              let url = try? await mediaCache.cachedURL(for: sticker.id),
-              let data = try? Data(contentsOf: url), !data.isEmpty,
-              topicAccountEpoch == epoch else { return }
-        stickerDigests[sticker.id] = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+              let url = try? await mediaCache.cachedURL(for: sticker.id) else { return }
+        // Read and hash off the main actor; the tray fingerprints up to 150 files.
+        let digest = await Task.detached(priority: .utility) { () -> String? in
+            guard let data = try? Data(contentsOf: url), !data.isEmpty else { return nil }
+            return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        }.value
+        guard let digest, topicAccountEpoch == epoch else { return }
+        stickerDigests[sticker.id] = digest
     }
 
     /// Recent WebP stickers that can be sent again; animated Lottie ones can't. Failed loads are
