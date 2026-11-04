@@ -243,7 +243,12 @@ struct TypingIndicators: Equatable {
 
     /// Ends one person's typing, or everyone's in the chat when the sender isn't known.
     mutating func stop(chatID: String, userID: String?, now: Date = .now) {
-        guard let userID else { chats[chatID] = nil; return }
+        guard let userID else {
+            // Without a sender only a one-to-one chat's typist is known; in a group, others may
+            // still be typing, so their indicators run until they stop or expire.
+            if !chatID.hasSuffix("@g.us") { chats[chatID] = nil }
+            return
+        }
         apply(chatID: chatID, userID: userID, state: "paused", now: now)
     }
 

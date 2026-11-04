@@ -368,6 +368,11 @@ extension WhatsAppTranslatorTests {
         XCTAssertEqual(typing.label(in: "family", isGroup: true, now: now, name: none), "2 people are typing…")
         typing.stop(chatID: "family", userID: "sam", now: now)
         XCTAssertEqual(typing.active(in: "family", now: now).map(\.userID), ["alex"])
+        // A group message with no known sender leaves everyone else's indicator alone.
+        typing.apply(chatID: "1@g.us", userID: "alex", state: "typing", now: now)
+        typing.stop(chatID: "1@g.us", userID: nil, now: now)
+        XCTAssertEqual(typing.active(in: "1@g.us", now: now).map(\.userID), ["alex"])
+        typing.stop(chatID: "1@g.us", userID: "alex", now: now)
 
         // A typing state not heard again lapses, as it does in WhatsApp.
         let later = now.addingTimeInterval(TypingIndicators.lifetime + 1)
