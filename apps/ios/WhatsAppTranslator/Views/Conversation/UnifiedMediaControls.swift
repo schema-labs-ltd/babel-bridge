@@ -116,16 +116,19 @@ struct AttachmentMenuButton: View {
         .sheet(item: $pendingPhotos) { selection in
             if let context {
                 ImageComposerSheet(photos: selection.photos, reply: context.reply, destination: context.destination, send: context.sendImages)
+                    .enabledInsideDisabledComposer()
             }
         }
         .sheet(item: $pendingAttachment, onDismiss: { pendingAttachment = nil }) { attachment in
             if let context {
                 AttachmentComposerSheet(attachment: attachment, context: context)
+                    .enabledInsideDisabledComposer()
             }
         }
         .sheet(isPresented: $voicePresented) {
             if let context {
                 VoiceComposerView(contactID: context.contactID, reply: context.reply, replyOnlyIfNotLatest: context.replyOnlyIfNotLatest, destination: context.destination, onSent: context.onSent)
+                    .enabledInsideDisabledComposer()
             }
         }
         .alert("Couldn’t prepare attachment", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
@@ -184,5 +187,13 @@ struct AttachmentMenuButton: View {
                 }
             } catch { self.error = error.localizedDescription }
         }
+    }
+}
+
+private extension View {
+    /// The menu sits inside a composer that disables itself while a send runs or when a reply-only
+    /// chat has no reply chosen, and sheets inherit that. A sheet that's already open stays usable.
+    func enabledInsideDisabledComposer() -> some View {
+        environment(\.isEnabled, true)
     }
 }

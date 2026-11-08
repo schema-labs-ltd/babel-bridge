@@ -95,12 +95,15 @@ struct UnifiedMessagesView: View {
             }
             ComposerGlassGroup {
                 HStack(alignment: .bottom, spacing: 7) {
+                    // The header and the captured recipient come from the same render, so the menu
+                    // never says one name while a newer message quietly changes the recipient.
+                    let shownLatest = displayedMessages.last
                     AttachmentMenuButton(
                         disabled: composerUnavailable || session.sendingContactIDs.contains((replyDraft.selected ?? displayedMessages.last)?.contactId ?? "") || (replyDraft.selected == nil && displayedMessages.isEmpty),
-                        title: composerTarget.map { "Send to \(name($0))" },
+                        title: (replyDraft.selected ?? shownLatest).map { "Send to \(name($0))" },
                         height: 46
                     ) {
-                        guard !composerUnavailable, let target = replyDraft.beginAttachment(latestMessage: displayedMessages.last) else { return nil }
+                        guard !composerUnavailable, let target = replyDraft.beginAttachment(latestMessage: shownLatest) else { return nil }
                         composerFocused = false
                         let reply = session.replyTarget(for: target)
                         let finish = { replyDraft.finishMediaSending(to: target); composerFocused = false }
