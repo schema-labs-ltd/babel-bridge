@@ -172,14 +172,6 @@ struct ConversationView: View {
             // A refresh can replace the cached list and drop the marked row; place the bar again.
             .onChange(of: session.messages[contact.id]?.first?.id) { markUnread() }
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                // The composer and keyboard sit in the bottom inset, so they don't count as distance.
-                geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom
-                    >= geometry.contentSize.height - 120
-            } action: { _, atBottom in
-                isAtBottom = atBottom
-                if atBottom { unseenCount = 0 }
-            }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top < 300
             } action: { _, nearTop in
                 isNearTop = nearTop
@@ -271,6 +263,13 @@ struct ConversationView: View {
         }
         // Album grouping can replace the last image's ID; keep a stable scroll target.
         Color.clear.frame(height: 1).id("conversation-bottom")
+            // You're at the latest message while this target is on screen. Watching the view itself,
+            // rather than comparing the offset with the content size and insets, keeps the scroll-down
+            // button hidden at the bottom whatever the composer, keyboard or fold layout adds below.
+            .onScrollVisibilityChange(threshold: 0.01) { atBottom in
+                isAtBottom = atBottom
+                if atBottom { unseenCount = 0 }
+            }
     }
 
     @ViewBuilder
