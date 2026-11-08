@@ -4,20 +4,29 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Captured before presenting any picker or recorder, never inferred again at send time.
-struct UnifiedMediaContext {
-    let message: ChatMessage
-    let reply: MessageReplyTarget
-    let destination: String
+/// Who an attachment goes to. It is captured when you pick an option, before any picker or
+/// recorder appears, and never inferred again at send time.
+struct AttachmentContext {
+    let contactID: String
+    let reply: MessageReplyTarget?
+    var destination: String? = nil
+    var replyOnlyIfNotLatest = false
+    /// Sends chosen or captured photos with their caption, and reports whether the send started.
+    let sendImages: ([OutgoingImage], String?) -> Bool
+    /// Runs after a voice note, video or file has been sent.
+    let onSent: () -> Void
 }
 
-struct UnifiedMediaControls: View {
-    @Environment(AppSession.self) private var session
+/// The composer's "+" button and its menu of photos, camera, video, file and voice note, shared by
+/// a single chat and the unified Messages feed so both offer the same choices in the same style.
+struct AttachmentMenuButton: View {
     let disabled: Bool
-    let begin: () -> UnifiedMediaContext?
-    let onSent: (ChatMessage) -> Void
-    @State private var context: UnifiedMediaContext?
-    @State private var choices = false
+    /// Heads the menu, such as "Send to Ana", when the destination isn't obvious from the screen.
+    var title: String? = nil
+    var height: CGFloat = 44
+    var accessibilityIdentifier = "attachment-menu"
+    let begin: () -> AttachmentContext?
+    @State private var context: AttachmentContext?
     @State private var photosPresented = false
     @State private var cameraPresented = false
     @State private var videoPresented = false
@@ -30,59 +39,34 @@ struct UnifiedMediaControls: View {
     @State private var loading = false
     @State private var error: String?
 
-    private var unavailable: Bool {
-        disabled || loading
-    }
-
     var body: some View {
-        Button {
-            guard let captured = begin() else { return }
-            context = captured
-            choices = true
+        Menu {
+            if let title {
+                Section(title) { menuItems }
+            } else {
+                menuItems
+            }
         } label: {
             Group {
                 if loading { ProgressView().controlSize(.small) }
-                else { Image(systemName: "plus").font(.system(size: 23)) }
-            }.frame(width: 44, height: 46)
-                .translatorGlassControl(in: Circle())
+                else { Image(systemName: "plus").font(.system(size: 23, weight: .regular)) }
+            }
+            .foregroundStyle(Color.primary)
+            .frame(width: 44, height: height)
+            .contentShape(Circle())
+            .translatorGlassControl(in: Circle())
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .accessibilityLabel("Add attachment")
-        .help("Send photos, videos, files, or a voice note")
-        .disabled(unavailable)
         #if os(macOS)
-        .popover(isPresented: $choices, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(context.map { "Send to \($0.destination)" } ?? "Add attachment").font(.headline)
-                Button("Photos", systemImage: "photo.on.rectangle") { choices = false; photosPresented = true }
-                Button("Video", systemImage: "video") { choices = false; videoPresented = true }
-                Button("File", systemImage: "doc") { choices = false; filesPresented = true }
-                Button("Voice note", systemImage: "mic") { choices = false; voicePresented = true }
-            }
-            .buttonStyle(.borderless)
-            .padding(18)
-            .frame(minWidth: 210, alignment: .leading)
-        }
-        #else
-        .confirmationDialog(context.map { "Send to \($0.destination)" } ?? "Add attachment", isPresented: $choices, titleVisibility: .visible) {
-            Button("Photos") { photosPresented = true }
-            if CameraCapture.isAvailable {
-                Button("Take Photo") {
-                    Task {
-                        if await CameraCapture.requestAccess() {
-                            cameraPresented = true
-                        } else {
-                            error = CameraCapture.accessDeniedMessage
-                        }
-                    }
-                }
-            }
-            Button("Video") { videoPresented = true }
-            Button("File") { filesPresented = true }
-            Button("Voice note") { voicePresented = true }
-            Button("Cancel", role: .cancel) {}
-        }
+        .menuIndicator(.hidden)
         #endif
+        // Keep Photos first, as written, rather than reversing the list when it opens upwards.
+        .menuOrder(.fixed)
+        .accessibilityLabel("Add attachment")
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .help("Send photos, videos, files, or a voice note")
+        .disabled(disabled || loading)
         .photosPicker(isPresented: $photosPresented, selection: $selectedPhotos, maxSelectionCount: 30, matching: .images)
         .cameraCapture(isPresented: $cameraPresented) { photo in
             guard context != nil else { return }
@@ -131,28 +115,52 @@ struct UnifiedMediaControls: View {
         }
         .sheet(item: $pendingPhotos) { selection in
             if let context {
-                ImageComposerSheet(photos: selection.photos, reply: context.reply, destination: context.destination) { images, caption in
-                    if session.startPhotoSend(images, caption: caption.map(Emoticons.replacingTrailing(in:)), to: context.message.contactId, reply: context.reply, replyOnlyIfNotLatest: true) {
-                        onSent(context.message)
-                        return true
-                    }
-                    return false
-                }
+                ImageComposerSheet(photos: selection.photos, reply: context.reply, destination: context.destination, send: context.sendImages)
+                    .enabledInsideDisabledComposer()
             }
         }
         .sheet(item: $pendingAttachment, onDismiss: { pendingAttachment = nil }) { attachment in
             if let context {
-                AttachmentComposerSheet(attachment: attachment, context: context) { onSent(context.message) }
+                AttachmentComposerSheet(attachment: attachment, context: context)
+                    .enabledInsideDisabledComposer()
             }
         }
         .sheet(isPresented: $voicePresented) {
             if let context {
-                VoiceComposerView(contactID: context.message.contactId, reply: context.reply, replyOnlyIfNotLatest: true, destination: context.destination) { onSent(context.message) }
+                VoiceComposerView(contactID: context.contactID, reply: context.reply, replyOnlyIfNotLatest: context.replyOnlyIfNotLatest, destination: context.destination, onSent: context.onSent)
+                    .enabledInsideDisabledComposer()
             }
         }
         .alert("Couldn’t prepare attachment", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "Please choose another file.") }
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        Button("Photos", systemImage: "photo.on.rectangle") { start { photosPresented = true } }
+        if CameraCapture.isAvailable {
+            Button("Camera", systemImage: "camera") { start { openCamera() } }
+        }
+        Button("Video", systemImage: "video") { start { videoPresented = true } }
+        Button("File", systemImage: "doc") { start { filesPresented = true } }
+        Button("Voice note", systemImage: "mic") { start { voicePresented = true } }
+    }
+
+    private func start(_ present: () -> Void) {
+        guard let captured = begin() else { return }
+        context = captured
+        present()
+    }
+
+    private func openCamera() {
+        Task {
+            if await CameraCapture.requestAccess() {
+                cameraPresented = true
+            } else {
+                error = CameraCapture.accessDeniedMessage
+            }
+        }
     }
 
     private func prepareFile(_ url: URL) {
@@ -179,5 +187,13 @@ struct UnifiedMediaControls: View {
                 }
             } catch { self.error = error.localizedDescription }
         }
+    }
+}
+
+private extension View {
+    /// The menu sits inside a composer that disables itself while a send runs or when a reply-only
+    /// chat has no reply chosen, and sheets inherit that. A sheet that's already open stays usable.
+    func enabledInsideDisabledComposer() -> some View {
+        environment(\.isEnabled, true)
     }
 }

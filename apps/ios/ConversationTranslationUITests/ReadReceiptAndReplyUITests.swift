@@ -65,7 +65,7 @@ final class ReplyOnlyUITests: XCTestCase {
         group.tap()
         XCTAssertTrue(hint.waitForExistence(timeout: 5))
         XCTAssertFalse(input.isEnabled)
-        XCTAssertFalse(app.buttons["Send photos"].isEnabled)
+        XCTAssertFalse(app.buttons["chat-attachment-menu"].firstMatch.isEnabled)
         XCTAssertFalse(app.buttons["Record voice note"].isEnabled)
         let blocked = XCTAttachment(screenshot: app.screenshot())
         blocked.name = "Chat composer waits for an incoming reply"; blocked.lifetime = .keepAlways; add(blocked)

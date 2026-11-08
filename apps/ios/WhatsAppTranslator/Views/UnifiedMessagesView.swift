@@ -95,15 +95,28 @@ struct UnifiedMessagesView: View {
             }
             ComposerGlassGroup {
                 HStack(alignment: .bottom, spacing: 7) {
-                    UnifiedMediaControls(
+                    // The header and the captured recipient come from the same render, so the menu
+                    // never says one name while a newer message quietly changes the recipient.
+                    let shownLatest = displayedMessages.last
+                    AttachmentMenuButton(
                         disabled: composerUnavailable || session.sendingContactIDs.contains((replyDraft.selected ?? displayedMessages.last)?.contactId ?? "") || (replyDraft.selected == nil && displayedMessages.isEmpty),
-                        begin: {
-                            guard !composerUnavailable, let target = replyDraft.beginAttachment(latestMessage: displayedMessages.last) else { return nil }
-                            composerFocused = false
-                            return UnifiedMediaContext(message: target, reply: session.replyTarget(for: target), destination: name(target))
-                        },
-                        onSent: { target in replyDraft.finishMediaSending(to: target); composerFocused = false }
-                    )
+                        title: (replyDraft.selected ?? shownLatest).map { "Send to \(name($0))" },
+                        height: 46
+                    ) {
+                        guard !composerUnavailable, let target = replyDraft.beginAttachment(latestMessage: shownLatest) else { return nil }
+                        composerFocused = false
+                        let reply = session.replyTarget(for: target)
+                        let finish = { replyDraft.finishMediaSending(to: target); composerFocused = false }
+                        return AttachmentContext(
+                            contactID: target.contactId, reply: reply, destination: name(target), replyOnlyIfNotLatest: true,
+                            sendImages: { images, caption in
+                                guard session.startPhotoSend(images, caption: caption.map(Emoticons.replacingTrailing(in:)), to: target.contactId, reply: reply, replyOnlyIfNotLatest: true) else { return false }
+                                finish()
+                                return true
+                            },
+                            onSent: finish
+                        )
+                    }
                     MessageComposerTextInput(text: draft, focus: $composerFocused, allowsImagePaste: !composerUnavailable && !imagePaste.isLoading) { providers in
                         guard !composerUnavailable,
                               let target = replyDraft.beginAttachment(latestMessage: displayedMessages.last),
