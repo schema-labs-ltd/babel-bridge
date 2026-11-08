@@ -18,9 +18,7 @@ struct ComposerView: View {
     let send: () -> Void
     @State private var showVoiceComposer = false
     @State private var showStickers = false
-    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingPhotos: PendingPhotoSelection?
-    @State private var photoLibraryPresented = false
     @State private var cameraPresented = false
     @State private var pickerError: String?
     @State private var imagePaste = ImagePasteController()
@@ -61,10 +59,9 @@ struct ComposerView: View {
 
             ComposerGlassGroup {
                 HStack(alignment: .center, spacing: 7) {
-                    addImageButton
-                        .disabled(isSending)
-                        .accessibilityLabel("Send photos")
-                        .translatorGlassControl(in: Circle())
+                    AttachmentMenuButton(disabled: isSending, accessibilityIdentifier: "chat-attachment-menu") {
+                        AttachmentContext(contactID: contactID, reply: reply, sendImages: sendImages, onSent: cancelReply)
+                    }
 
                     composerInput
 
@@ -109,22 +106,6 @@ struct ComposerView: View {
             focused = value != nil
             if imagePaste.isLoading { imagePaste.cancel() }
         }
-        .onChange(of: selectedPhotos) { _, items in
-            guard !items.isEmpty else { return }
-            Task {
-                defer { selectedPhotos = [] }
-                var prepared: [PendingPhoto] = []
-                for item in items {
-                    guard let photo = await loadPhoto(item) else {
-                        pickerError = "One of the selected photos couldn’t be opened. Please choose the photos again."
-                        return
-                    }
-                    prepared.append(photo)
-                }
-                pendingPhotos = PendingPhotoSelection(photos: prepared)
-            }
-        }
-        .photosPicker(isPresented: $photoLibraryPresented, selection: $selectedPhotos, maxSelectionCount: 30, matching: .images)
         .cameraCapture(isPresented: $cameraPresented) { photo in
             pendingPhotos = PendingPhotoSelection(photos: [photo])
         } onFailure: {
@@ -199,34 +180,6 @@ struct ComposerView: View {
     }
 
     @ViewBuilder
-    private var addImageButton: some View {
-        #if os(iOS)
-        Menu {
-            Button("Photo Library", systemImage: "photo.on.rectangle") { photoLibraryPresented = true }
-            if CameraCapture.isAvailable {
-                Button("Take Photo", systemImage: "camera") { openCamera() }
-            }
-        } label: {
-            addImageLabel
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        #else
-        PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 30, matching: .images) {
-            addImageLabel
-        }
-        .buttonStyle(.plain)
-        #endif
-    }
-
-    nonisolated private var addImageLabel: some View {
-        Image(systemName: "plus")
-            .font(.system(size: 23, weight: .regular))
-            .foregroundStyle(Color.primary)
-            .frame(width: 44, height: 44)
-    }
-
-    @ViewBuilder
     private var sendButton: some View {
         #if os(macOS)
         Button {
@@ -291,14 +244,6 @@ struct ComposerView: View {
         Binding(get: { pickerError != nil }, set: { if !$0 { pickerError = nil } })
     }
 
-    private func loadPhoto(_ item: PhotosPickerItem) async -> PendingPhoto? {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = PlatformImage(data: data) else {
-            return nil
-        }
-        let mimeType = item.supportedContentTypes.compactMap(\.preferredMIMEType).first ?? "application/octet-stream"
-        return PendingPhoto(data: data, mimeType: mimeType, image: image)
-    }
 }
 
 private struct ComposerInputStyle: ViewModifier {

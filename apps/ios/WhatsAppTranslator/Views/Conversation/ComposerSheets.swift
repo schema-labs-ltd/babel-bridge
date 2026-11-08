@@ -163,8 +163,7 @@ struct AttachmentComposerSheet: View {
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
     let attachment: PendingAttachment
-    let context: UnifiedMediaContext
-    let onSent: () -> Void
+    let context: AttachmentContext
     @State private var caption = ""
     @State private var sending = false
     @State private var attemptedCaption: String?
@@ -180,10 +179,14 @@ struct AttachmentComposerSheet: View {
                     Image(systemName: "doc.fill").font(.system(size: 60)).foregroundStyle(.secondary)
                     Text(attachment.outgoing.fileName).font(.headline).lineLimit(3)
                 }
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("To: \(context.destination)").font(.headline)
-                    Text(context.reply.text).font(.caption).lineLimit(2).foregroundStyle(.secondary)
-                }.frame(maxWidth: .infinity, alignment: .leading)
+                if context.destination != nil || context.reply != nil {
+                    VStack(alignment: .leading, spacing: 5) {
+                        if let destination = context.destination { Text("To: \(destination)").font(.headline) }
+                        if let reply = context.reply {
+                            Text(reply.text).font(.caption).lineLimit(2).foregroundStyle(.secondary)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
                 TextField("Add a caption", text: $caption, axis: .vertical)
                     .lineLimit(1...4).textFieldStyle(.roundedBorder).disabled(sending || hasAttemptedSend)
                 if sending { ProgressView("Sending attachment…") }
@@ -205,9 +208,9 @@ struct AttachmentComposerSheet: View {
                             hasAttemptedSend = true
                         }
                         Task {
-                            let sent = await session.sendAttachment(attachment.outgoing, caption: attemptedCaption, to: context.message.contactId, reply: context.reply, replyOnlyIfNotLatest: true)
+                            let sent = await session.sendAttachment(attachment.outgoing, caption: attemptedCaption, to: context.contactID, reply: context.reply, replyOnlyIfNotLatest: context.replyOnlyIfNotLatest)
                             sending = false
-                            if sent { onSent(); dismiss() } else { failed = true }
+                            if sent { context.onSent(); dismiss() } else { failed = true }
                         }
                     }.disabled(sending)
                 }
