@@ -172,6 +172,17 @@ xcodebuild test \
 The macOS commands turn the hardened runtime off for that unsigned run. The
 project setting stays on for signed archives.
 
+`ios:verify` (`npx nx run ios:verify`, or `apps/ios/verify/verify.sh`) is the
+production-like check from issue #138. It makes unsigned Release archives of
+`WhatsAppTranslator` (checking that the watch app, its complications and the
+three extensions are embedded) and `BabelBridgeMac`, so code that compiles
+only in Debug fails on the pull request rather than in Xcode Cloud. It also
+runs `ConversationTranslationUITests` on an iPhone 17 and an iPad on iOS 26.5,
+and `BabelBridgeWatchUITests` on an Apple Watch simulator. Set
+`VERIFY_IOS_PART` to `archive-ios`, `archive-mac`, `ui-ios` or `ui-watch` to
+run one part, as the `apple` workflow's `ios` jobs do. Logs and result bundles
+go to `output/verify/ios/`.
+
 ## Xcode Cloud
 
 `apps/ios/ci_scripts/ci_post_clone.sh` is the repo-side hook. It downloads XcodeGen
