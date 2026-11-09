@@ -805,12 +805,15 @@ class WhatsAppClient {
   }
 
   async init() {
+    // The password form must work whenever the overlay shows, including
+    // when a session that started from a stored token ends later.
+    this.bindPasswordEvents();
+
     // Check if authentication is required
     const authRequired = await this.checkAuth();
 
     if (authRequired && !this.authToken) {
       this.showPasswordOverlay();
-      this.bindPasswordEvents();
       return;
     }
 
@@ -821,7 +824,6 @@ class WhatsAppClient {
         this.authToken = null;
         localStorage.removeItem('wa_auth_token');
         this.showPasswordOverlay();
-        this.bindPasswordEvents();
         return;
       }
     }
@@ -833,6 +835,11 @@ class WhatsAppClient {
   startApp() {
     document.getElementById('password-overlay')?.classList.add('hidden');
     this.connectWebSocket();
+    // Signing in again after the session expires starts the app a second
+    // time. Its listeners are already bound, and binding them again would
+    // make every tap run twice, so Send would post the message twice.
+    if (this.appStarted) return;
+    this.appStarted = true;
     this.bindEvents();
     this.updateInputPlaceholder();
     this.setupVisualViewport();

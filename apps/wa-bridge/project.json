@@ -25,6 +25,15 @@
       "inputs": ["go"],
       "outputs": ["{projectRoot}/wa-bridge"]
     },
+    "verify": {
+      "command": "node tools/verify/bridge.mjs",
+      "inputs": [
+        "go",
+        "verifyGlobals",
+        "{workspaceRoot}/Dockerfile",
+        "{workspaceRoot}/.dockerignore"
+      ]
+    },
     "format": {
       "command": "gofmt -w .",
       "options": { "cwd": "{projectRoot}" }

@@ -73,8 +73,12 @@ extension UnifiedMessagesView {
                         if let selectedTopicID { await session.loadTopicMessages(selectedTopicID) }
                         else { await session.loadFeed() }
                     }
-                    .onChange(of: renderedMessages.last?.id) { _, _ in
-                        if atBottom { withAnimation { proxy.scrollTo("feed-bottom", anchor: .bottom) } }
+                    .onChange(of: renderedMessages.last?.id) { previous, _ in
+                        // The first messages to arrive push the bottom marker out of view before this
+                        // runs, so `atBottom` can already be false; open on the latest message anyway,
+                        // or the feed rests on the oldest and marks messages read that nobody saw.
+                        if previous == nil { proxy.scrollTo("feed-bottom", anchor: .bottom) }
+                        else if atBottom { withAnimation { proxy.scrollTo("feed-bottom", anchor: .bottom) } }
                     }
                 }
                 .environment(\.chatBubbleMaxWidth, arrangement.bubbleMaxWidth)

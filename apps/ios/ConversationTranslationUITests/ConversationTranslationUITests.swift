@@ -2,6 +2,45 @@ import AVKit
 import UIKit
 import XCTest
 
+extension XCUIApplication {
+    /// The first element with this identifier or label, whatever its type.
+    /// The iOS 26.5 simulator can report a different type for a SwiftUI
+    /// element than its legacy attributes (a row as Button, text as Other, a
+    /// menu action as PopUpButton), and iPad context menus differ from
+    /// iPhone's, so a query for one type misses it. Images are left out: their
+    /// labels name the symbol (every bubble has a "Reply" swipe arrow).
+    func named(_ name: String) -> XCUIElement {
+        descendants(matching: .any)
+            .matching(NSPredicate(format: "(identifier == %@ OR label == %@) AND elementType != %@",
+                                  name, name, NSNumber(value: XCUIElement.ElementType.image.rawValue)))
+            .firstMatch
+    }
+}
+
+extension XCUIElement {
+    /// Long-presses a message bubble beside its text, where the message's
+    /// menu opens. A long press on the selectable text itself can start text
+    /// selection instead (the iPad simulator shows Copy and Share).
+    func pressBubble() {
+        waitUntilStill()
+        coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: 20, dy: 0)).press(forDuration: 1)
+    }
+
+    /// Waits until the element has stayed put for half a second. A feed that
+    /// is still settling on its latest message moves a bubble under a long
+    /// press, which cancels it, as it would for a person's finger.
+    func waitUntilStill(timeout: TimeInterval = 5) {
+        var last = frame
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            let now = frame
+            if now == last { return }
+            last = now
+        }
+    }
+}
+
 @MainActor
 final class ConversationTranslationUITests: XCTestCase {
     func testChatGalleryBrowsesPhotosAndVideosAndLoadsOlderMedia() throws {
@@ -19,7 +58,11 @@ final class ConversationTranslationUITests: XCTestCase {
         add(grid)
         photo.tap()
         XCTAssertTrue(app.images["Full-screen photo"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.staticTexts["gallery-position"].label, "1 of 60+")
+        // An iPhone shows the first page ("1 of 60+"); an iPad's taller grid
+        // has already loaded the older page ("1 of 75"). Item 074 below checks
+        // that older media loads either way.
+        let expected = UIDevice.current.userInterfaceIdiom == .pad ? "1 of 75" : "1 of 60+"
+        XCTAssertEqual(app.staticTexts["gallery-position"].label, expected)
         let fullPhoto = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         fullPhoto.name = "Full screen gallery photo with navigation"
         fullPhoto.lifetime = .keepAlways
@@ -71,20 +114,19 @@ final class ConversationTranslationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoVideo"]
         app.launch()
-        let video = app.otherElements["Video"].firstMatch
+        // Tapping the bubble opens the shared player full screen and plays it.
+        let video = app.named("Play video full screen")
         XCTAssertTrue(video.waitForExistence(timeout: 10))
         video.tap()
-        let fullScreen = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'full screen'")).firstMatch
-        XCTAssertTrue(fullScreen.waitForExistence(timeout: 5), app.debugDescription)
-        fullScreen.tap()
-        XCTAssertGreaterThan(video.frame.width, app.frame.width * 0.95, app.debugDescription)
+        let caption = app.staticTexts["A sample video to try full screen and picture in picture."].firstMatch
+        XCTAssertTrue(caption.waitForNonExistence(timeout: 5) || !caption.isHittable, "The player must cover the conversation")
         defer { XCUIDevice.shared.orientation = .portrait }
         if UIDevice.current.userInterfaceIdiom == .phone {
             XCUIDevice.shared.orientation = .landscapeLeft
             XCTAssertGreaterThan(app.frame.width, app.frame.height)
         }
         // Reveal controls if their normal auto-hide has already elapsed.
-        video.tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let done = app.buttons.matching(NSPredicate(format: "label IN %@", ["Done", "Close", "Exit Full Screen"])).firstMatch
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -92,30 +134,26 @@ final class ConversationTranslationUITests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
         done.tap()
-        XCTAssertTrue(app.staticTexts["A sample video to try full screen and picture in picture."].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(caption.waitForExistence(timeout: 5) && caption.isHittable, "Closing the player must return to the same message")
     }
 
-    func testPlayingVideoStartsPictureInPictureWhenLeavingApp() throws {
-        try checkAutomaticPictureInPicture(fullScreen: false)
-    }
-
+    // A bubble has no inline player any more: tapping it opens the full-screen
+    // player, so picture in picture starts from there.
     func testFullScreenVideoStartsPictureInPictureWhenLeavingApp() throws {
-        try checkAutomaticPictureInPicture(fullScreen: true)
+        try checkAutomaticPictureInPicture()
     }
 
-    private func checkAutomaticPictureInPicture(fullScreen: Bool) throws {
+    private func checkAutomaticPictureInPicture() throws {
         try XCTSkipUnless(AVPictureInPictureController.isPictureInPictureSupported(),
                           "AVKit reports that picture in picture is unavailable on this simulator/device")
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoVideo"]
         app.launch()
-        let video = app.otherElements["Video"].firstMatch
+        let video = app.named("Play video full screen")
         XCTAssertTrue(video.waitForExistence(timeout: 10))
+        // The bubble opens the player full screen and starts playback.
         video.tap()
         XCTAssertTrue(app.buttons["Pause"].firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-        if fullScreen {
-            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'full screen'")).firstMatch.tap()
-        }
         let appWidth = app.frame.width
         XCUIDevice.shared.press(.home)
         XCUIApplication(bundleIdentifier: "com.apple.Preferences").activate()
@@ -163,36 +201,36 @@ final class ConversationTranslationUITests: XCTestCase {
         app.launch()
         let target = app.staticTexts["The new draft is ready."].firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 10))
-        target.press(forDuration: 1)
-        let heart = app.buttons["React with ❤️"].firstMatch
+        target.pressBubble()
+        let heart = app.named("React with ❤️")
         XCTAssertTrue(heart.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Reply"].exists)
-        XCTAssertTrue(app.buttons["More reactions"].isHittable)
+        XCTAssertTrue(app.named("Reply").exists)
+        XCTAssertTrue(app.named("More reactions").isHittable)
         let menu = XCTAttachment(screenshot: app.screenshot())
         menu.name = "Quick reactions and reply on message long press"
         menu.lifetime = .keepAlways
         add(menu)
         heart.tap()
-        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["Reply"].firstMatch)
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.named("Reply"))
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: ❤️, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         let visibleGroup = try XCTUnwrap(app.buttons.matching(identifier: "Open chat: Studio team").allElementsBoundByIndex.first(where: { $0.isHittable }))
         visibleGroup.tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: ❤️, 1 in total"].firstMatch.waitForExistence(timeout: 5))
-        target.press(forDuration: 1)
-        app.buttons["React with 👍"].firstMatch.tap()
+        target.pressBubble()
+        app.named("React with 👍").tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: 👍, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["Reactions: ❤️, 1 in total"].exists)
-        target.press(forDuration: 1)
-        app.buttons["More reactions"].tap()
-        let extra = app.buttons["React with 🎉"].firstMatch
+        target.pressBubble()
+        app.named("More reactions").tap()
+        let extra = app.named("React with 🎉")
         XCTAssertTrue(extra.waitForExistence(timeout: 5))
         extra.tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: 🎉, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         app.buttons["Messages"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: 🎉, 1 in total"].firstMatch.waitForExistence(timeout: 5))
-        target.press(forDuration: 1)
-        app.buttons["Remove reaction"].tap()
+        target.pressBubble()
+        app.named("Remove reaction").tap()
         XCTAssertFalse(app.descendants(matching: .any)["Reactions: 🎉, 1 in total"].waitForExistence(timeout: 1))
         let result = XCTAttachment(screenshot: app.screenshot())
         result.name = "Unified feed updated after reaction removal without relaunch"

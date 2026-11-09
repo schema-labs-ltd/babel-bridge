@@ -13,7 +13,19 @@
         "{projectRoot}/WhatsAppTranslator/Models/APIModels*.swift",
         "{projectRoot}/WhatsAppTranslator/Models/MessageTone.swift",
         "{projectRoot}/APIContract/**/*",
-        { "runtime": "swiftc --version" }
+        {
+          "runtime": "swiftc --version"
+        }
+      ]
+    },
+    "verify": {
+      "command": "apps/ios/verify/verify.sh",
+      "inputs": [
+        "{projectRoot}/**/*",
+        "!{projectRoot}/**/*.md",
+        "{workspaceRoot}/apps/web/public/sounds/**/*",
+        "{workspaceRoot}/.github/workflows/apple.yml",
+        "{workspaceRoot}/tools/scripts/verify-affected.mjs"
       ]
     }
   }
