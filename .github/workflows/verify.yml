@@ -67,9 +67,89 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node tools/scripts/verify-affected.mjs tasks --workflow=verify
 
+  server:
+    name: server
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'server')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERIFY_EVIDENCE_DIR: output/verify/server
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Every stage of the Dockerfile, as Railway builds it. The GitHub Actions
+      # cache keeps the Rust and Go layers between runs.
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: whatsapp-translator:verify
+          cache-from: type=gha,scope=server-image
+          cache-to: type=gha,scope=server-image,mode=max
+
+      - name: Check out the base revision
+        id: base
+        run: |
+          set -eu
+          if ! printf '%s' "${BASE_SHA:-}" | grep -Eq '^[0-9a-f]{40}$' || [ "$BASE_SHA" = 0000000000000000000000000000000000000000 ]; then
+            echo "No base revision; the upgrade step is skipped."
+            echo "ref=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          echo "ref=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build the base revision's image
+        if: steps.base.outputs.ref != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/base
+          load: true
+          tags: whatsapp-translator:verify-base
+          # Its own scope, so the head build's cache does not evict it. A
+          # base revision is usually the same main commit for many PRs.
+          cache-from: |
+            type=gha,scope=server-image-base
+            type=gha,scope=server-image
+          cache-to: type=gha,scope=server-image-base,mode=max
+
+      - name: Run the production container smoke
+        env:
+          VERIFY_IMAGE: whatsapp-translator:verify
+          VERIFY_BASE_IMAGE: ${{ steps.base.outputs.ref != '' && 'whatsapp-translator:verify-base' || '' }}
+          VERIFY_BASE_REF: ${{ steps.base.outputs.ref == '' && 'none' || '' }}
+        run: npx nx run server:verify --outputStyle=stream
+
+      - name: Upload server evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-server
+          path: output/verify/server/
+          if-no-files-found: ignore
+          retention-days: 14
+
   verify:
     name: verify
-    needs: [changes]
+    needs: [changes, server]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
