@@ -14,15 +14,15 @@
 //                       results go (default: output/verify/web)
 //   VERIFY_DOCKER_BUILD_FLAGS extra `docker build` flags for this machine
 
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { step } from "./lib/client.mjs";
 import * as container from "./lib/docker.mjs";
 import { checkLogs, redactEvidence, redactText } from "./lib/evidence.mjs";
 import { FAKE } from "./lib/journeys.mjs";
+import { freePort, runPlaywright } from "./lib/playwright.mjs";
 
 export const PROFILES = ["chromium-desktop", "chromium-pixel", "webkit-iphone"];
 
@@ -54,49 +54,6 @@ const head = execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
 const run = `verify-web-${head}-${randomBytes(3).toString("hex")}`;
 const created = { containers: [], volumes: [], images: [] };
 
-function freePort() {
-  return new Promise((done, fail) => {
-    const server = createServer();
-    server.once("error", fail);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => done(port));
-    });
-  });
-}
-
-function playwright(profile, env) {
-  return new Promise((done, fail) => {
-    const child = spawn(
-      "npx",
-      [
-        "--no-install",
-        "playwright",
-        "test",
-        "--config",
-        "apps/web/verify/verify.config.ts",
-        "--project",
-        profile,
-      ],
-      { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] },
-    );
-    let rest = "";
-    const print = (chunk) => {
-      const lines = (rest + chunk).split("\n");
-      rest = lines.pop();
-      for (const line of lines) log(`  ${line}`);
-    };
-    child.stdout.on("data", print);
-    child.stderr.on("data", print);
-    child.on("error", fail);
-    child.on("close", (code) => {
-      if (rest) log(`  ${rest}`);
-      if (code === 0) done();
-      else fail(new Error(`Playwright exited ${code}; see the log above`));
-    });
-  });
-}
-
 async function profileRun(image, profile) {
   const name = `${run}-${profile}`;
   const volume = `${name}-data`;
@@ -114,11 +71,16 @@ async function profileRun(image, profile) {
   const output = join(evidence, profile);
   try {
     await step(`the browser journeys pass on ${profile}`, log, () =>
-      playwright(profile, {
-        VERIFY_WEB_URL: started.url,
-        VERIFY_WEB_PASSWORD: password,
-        VERIFY_WEB_CONTAINER: name,
-        VERIFY_WEB_OUTPUT: output,
+      runPlaywright({
+        config: "apps/web/verify/verify.config.ts",
+        project: profile,
+        env: {
+          VERIFY_WEB_URL: started.url,
+          VERIFY_WEB_PASSWORD: password,
+          VERIFY_WEB_CONTAINER: name,
+          VERIFY_WEB_OUTPUT: output,
+        },
+        log,
       }),
     );
   } finally {
@@ -200,7 +162,6 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 const startedAt = Date.now();
 try {
   await main();
-  log(`web:verify passed in ${Math.round((Date.now() - startedAt) / 1000)} s`);
 } catch (error) {
   log(`web:verify FAILED at "${error.step ?? "setup"}": ${error.message}`);
   for (const name of created.containers) {
@@ -215,4 +176,8 @@ try {
   process.exitCode = 1;
 } finally {
   await cleanUp();
+}
+// Only now, since securing the evidence can still fail the run.
+if (!process.exitCode) {
+  log(`web:verify passed in ${Math.round((Date.now() - startedAt) / 1000)} s`);
 }

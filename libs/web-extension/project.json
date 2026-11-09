@@ -6,11 +6,11 @@
   "tags": ["type:ui", "lang:ts"],
   "targets": {
     "lint": {
-      "command": "prettier --check \"libs/web-extension/src/**/*\" \"libs/web-extension/*.{mjs,ts,json}\" \"libs/web-extension/tests/**/*\"",
+      "command": "prettier --check \"libs/web-extension/src/**/*\" \"libs/web-extension/*.{mjs,ts,json}\" \"libs/web-extension/tests/**/*\" \"libs/web-extension/verify/**/*\"",
       "inputs": ["default", "prettier"]
     },
     "format": {
-      "command": "prettier --write \"libs/web-extension/src/**/*\" \"libs/web-extension/*.{mjs,ts,json}\" \"libs/web-extension/tests/**/*\""
+      "command": "prettier --write \"libs/web-extension/src/**/*\" \"libs/web-extension/*.{mjs,ts,json}\" \"libs/web-extension/tests/**/*\" \"libs/web-extension/verify/**/*\""
     },
     "typecheck": {
       "command": "tsc -p tsconfig.json",
@@ -66,6 +66,10 @@
       ],
       "outputs": ["{workspaceRoot}/output/playwright"],
       "dependsOn": ["browser"]
+    },
+    "verify": {
+      "command": "node tools/verify/web-extension.mjs",
+      "inputs": ["default", "serverImage", "verifyGlobals"]
     },
     "browser": {
       "command": "if [ -z \"${CHROMIUM_PATH:-}\" ] && [ ! -x \"$(node -e 'process.stdout.write(require(\"playwright\").chromium.executablePath())')\" ]; then npx playwright install chromium; fi",

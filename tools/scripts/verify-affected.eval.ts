@@ -55,8 +55,15 @@ const CASES = [
   { files: [".github/workflows/apple.yml"], runs: ["ios"] },
   {
     files: ["apps/server/src/main.rs"],
-    runs: ["server", "web"],
+    runs: ["server", "web", "web-extension"],
     skips: ["ios"],
+  },
+  // The extension's own sources feed its check, which rebuilds the bundle,
+  // but not the image checks, which embed only the committed dist/.
+  {
+    files: ["libs/web-extension/src/app.ts"],
+    runs: ["web-extension", "server"],
+    skips: ["web", "wa-bridge", "website", "ios", "ios-live"],
   },
   // A web unit test changes no shipped file, so the image checks skip it.
   {
