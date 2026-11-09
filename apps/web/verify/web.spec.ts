@@ -122,6 +122,8 @@ test("after a server restart the app reconnects and keeps the draft", async ({
     /status of 401/,
     /Load failed/,
     /network connection was lost/i,
+    // WebKit's wording for a fetch cut off by the restart.
+    /due to access control checks/,
   );
   await openApp(page);
   // A returning user's session comes from the stored token, not a fresh
