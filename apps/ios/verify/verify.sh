@@ -168,7 +168,8 @@ ui_watch() {
 }
 
 [ "$(uname -s)" = "Darwin" ] || fail "ios:verify needs macOS with Xcode"
-xcodebuild -version | head -n 1
+# All of it: `| head` would end xcodebuild with SIGPIPE, which pipefail fails.
+xcodebuild -version
 started=$SECONDS
 part="${VERIFY_IOS_PART:-all}"
 case "$part" in
