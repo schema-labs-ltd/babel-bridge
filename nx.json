@@ -74,6 +74,15 @@
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/.env.example"
     ],
+    "serverImage": [
+      "deploy",
+      "{workspaceRoot}/apps/server/**/*",
+      "{workspaceRoot}/apps/wa-bridge/**/*",
+      "!{workspaceRoot}/apps/wa-bridge/**/*_test.go",
+      "!{workspaceRoot}/apps/wa-bridge/wa-bridge",
+      "{workspaceRoot}/libs/web-extension/dist/**/*",
+      "{workspaceRoot}/fixtures/**/*"
+    ],
     "verifyGlobals": [
       "{workspaceRoot}/.github/workflows/verify.yml",
       "{workspaceRoot}/tools/verify/**/*",

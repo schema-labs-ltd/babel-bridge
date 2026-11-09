@@ -19,12 +19,12 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Client, redactor, SECRET_MARK, step, until } from "./lib/client.mjs";
+import { Client, redactor, step, until } from "./lib/client.mjs";
 import * as container from "./lib/docker.mjs";
+import { checkLogs } from "./lib/evidence.mjs";
 import {
   connectedJourney,
   diagnosticsJourney,
-  FAKE,
   persistedJourney,
   publicSurface,
   sendJourney,
@@ -80,21 +80,6 @@ async function saveLogs(label, name) {
   const text = redact(await container.logs(name));
   writeFileSync(join(evidence, `${label}.log`), text);
   return text;
-}
-
-// Container logs must not report errors or panics, or print a fake phone
-// number in plain text (log_privacy masks them), the password or a token.
-function checkLogs(text) {
-  const problems = [];
-  if (/\bERROR\b/.test(text)) problems.push("an ERROR line");
-  if (/panicked|\bpanic:/.test(text)) problems.push("a panic");
-  for (const phone of FAKE.phones) {
-    if (text.includes(phone)) problems.push(`the phone number ${phone}`);
-  }
-  if (text.includes(SECRET_MARK)) problems.push("the password or a token");
-  if (problems.length > 0) {
-    throw new Error(`container logs contain ${problems.join(", ")}`);
-  }
 }
 
 // SIGTERM, as Railway sends on every deploy: the server must drain, stop the

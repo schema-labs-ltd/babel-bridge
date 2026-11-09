@@ -53,7 +53,17 @@ const CASES = [
   },
   { files: ["apps/web/public/sounds/tone.wav"], runs: ["ios"] },
   { files: [".github/workflows/apple.yml"], runs: ["ios"] },
-  { files: ["apps/server/src/main.rs"], runs: ["server"], skips: ["ios"] },
+  {
+    files: ["apps/server/src/main.rs"],
+    runs: ["server", "web"],
+    skips: ["ios"],
+  },
+  // A web unit test changes no shipped file, so the image checks skip it.
+  {
+    files: ["apps/web/tests/app-js-regression.test.js"],
+    runs: ["web"],
+    skips: ["server", "wa-bridge", "website", "ios", "ios-live"],
+  },
   { files: ["AGENTS.md"], runs: [], skips: ALL },
   { files: [".github/workflows/ci.yml"], skips: ["ios"] },
   {

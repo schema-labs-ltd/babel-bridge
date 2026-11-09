@@ -65,12 +65,15 @@ export async function buildImage({ tag, ref, log }) {
 // Starts a container the way Railway runs the image: PORT set, sign-in on,
 // a volume on /data, and the fake bridge and AI at the external boundary.
 // The health check command is the image's own; only its interval is shortened.
+// `port` fixes the host port, so the address survives a `docker restart`;
+// otherwise Docker picks a free one.
 export async function startContainer({
   name,
   image,
   volume,
   password,
   env = {},
+  port: hostPort,
 }) {
   const vars = {
     PORT: "3000",
@@ -85,7 +88,7 @@ export async function startContainer({
     "--volume",
     `${volume}:/data`,
     "--publish",
-    "127.0.0.1::3000",
+    `127.0.0.1:${hostPort ?? ""}:3000`,
     "--health-interval",
     "2s",
     image,

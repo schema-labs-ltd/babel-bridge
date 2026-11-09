@@ -1,8 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eventProblems, OPTIONAL_KEYS } from "../verify/bridge.mjs";
 import { redactor } from "../verify/lib/client.mjs";
+import {
+  checkLogs,
+  redactEvidence,
+  redactText,
+  tokensIn,
+} from "../verify/lib/evidence.mjs";
 import { referencedAssets } from "../verify/lib/journeys.mjs";
 import { shapeProblems } from "../verify/lib/shape.mjs";
 
@@ -119,4 +134,49 @@ test("each optional bridge key is omitempty in the Go source", () => {
       );
     }
   }
+});
+
+test("finds and redacts session tokens in recorded requests", () => {
+  const token = "AbCdEfGhIjKlMnOpQrStUv_-12";
+  const text = `Authorization: Bearer ${token} /ws?token=${token} {"token":"${token}"}`;
+  assert.deepEqual(tokensIn(text), [token, token, token]);
+  assert.equal(
+    redactText(text, []),
+    'Authorization: Bearer [verify-secret] /ws?token=[verify-secret] {"token":"[verify-secret]"}',
+  );
+  assert.equal(redactText("pw hunter22", ["hunter22"]), "pw [verify-secret]");
+});
+
+test("container log check accepts only the known lines it is given", () => {
+  const known = "ERROR Failed to write command to bridge: Broken pipe";
+  assert.throws(() => checkLogs(`INFO ok\n${known}`), /an ERROR line/);
+  checkLogs(`INFO ok\n${known}`, { allow: [/Broken pipe/] });
+  assert.throws(
+    () => checkLogs(`${known}\nERROR other`, { allow: [/Broken pipe/] }),
+    /an ERROR line/,
+  );
+});
+
+test("evidence redaction reaches inside trace zips", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "verify-spec-"));
+  const token = "ZyXwVuTsRqPoNmLkJiHg_9876";
+  const inside = join(dir, "unpacked");
+  mkdirSync(inside);
+  writeFileSync(join(inside, "0-trace.network"), `{"token":"${token}"}`);
+  writeFileSync(join(inside, "test.trace"), `fill hunter22 then ${token}`);
+  execFileSync("zip", ["-q", "-r", join(dir, "trace.zip"), "."], {
+    cwd: inside,
+  });
+  execFileSync("rm", ["-r", inside]);
+  writeFileSync(join(dir, "steps.log"), "typed hunter22");
+  assert.deepEqual(await redactEvidence(dir, ["hunter22"]), []);
+  const zipped = execFileSync("unzip", ["-p", join(dir, "trace.zip")], {
+    encoding: "utf8",
+  });
+  assert.ok(!zipped.includes(token) && !zipped.includes("hunter22"));
+  assert.match(zipped, /\[verify-secret\]/);
+  assert.equal(
+    readFileSync(join(dir, "steps.log"), "utf8"),
+    "typed [verify-secret]",
+  );
 });
