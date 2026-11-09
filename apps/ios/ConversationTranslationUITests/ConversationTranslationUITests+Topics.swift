@@ -63,9 +63,16 @@ extension ConversationTranslationUITests {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
         XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2, "Pulling the list must not expand a blank navigation title")
         app.swipeUp()
-        let filtersSettled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: groups)
-        XCTAssertEqual(XCTWaiter.wait(for: [filtersSettled], timeout: 5), .completed)
-        XCTAssertTrue(groups.isHittable)
+        // After a scroll the iOS 26.5 simulator reports the chips as not
+        // hittable although they are drawn in place, so check what a person
+        // sees and does: the chips stay put and a tap on one still selects it.
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: groups)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed)
+        XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
+        let all = app.buttons["All"].firstMatch
+        all.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: all)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed, "A tap on a chip after scrolling must still select it")
         XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
         let scrolled = XCTAttachment(screenshot: app.screenshot())
         scrolled.name = "Chat list after scrolling"
