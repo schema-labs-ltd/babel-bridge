@@ -122,15 +122,13 @@ final class ConversationTranslationUITests: XCTestCase {
         XCTAssertTrue(caption.waitForExistence(timeout: 5) && caption.isHittable, "Closing the player must return to the same message")
     }
 
-    func testPlayingVideoStartsPictureInPictureWhenLeavingApp() throws {
-        try checkAutomaticPictureInPicture(fullScreen: false)
-    }
-
+    // A bubble has no inline player any more: tapping it opens the full-screen
+    // player, so picture in picture starts from there.
     func testFullScreenVideoStartsPictureInPictureWhenLeavingApp() throws {
-        try checkAutomaticPictureInPicture(fullScreen: true)
+        try checkAutomaticPictureInPicture()
     }
 
-    private func checkAutomaticPictureInPicture(fullScreen: Bool) throws {
+    private func checkAutomaticPictureInPicture() throws {
         try XCTSkipUnless(AVPictureInPictureController.isPictureInPictureSupported(),
                           "AVKit reports that picture in picture is unavailable on this simulator/device")
         let app = XCUIApplication()
@@ -138,17 +136,9 @@ final class ConversationTranslationUITests: XCTestCase {
         app.launch()
         let video = app.named("Play video full screen")
         XCTAssertTrue(video.waitForExistence(timeout: 10))
-        // The bubble opens the player full screen and starts playback; closing
-        // it keeps the video playing in the bubble.
+        // The bubble opens the player full screen and starts playback.
         video.tap()
         XCTAssertTrue(app.buttons["Pause"].firstMatch.waitForExistence(timeout: 5), app.debugDescription)
-        if !fullScreen {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            let done = app.buttons.matching(NSPredicate(format: "label IN %@", ["Done", "Close", "Exit Full Screen"])).firstMatch
-            XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
-            done.tap()
-            XCTAssertTrue(video.waitForExistence(timeout: 5))
-        }
         let appWidth = app.frame.width
         XCUIDevice.shared.press(.home)
         XCUIApplication(bundleIdentifier: "com.apple.Preferences").activate()

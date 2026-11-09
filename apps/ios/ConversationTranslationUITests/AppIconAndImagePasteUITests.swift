@@ -69,12 +69,9 @@ final class ImagePasteUITests: XCTestCase {
         app.launch()
         let editor = app.textViews["message-composer-input"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        // On iPad the first tap can land before the composer accepts focus.
-        let focused = NSPredicate(format: "hasKeyboardFocus == true")
-        for _ in 0..<3 where !focused.evaluate(with: editor) {
-            editor.tap()
-            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: focused, object: editor)], timeout: 2)
-        }
+        // Tap where the caret goes, as paste(into:in:) does: on iPad a tap on
+        // the middle of the wide composer leaves it without keyboard focus.
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.5)).tap()
         editor.typeText("Keep my draft")
         paste(into: editor, in: app)
         XCTAssertTrue(app.navigationBars["Send 2 photos"].waitForExistence(timeout: 5), app.debugDescription)
