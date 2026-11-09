@@ -1,0 +1,353 @@
+# Production-like verification (issue #138). Each project's Nx `verify` target
+# starts the real built artefact in a production-shaped environment and drives
+# it the way users do. `changes` asks Nx which verify targets a change affects,
+# one gated job per target does the work, and `verify` always reports a status.
+# Require `verify / verify`. There is no workflow-level paths filter, because
+# that leaves the check pending. The Apple verify targets run in apple.yml.
+#
+# Adding a verify target: add a job whose id is the task key that
+# tools/scripts/verify-affected.mjs prints for it (the project name for
+# `verify`), gate it on that key, and add the job to `verify.needs`. A helper
+# job that several verify jobs share may also be listed there: it must succeed
+# or be skipped.
+name: verify
+
+on:
+  pull_request:
+    branches:
+      - main
+  # The merge queue runs every verify task on the queued merge before it lands.
+  merge_group:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  # Each push to main keeps its own run; a new push to a PR replaces the last.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tasks: ${{ steps.affected.outputs.tasks }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      # The real project graph must still pick the jobs issue #138 expects for
+      # the sample changes in the eval, as apple.yml's path self-test did.
+      - name: Check how changes map to verify jobs
+        run: node --test tools/scripts/verify-affected.eval.ts
+
+      - name: Find affected verify tasks
+        id: affected
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/scripts/verify-affected.mjs tasks --workflow=verify
+
+  server:
+    name: server
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'server')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERIFY_EVIDENCE_DIR: output/verify/server
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Every stage of the Dockerfile, as Railway builds it. The GitHub Actions
+      # cache keeps the Rust and Go layers between runs.
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: whatsapp-translator:verify
+          cache-from: type=gha,scope=server-image
+          cache-to: type=gha,scope=server-image,mode=max
+
+      - name: Check out the base revision
+        id: base
+        run: |
+          set -eu
+          if ! printf '%s' "${BASE_SHA:-}" | grep -Eq '^[0-9a-f]{40}$' || [ "$BASE_SHA" = 0000000000000000000000000000000000000000 ]; then
+            echo "No base revision; the upgrade step is skipped."
+            echo "ref=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          echo "ref=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build the base revision's image
+        if: steps.base.outputs.ref != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/base
+          load: true
+          tags: whatsapp-translator:verify-base
+          # Its own scope, so the head build's cache does not evict it. A
+          # base revision is usually the same main commit for many PRs.
+          cache-from: |
+            type=gha,scope=server-image-base
+            type=gha,scope=server-image
+          cache-to: type=gha,scope=server-image-base,mode=max
+
+      - name: Run the production container smoke
+        env:
+          VERIFY_IMAGE: whatsapp-translator:verify
+          VERIFY_BASE_IMAGE: ${{ steps.base.outputs.ref != '' && 'whatsapp-translator:verify-base' || '' }}
+          VERIFY_BASE_REF: ${{ steps.base.outputs.ref == '' && 'none' || '' }}
+        run: npx nx run server:verify --outputStyle=stream
+
+      - name: Upload server evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-server
+          path: output/verify/server/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  wa-bridge:
+    name: wa-bridge
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'wa-bridge')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VERIFY_EVIDENCE_DIR: output/verify/wa-bridge
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The Dockerfile's own go-builder stage: golang:1.27-bookworm,
+      # CGO_ENABLED=1 and -ldflags="-s -w", as the shipped image builds it.
+      - name: Build the bridge
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: go-builder
+          load: true
+          tags: wa-bridge:verify
+          cache-from: type=gha,scope=wa-bridge
+          cache-to: type=gha,scope=wa-bridge,mode=max
+
+      - name: Run the bridge protocol check
+        env:
+          VERIFY_BRIDGE_IMAGE: wa-bridge:verify
+        run: npx nx run wa-bridge:verify --outputStyle=stream
+
+      - name: Upload bridge evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-wa-bridge
+          path: output/verify/wa-bridge/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  web:
+    name: web
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'web')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERIFY_EVIDENCE_DIR: output/verify/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The same production image server:verify builds. It reads the server
+      # job's cache and writes none, so the two jobs never race on a scope.
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: whatsapp-translator:verify
+          cache-from: type=gha,scope=server-image
+
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}-chromium-webkit-${{ runner.os }}-${{ runner.arch }}
+
+      # WebKit needs system libraries the runner image does not ship.
+      - name: Install Chromium and WebKit
+        run: |
+          set -eu
+          npx playwright install chromium webkit
+          sudo -n timeout 900 npx playwright install-deps chromium webkit
+
+      - name: Run the web app in Chromium, a Pixel and an iPhone
+        env:
+          VERIFY_IMAGE: whatsapp-translator:verify
+        run: npx nx run web:verify --outputStyle=stream
+
+      - name: Upload web evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-web
+          path: output/verify/web/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  web-extension:
+    name: web-extension
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'web-extension')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERIFY_EVIDENCE_DIR: output/verify/web-extension
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The same production image server:verify builds, from its cache.
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: whatsapp-translator:verify
+          cache-from: type=gha,scope=server-image
+
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}-chromium-${{ runner.os }}-${{ runner.arch }}
+
+      # As in ci.yml: the runner ships Chrome's libraries, so the apt step
+      # runs only when one is missing.
+      - name: Install Chromium
+        run: |
+          set -eu
+          npx playwright install chromium
+          chromium="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')"
+          if ldd "$chromium" | grep -q 'not found'; then
+            sudo -n timeout 900 npx playwright install-deps chromium
+          fi
+
+      - name: Run the extension through OAuth and the real /mcp
+        env:
+          VERIFY_IMAGE: whatsapp-translator:verify
+        run: npx nx run web-extension:verify --outputStyle=stream
+
+      - name: Upload web-extension evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-web-extension
+          path: output/verify/web-extension/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  verify:
+    name: verify
+    needs: [changes, server, wa-bridge, web, web-extension]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/scripts
+          sparse-checkout-cone-mode: true
+
+      - name: Report verify check
+        env:
+          TASKS: ${{ needs.changes.outputs.tasks || '[]' }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: node tools/scripts/verify-affected.mjs report

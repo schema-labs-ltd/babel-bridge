@@ -11,11 +11,16 @@
       "inputs": ["node"]
     },
     "lint": {
-      "command": "prettier --check \"apps/web/public/**/*.{js,css,html,json}\" \"apps/web/tests/**/*.js\" \"apps/web/*.test.js\"",
+      "command": "prettier --check \"apps/web/public/**/*.{js,css,html,json}\" \"apps/web/tests/**/*.js\" \"apps/web/*.test.js\" \"apps/web/verify/**/*.ts\"",
       "inputs": ["default", "prettier"]
     },
+    "verify": {
+      "command": "node tools/verify/web.mjs",
+      "dependsOn": ["build-storybook"],
+      "inputs": ["default", "serverImage", "verifyGlobals"]
+    },
     "format": {
-      "command": "prettier --write \"apps/web/public/**/*.{js,css,html,json}\" \"apps/web/tests/**/*.js\" \"apps/web/*.test.js\""
+      "command": "prettier --write \"apps/web/public/**/*.{js,css,html,json}\" \"apps/web/tests/**/*.js\" \"apps/web/*.test.js\" \"apps/web/verify/**/*.ts\""
     }
   }
 }
