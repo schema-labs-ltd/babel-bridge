@@ -75,12 +75,24 @@ extension ConversationTranslationUITests {
         // sees and does: the chips stay put and a tap on one still selects it.
         let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: groups)
         XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed)
-        XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
+        // On iPhone the chips stay exactly in place. The iPad sidebar collapses
+        // its large title as the list scrolls, so there they may only move up
+        // with it, and must stay on screen.
+        let pad = UIDevice.current.userInterfaceIdiom == .pad
+        let checkFilterPosition = {
+            if pad {
+                XCTAssertLessThanOrEqual(groups.frame.minY, filterY + 2)
+                XCTAssertGreaterThan(groups.frame.minY, 0)
+            } else {
+                XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
+            }
+        }
+        checkFilterPosition()
         let all = app.buttons["All"].firstMatch
         all.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: all)
         XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed, "A tap on a chip after scrolling must still select it")
-        XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
+        checkFilterPosition()
         let scrolled = XCTAttachment(screenshot: app.screenshot())
         scrolled.name = "Chat list after scrolling"
         scrolled.lifetime = .keepAlways

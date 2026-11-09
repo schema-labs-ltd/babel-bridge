@@ -156,12 +156,34 @@ ui_ios() {
   step "ConversationTranslationUITests on $(printf '%s' "$device" | cut -f2,3 | tr '\t' ' ')"
   boot "$udid"
   rm -rf "${out}/ui-${label}.xcresult"
+  # The iPad Pro simulator on the macOS runners drops some taps and presses:
+  # a different, unrelated test fails on each run, and passes when run again,
+  # while the iPhone runs the same tests cleanly. So a failed iPad test runs
+  # once more, and report_retries names it. The iPhone run has no retry.
+  local retry=()
+  case "$1" in iPad*) retry=(-retry-tests-on-failure -test-iterations 2) ;; esac
   xcb "ui-${label}" test-without-building \
     -project "$project" -scheme WhatsAppTranslator \
     -destination "id=${udid}" -derivedDataPath "${derived}/ui-ios" \
     -only-testing:ConversationTranslationUITests \
+    ${retry[@]+"${retry[@]}"} \
     -resultBundlePath "${out}/ui-${label}.xcresult" "${unsigned[@]}"
   expect_tests "ui-${label}"
+  report_retries "ui-${label}"
+}
+
+# A test that passed only on its second try still passes the check, so name it
+# in a warning and the job summary: a real flaky regression must not go unnoticed.
+report_retries() {
+  local retried
+  retried=$(grep -oE "Test Case '[^']+' failed" "${out}/$1.log" | sort -u || true)
+  [ -n "$retried" ] || return 0
+  printf '%s\n' "$retried" | while IFS= read -r line; do
+    printf '::warning title=%s test passed only on retry::%s\n' "$1" "$line"
+  done
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf '### %s tests that passed only on retry\n\n%s\n' "$1" "$retried" >>"$GITHUB_STEP_SUMMARY"
+  fi
 }
 
 # The watchOS 26.5 simulator's dasd daemon keeps crashing (an unrecognized
@@ -181,18 +203,7 @@ ui_watch() {
     -retry-tests-on-failure -test-iterations 2 \
     -resultBundlePath "${out}/ui-watch.xcresult" "${unsigned[@]}"
   expect_tests ui-watch
-  # A test that passed only on its second try still passes the check, so name
-  # it in the job summary: a real flaky regression must not go unnoticed.
-  local retried
-  retried=$(grep -oE "Test Case '[^']+' failed" "${out}/ui-watch.log" | sort -u || true)
-  if [ -n "$retried" ]; then
-    printf '%s\n' "$retried" | while IFS= read -r line; do
-      printf '::warning title=Watch UI test passed only on retry::%s\n' "$line"
-    done
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-      printf '### Watch UI tests that passed only on retry\n\n%s\n' "$retried" >>"$GITHUB_STEP_SUMMARY"
-    fi
-  fi
+  report_retries ui-watch
 }
 
 [ "$(uname -s)" = "Darwin" ] || fail "ios:verify needs macOS with Xcode"
