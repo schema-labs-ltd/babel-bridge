@@ -22,7 +22,22 @@ extension XCUIElement {
     /// menu opens. A long press on the selectable text itself can start text
     /// selection instead (the iPad simulator shows Copy and Share).
     func pressBubble() {
+        waitUntilStill()
         coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: 20, dy: 0)).press(forDuration: 1)
+    }
+
+    /// Waits until the element has stayed put for half a second. A feed that
+    /// is still settling on its latest message moves a bubble under a long
+    /// press, which cancels it, as it would for a person's finger.
+    func waitUntilStill(timeout: TimeInterval = 5) {
+        var last = frame
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            let now = frame
+            if now == last { return }
+            last = now
+        }
     }
 }
 
