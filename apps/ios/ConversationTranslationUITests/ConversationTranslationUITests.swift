@@ -46,8 +46,8 @@ final class ConversationTranslationUITests: XCTestCase {
         // An iPhone shows the first page ("1 of 60+"); an iPad's taller grid
         // has already loaded the older page ("1 of 75"). Item 074 below checks
         // that older media loads either way.
-        let position = app.staticTexts["gallery-position"].label
-        XCTAssertTrue(["1 of 60+", "1 of 75"].contains(position), position)
+        let expected = UIDevice.current.userInterfaceIdiom == .pad ? "1 of 75" : "1 of 60+"
+        XCTAssertEqual(app.staticTexts["gallery-position"].label, expected)
         let fullPhoto = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         fullPhoto.name = "Full screen gallery photo with navigation"
         fullPhoto.lifetime = .keepAlways

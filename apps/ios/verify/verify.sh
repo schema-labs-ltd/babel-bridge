@@ -181,6 +181,18 @@ ui_watch() {
     -retry-tests-on-failure -test-iterations 2 \
     -resultBundlePath "${out}/ui-watch.xcresult" "${unsigned[@]}"
   expect_tests ui-watch
+  # A test that passed only on its second try still passes the check, so name
+  # it in the job summary: a real flaky regression must not go unnoticed.
+  local retried
+  retried=$(grep -oE "Test Case '[^']+' failed" "${out}/ui-watch.log" | sort -u || true)
+  if [ -n "$retried" ]; then
+    printf '%s\n' "$retried" | while IFS= read -r line; do
+      printf '::warning title=Watch UI test passed only on retry::%s\n' "$line"
+    done
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      printf '### Watch UI tests that passed only on retry\n\n%s\n' "$retried" >>"$GITHUB_STEP_SUMMARY"
+    fi
+  fi
 }
 
 [ "$(uname -s)" = "Darwin" ] || fail "ios:verify needs macOS with Xcode"
