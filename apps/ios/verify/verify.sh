@@ -164,6 +164,10 @@ ui_ios() {
   expect_tests "ui-${label}"
 }
 
+# The watchOS 26.5 simulator's dasd daemon keeps crashing (an unrecognized
+# selector inside the runtime, in the crash reports the result bundle holds),
+# and while it restarts the simulator can kill or fail to stop the app under
+# test. So a failed watch test runs once more; a real failure fails twice.
 ui_watch() {
   local watch
   watch=$(simulator "watchOS" "Apple Watch" prefix) || fail "no Apple Watch simulator is installed"
@@ -174,6 +178,7 @@ ui_watch() {
     -project "$project" -scheme BabelBridgeWatch -configuration Debug \
     -destination "id=${watch%%$'\t'*}" -derivedDataPath "${derived}/ui-watch" \
     -only-testing:BabelBridgeWatchUITests \
+    -retry-tests-on-failure -test-iterations 2 \
     -resultBundlePath "${out}/ui-watch.xcresult" "${unsigned[@]}"
   expect_tests ui-watch
 }
