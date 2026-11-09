@@ -78,6 +78,14 @@ sys.exit(1)
 ' "$1" "$2" "${3:-exact}"
 }
 
+# Boots simulator $1 and waits until it has finished booting. A test run that
+# starts while a fresh simulator is still settling can stall it (system
+# daemons restart and the app under test is killed).
+boot() {
+  xcrun simctl boot "$1" 2>/dev/null || true
+  xcrun simctl bootstatus "$1" -b >/dev/null
+}
+
 # Checks that an archived app bundle exists and holds the given bundles.
 expect_bundles() {
   local app=$1
@@ -146,6 +154,7 @@ ui_ios() {
     -destination "generic/platform=iOS Simulator" \
     -derivedDataPath "${derived}/ui-ios" "${unsigned[@]}"
   step "ConversationTranslationUITests on $(printf '%s' "$device" | cut -f2,3 | tr '\t' ' ')"
+  boot "$udid"
   rm -rf "${out}/ui-${label}.xcresult"
   xcb "ui-${label}" test-without-building \
     -project "$project" -scheme WhatsAppTranslator \
@@ -159,6 +168,7 @@ ui_watch() {
   local watch
   watch=$(simulator "watchOS" "Apple Watch" prefix) || fail "no Apple Watch simulator is installed"
   step "BabelBridgeWatchUITests on $(printf '%s' "$watch" | cut -f2,3 | tr '\t' ' ')"
+  boot "${watch%%$'\t'*}"
   rm -rf "${out}/ui-watch.xcresult"
   xcb ui-watch test \
     -project "$project" -scheme BabelBridgeWatch -configuration Debug \
