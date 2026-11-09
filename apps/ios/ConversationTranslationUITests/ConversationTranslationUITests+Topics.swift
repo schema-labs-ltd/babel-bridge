@@ -62,7 +62,15 @@ extension ConversationTranslationUITests {
         let filterY = groups.frame.minY
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
         XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2, "Pulling the list must not expand a blank navigation title")
-        app.swipeUp()
+        // Scroll by a drag that stops before it lets go, so the list is at rest
+        // when the chip is tapped. A swipe leaves it coasting, and a tap on a
+        // coasting list only stops it, as anywhere in iOS.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).press(
+            forDuration: 0.1,
+            thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)),
+            withVelocity: .default,
+            thenHoldForDuration: 0.5)
+        XCTAssertFalse(first.exists && first.isHittable, "The drag must scroll the first chat out of view")
         // After a scroll the iOS 26.5 simulator reports the chips as not
         // hittable although they are drawn in place, so check what a person
         // sees and does: the chips stay put and a tap on one still selects it.
