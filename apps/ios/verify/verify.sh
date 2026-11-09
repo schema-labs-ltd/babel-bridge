@@ -5,7 +5,8 @@
 #                 embedded watch app, its complications and the three
 #                 extensions (Notification Service, Send Activity, Intents)
 #   archive-mac   Release archive of BabelBridgeMac, unsigned
-#   ui-ios        ConversationTranslationUITests on an iPhone and an iPad
+#   ui-iphone     ConversationTranslationUITests on an iPhone 17
+#   ui-ipad       ConversationTranslationUITests on an iPad
 #   ui-watch      BabelBridgeWatchUITests on an Apple Watch
 #
 # A Release archive is what Xcode Cloud builds for TestFlight, so code that
@@ -129,29 +130,29 @@ archive_mac() {
   echo "  Babel Bridge.app archived"
 }
 
+# ConversationTranslationUITests on one simulator: $1 is the device name, $2
+# "prefix" to match the start of the name. A run takes about 15 minutes, so
+# apple.yml runs the iPhone and the iPad in separate jobs.
 ui_ios() {
   local runtime="iOS-${ios_runtime//./-}"
-  local iphone ipad
-  iphone=$(simulator "$runtime" "iPhone 17") || fail "no iPhone 17 simulator on iOS ${ios_runtime}"
-  ipad=$(simulator "$runtime" "iPad" prefix) || fail "no iPad simulator on iOS ${ios_runtime}"
-  step "Build ConversationTranslationUITests once for the simulator"
-  xcb ui-ios-build build-for-testing \
+  local device
+  device=$(simulator "$runtime" "$1" "${2:-exact}") || fail "no $1 simulator on iOS ${ios_runtime}"
+  local udid=${device%%$'\t'*}
+  local label
+  label=$(printf '%s' "$device" | cut -f2 | tr -c 'A-Za-z0-9\n' '-')
+  step "Build ConversationTranslationUITests for the simulator"
+  xcb "ui-${label}-build" build-for-testing \
     -project "$project" -scheme WhatsAppTranslator -configuration Debug \
     -destination "generic/platform=iOS Simulator" \
     -derivedDataPath "${derived}/ui-ios" "${unsigned[@]}"
-  for device in "$iphone" "$ipad"; do
-    local udid=${device%%$'\t'*}
-    local label
-    label=$(printf '%s' "$device" | cut -f2 | tr -c 'A-Za-z0-9\n' '-')
-    step "ConversationTranslationUITests on $(printf '%s' "$device" | cut -f2,3 | tr '\t' ' ')"
-    rm -rf "${out}/ui-${label}.xcresult"
-    xcb "ui-${label}" test-without-building \
-      -project "$project" -scheme WhatsAppTranslator \
-      -destination "id=${udid}" -derivedDataPath "${derived}/ui-ios" \
-      -only-testing:ConversationTranslationUITests \
-      -resultBundlePath "${out}/ui-${label}.xcresult" "${unsigned[@]}"
-    expect_tests "ui-${label}"
-  done
+  step "ConversationTranslationUITests on $(printf '%s' "$device" | cut -f2,3 | tr '\t' ' ')"
+  rm -rf "${out}/ui-${label}.xcresult"
+  xcb "ui-${label}" test-without-building \
+    -project "$project" -scheme WhatsAppTranslator \
+    -destination "id=${udid}" -derivedDataPath "${derived}/ui-ios" \
+    -only-testing:ConversationTranslationUITests \
+    -resultBundlePath "${out}/ui-${label}.xcresult" "${unsigned[@]}"
+  expect_tests "ui-${label}"
 }
 
 ui_watch() {
@@ -175,12 +176,14 @@ part="${VERIFY_IOS_PART:-all}"
 case "$part" in
   archive-ios) archive_ios ;;
   archive-mac) archive_mac ;;
-  ui-ios) ui_ios ;;
+  ui-iphone) ui_ios "iPhone 17" ;;
+  ui-ipad) ui_ios iPad prefix ;;
   ui-watch) ui_watch ;;
   all)
     archive_ios
     archive_mac
-    ui_ios
+    ui_ios "iPhone 17"
+    ui_ios iPad prefix
     ui_watch
     ;;
   *) fail "unknown VERIFY_IOS_PART: ${part}" ;;

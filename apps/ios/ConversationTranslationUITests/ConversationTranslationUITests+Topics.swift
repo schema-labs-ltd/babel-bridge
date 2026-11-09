@@ -31,7 +31,7 @@ extension ConversationTranslationUITests {
         XCTAssertFalse(label.isEnabled, "Saved topic is information, not a message action")
         let combined = XCTAttachment(screenshot: app.screenshot())
         combined.name = "Saved topic in combined message long press menu"; combined.lifetime = .keepAlways; add(combined)
-        app.buttons["React with ❤️"].firstMatch.tap()
+        app.control("React with ❤️").tap()
         app.buttons["Open chat: Family"].firstMatch.tap()
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         target.press(forDuration: 1)
@@ -47,8 +47,8 @@ extension ConversationTranslationUITests {
         app.buttons["Chats"].firstMatch.tap()
         let groups = app.buttons["Groups"].firstMatch
         XCTAssertTrue(groups.waitForExistence(timeout: 5))
-        let first = app.staticTexts["Community group 1"].firstMatch
-        let second = app.staticTexts["Community group 2"].firstMatch
+        let first = app.text("Community group 1")
+        let second = app.text("Community group 2")
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         let initial = XCTAttachment(screenshot: app.screenshot())
         initial.name = "Chat list initial spacing"

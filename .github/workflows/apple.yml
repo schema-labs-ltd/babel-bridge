@@ -391,7 +391,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [archive-ios, archive-mac, ui-ios, ui-watch]
+        part: [archive-ios, archive-mac, ui-iphone, ui-ipad, ui-watch]
     env:
       VERIFY_IOS_PART: ${{ matrix.part }}
     steps:

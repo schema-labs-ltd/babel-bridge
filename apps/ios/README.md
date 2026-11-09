@@ -179,7 +179,8 @@ three extensions are embedded) and `BabelBridgeMac`, so code that compiles
 only in Debug fails on the pull request rather than in Xcode Cloud. It also
 runs `ConversationTranslationUITests` on an iPhone 17 and an iPad on iOS 26.5,
 and `BabelBridgeWatchUITests` on an Apple Watch simulator. Set
-`VERIFY_IOS_PART` to `archive-ios`, `archive-mac`, `ui-ios` or `ui-watch` to
+`VERIFY_IOS_PART` to `archive-ios`, `archive-mac`, `ui-iphone`, `ui-ipad` or
+`ui-watch` to
 run one part, as the `apple` workflow's `ios` jobs do. Logs and result bundles
 go to `output/verify/ios/`.
 

@@ -2,6 +2,22 @@ import AVKit
 import UIKit
 import XCTest
 
+extension XCUIApplication {
+    /// The first element with this identifier or label whose type is one of
+    /// `types`. The iOS 26.5 simulator can report a different type for some
+    /// SwiftUI elements than their legacy attributes (Button or PopUpButton,
+    /// StaticText or Other), so a query for a single type misses them.
+    func element(_ name: String, _ types: [XCUIElement.ElementType]) -> XCUIElement {
+        let rawTypes = types.map { NSNumber(value: $0.rawValue) }
+        return descendants(matching: .any)
+            .matching(NSPredicate(format: "(identifier == %@ OR label == %@) AND elementType IN %@", name, name, rawTypes))
+            .firstMatch
+    }
+
+    func control(_ name: String) -> XCUIElement { element(name, [.button, .popUpButton, .menuItem]) }
+    func text(_ name: String) -> XCUIElement { element(name, [.staticText, .other]) }
+}
+
 @MainActor
 final class ConversationTranslationUITests: XCTestCase {
     func testChatGalleryBrowsesPhotosAndVideosAndLoadsOlderMedia() throws {
@@ -71,7 +87,7 @@ final class ConversationTranslationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoVideo"]
         app.launch()
-        let video = app.otherElements["Video"].firstMatch
+        let video = app.element("Video", [.other, .button])
         XCTAssertTrue(video.waitForExistence(timeout: 10))
         video.tap()
         let fullScreen = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'full screen'")).firstMatch
@@ -109,7 +125,7 @@ final class ConversationTranslationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoVideo"]
         app.launch()
-        let video = app.otherElements["Video"].firstMatch
+        let video = app.element("Video", [.other, .button])
         XCTAssertTrue(video.waitForExistence(timeout: 10))
         video.tap()
         XCTAssertTrue(app.buttons["Pause"].firstMatch.waitForExistence(timeout: 5), app.debugDescription)
@@ -164,35 +180,35 @@ final class ConversationTranslationUITests: XCTestCase {
         let target = app.staticTexts["The new draft is ready."].firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         target.press(forDuration: 1)
-        let heart = app.buttons["React with ❤️"].firstMatch
+        let heart = app.control("React with ❤️")
         XCTAssertTrue(heart.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Reply"].exists)
-        XCTAssertTrue(app.buttons["More reactions"].isHittable)
+        XCTAssertTrue(app.control("Reply").exists)
+        XCTAssertTrue(app.control("More reactions").isHittable)
         let menu = XCTAttachment(screenshot: app.screenshot())
         menu.name = "Quick reactions and reply on message long press"
         menu.lifetime = .keepAlways
         add(menu)
         heart.tap()
-        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["Reply"].firstMatch)
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.control("Reply"))
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: ❤️, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         let visibleGroup = try XCTUnwrap(app.buttons.matching(identifier: "Open chat: Studio team").allElementsBoundByIndex.first(where: { $0.isHittable }))
         visibleGroup.tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: ❤️, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         target.press(forDuration: 1)
-        app.buttons["React with 👍"].firstMatch.tap()
+        app.control("React with 👍").tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: 👍, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["Reactions: ❤️, 1 in total"].exists)
         target.press(forDuration: 1)
-        app.buttons["More reactions"].tap()
-        let extra = app.buttons["React with 🎉"].firstMatch
+        app.control("More reactions").tap()
+        let extra = app.control("React with 🎉")
         XCTAssertTrue(extra.waitForExistence(timeout: 5))
         extra.tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: 🎉, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         app.buttons["Messages"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["Reactions: 🎉, 1 in total"].firstMatch.waitForExistence(timeout: 5))
         target.press(forDuration: 1)
-        app.buttons["Remove reaction"].tap()
+        app.control("Remove reaction").tap()
         XCTAssertFalse(app.descendants(matching: .any)["Reactions: 🎉, 1 in total"].waitForExistence(timeout: 1))
         let result = XCTAttachment(screenshot: app.screenshot())
         result.name = "Unified feed updated after reaction removal without relaunch"
