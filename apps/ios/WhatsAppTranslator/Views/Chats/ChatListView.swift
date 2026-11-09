@@ -162,12 +162,12 @@ struct ChatListView: View {
             contactList(selection: selection)
         }
         #else
-        VStack(spacing: 0) {
-            filterBar
-            contactList(selection: selection)
-                .refreshable { await session.refresh(reportTransientFailures: true) }
-        }
-        .searchable(text: searchText, prompt: "Search chats")
+        // The chips are a bar over the list, not a view above it: stacked above the list, iOS 26
+        // stopped delivering taps to them once the list had scrolled.
+        contactList(selection: selection)
+            .refreshable { await session.refresh(reportTransientFailures: true) }
+            .platformTopSafeAreaBar { filterBar }
+            .searchable(text: searchText, prompt: "Search chats")
         #endif
     }
 
