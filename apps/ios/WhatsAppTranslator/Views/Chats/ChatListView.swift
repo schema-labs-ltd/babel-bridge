@@ -163,10 +163,11 @@ struct ChatListView: View {
         }
         #else
         // The chips are a bar over the list, not a view above it: stacked above the list, iOS 26
-        // stopped delivering taps to them once the list had scrolled.
+        // stopped delivering taps to them once the list had scrolled. The frost keeps rows from
+        // showing through them where iOS 18 has no scroll-edge effect, as in the chat header.
         contactList(selection: selection)
             .refreshable { await session.refresh(reportTransientFailures: true) }
-            .platformTopSafeAreaBar { filterBar }
+            .platformTopSafeAreaBar { filterBar.modifier(InlineHeaderBackground()) }
             .searchable(text: searchText, prompt: "Search chats")
         #endif
     }
