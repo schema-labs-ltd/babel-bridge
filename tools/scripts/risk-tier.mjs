@@ -15,6 +15,7 @@ export const HIGH_RISK_PATTERNS = [
   "**/CLAUDE.md",
   "REVIEW.md",
   "tools/scripts/**",
+  "tools/verify/**",
   "scripts/check-*",
   "Makefile",
   // Nx task definitions, which hold the commands CI and `make check` run.

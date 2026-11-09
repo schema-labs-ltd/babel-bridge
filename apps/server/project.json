@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/server/src",
   "tags": ["type:app", "lang:rust"],
-  "implicitDependencies": ["web", "web-extension"],
+  "implicitDependencies": ["web", "web-extension", "wa-bridge"],
   "targets": {
     "format-check": {
       "command": "cargo fmt --check",

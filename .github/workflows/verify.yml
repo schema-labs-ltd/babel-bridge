@@ -1,0 +1,87 @@
+# Production-like verification (issue #138). Each project's Nx `verify` target
+# starts the real built artefact in a production-shaped environment and drives
+# it the way users do. `changes` asks Nx which verify targets a change affects,
+# one gated job per target does the work, and `verify` always reports a status.
+# Require `verify / verify`. There is no workflow-level paths filter, because
+# that leaves the check pending. The Apple verify targets run in apple.yml.
+#
+# Adding a verify target: add a job whose id is the task key that
+# tools/scripts/verify-affected.mjs prints for it (the project name for
+# `verify`), gate it on that key, and add the job to `verify.needs`. A helper
+# job that several verify jobs share may also be listed there: it must succeed
+# or be skipped.
+name: verify
+
+on:
+  pull_request:
+    branches:
+      - main
+  # The merge queue runs every verify task on the queued merge before it lands.
+  merge_group:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  # Each push to main keeps its own run; a new push to a PR replaces the last.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tasks: ${{ steps.affected.outputs.tasks }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      # The real project graph must still pick the jobs issue #138 expects for
+      # the sample changes in the eval, as apple.yml's path self-test did.
+      - name: Check how changes map to verify jobs
+        run: node --test tools/scripts/verify-affected.eval.ts
+
+      - name: Find affected verify tasks
+        id: affected
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/scripts/verify-affected.mjs tasks --workflow=verify
+
+  verify:
+    name: verify
+    needs: [changes]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/scripts
+          sparse-checkout-cone-mode: true
+
+      - name: Report verify check
+        env:
+          TASKS: ${{ needs.changes.outputs.tasks || '[]' }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: node tools/scripts/verify-affected.mjs report
