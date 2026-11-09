@@ -147,9 +147,60 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  wa-bridge:
+    name: wa-bridge
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'wa-bridge')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VERIFY_EVIDENCE_DIR: output/verify/wa-bridge
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The Dockerfile's own go-builder stage: golang:1.27-bookworm,
+      # CGO_ENABLED=1 and -ldflags="-s -w", as the shipped image builds it.
+      - name: Build the bridge
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: go-builder
+          load: true
+          tags: wa-bridge:verify
+          cache-from: type=gha,scope=wa-bridge
+          cache-to: type=gha,scope=wa-bridge,mode=max
+
+      - name: Run the bridge protocol check
+        env:
+          VERIFY_BRIDGE_IMAGE: wa-bridge:verify
+        run: npx nx run wa-bridge:verify --outputStyle=stream
+
+      - name: Upload bridge evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-wa-bridge
+          path: output/verify/wa-bridge/
+          if-no-files-found: ignore
+          retention-days: 14
+
   verify:
     name: verify
-    needs: [changes, server]
+    needs: [changes, server, wa-bridge]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

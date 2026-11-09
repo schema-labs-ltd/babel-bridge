@@ -20,8 +20,9 @@ const CASES = [
   },
   {
     files: ["Dockerfile"],
-    runs: ["server", "web", "web-extension"],
-    skips: ["website", "wa-bridge", "ios", "tools-scripts"],
+    // wa-bridge too: its check builds the Dockerfile's go-builder stage.
+    runs: ["server", "web", "web-extension", "wa-bridge"],
+    skips: ["website", "ios", "tools-scripts"],
   },
   {
     files: ["railway.toml"],

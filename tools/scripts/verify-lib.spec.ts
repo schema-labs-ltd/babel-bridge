@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { eventProblems, OPTIONAL_KEYS } from "../verify/bridge.mjs";
 import { redactor } from "../verify/lib/client.mjs";
 import { referencedAssets } from "../verify/lib/journeys.mjs";
 import { shapeProblems } from "../verify/lib/shape.mjs";
@@ -73,4 +75,48 @@ test("redacts every secret from logged text", () => {
     redact("pw=s3cret-password t=token-123456 short"),
     "pw=[verify-secret] t=[verify-secret] short",
   );
+});
+
+test("checks a bridge event against every fixture of its type", () => {
+  const fixtures = [
+    { type: "send_result", request_id: 1, success: true, message_id: "a" },
+    { type: "send_result", request_id: 2, success: false, error: "x" },
+  ];
+  const ok = {
+    type: "send_result",
+    request_id: 3,
+    success: true,
+    message_id: "b",
+  };
+  assert.deepEqual(eventProblems(fixtures, ok), []);
+  assert.deepEqual(
+    eventProblems(fixtures, { type: "send_result", success: true }),
+    ["send_result.request_id: missing"],
+  );
+  // A wrong type fails even though another fixture lacks the key.
+  assert.deepEqual(eventProblems(fixtures, { ...ok, message_id: 42 }), [
+    "send_result.message_id: expected string, got number",
+  ]);
+  assert.deepEqual(eventProblems(fixtures, { ...ok, surprise: 1 }), [
+    "send_result.surprise: not in any fixture",
+  ]);
+  assert.deepEqual(eventProblems(fixtures, { type: "nope" }), [
+    "no fixture for event type nope",
+  ]);
+});
+
+test("each optional bridge key is omitempty in the Go source", () => {
+  const source = readdirSync("apps/wa-bridge")
+    .filter((name) => name.endsWith(".go") && !name.endsWith("_test.go"))
+    .map((name) => readFileSync(`apps/wa-bridge/${name}`, "utf8"))
+    .join("\n");
+  for (const [type, keys] of Object.entries(OPTIONAL_KEYS)) {
+    for (const key of keys) {
+      assert.match(
+        source,
+        new RegExp(`json:"${key},omitempty"`),
+        `${type}.${key}`,
+      );
+    }
+  }
 });
