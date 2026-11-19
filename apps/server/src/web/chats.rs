@@ -20,7 +20,7 @@ pub(super) async fn get_diagnostics(
 ) -> Json<DiagnosticsResponse> {
     Json(DiagnosticsResponse {
         version: env!("CARGO_PKG_VERSION"),
-        commit: std::env::var("RAILWAY_GIT_COMMIT_SHA").ok(),
+        commit: std::env::var("WA_GIT_COMMIT").ok(),
         connected: *state.connected.read().await,
         connection_state: *state.connection_state.read().await,
         ai_configured: state

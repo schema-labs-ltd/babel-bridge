@@ -49,7 +49,7 @@ check-rust: nx-deps require-ffmpeg
 	$(NX) run-many -t format-check test lint -p server --outputStyle=stream
 
 check-web: web-deps extension-browser
-	$(NX) run-many -t $(CHECK_TARGETS) -p web web-extension tools-scripts --outputStyle=stream
+	$(NX) run-many -t $(CHECK_TARGETS) -p web web-extension tools-scripts cloudflare --outputStyle=stream
 
 ci: check container-check
 

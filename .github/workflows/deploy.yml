@@ -1,0 +1,68 @@
+name: Deploy
+
+# Deploys the production Worker and container (apps/cloudflare) for each
+# commit on main once the CI workflow has passed for it. README.md ("Deploy on
+# Cloudflare") lists the secrets this needs.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one halfway through. A newer commit's
+# run waits and replaces any older run still waiting.
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+
+jobs:
+  cloudflare:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout the commit CI passed
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      # Deploying an older commit after a newer one would roll production back.
+      - name: Skip commits main has moved past
+        id: latest
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "main is now at $(git rev-parse origin/main); not deploying $SHA."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.latest.outputs.deploy == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        if: steps.latest.outputs.deploy == 'true'
+        run: npm ci
+
+      # Wrangler builds the root Dockerfile with the runner's Docker, pushes it
+      # to Cloudflare's registry and uploads the Worker. The Durable Object
+      # then restarts the container on the new image.
+      - name: Deploy to Cloudflare
+        if: steps.latest.outputs.deploy == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: npx nx run cloudflare:deploy --outputStyle=stream -- --var "WA_GIT_COMMIT:$SHA"

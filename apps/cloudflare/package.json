@@ -1,0 +1,14 @@
+{
+  "name": "@babel-bridge/cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker and Container that run the production server",
+  "type": "module",
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261104.1",
+    "typescript": "5.9.3"
+  },
+  "nx": {
+    "includedScripts": []
+  }
+}

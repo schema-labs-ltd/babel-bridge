@@ -313,7 +313,7 @@ struct StatusResponse {
 #[serde(rename_all = "camelCase")]
 struct DiagnosticsResponse {
     version: &'static str,
-    /// Set by Railway on deploys; absent locally.
+    /// The deployed commit (`WA_GIT_COMMIT`, set by the Cloudflare deploy); absent locally.
     commit: Option<String>,
     connected: bool,
     connection_state: WhatsAppConnectionState,

@@ -1,0 +1,38 @@
+// Cloudflare Worker and Container for the production server. README.md
+// ("Deploy on Cloudflare") lists the one-time setup and the secrets to set.
+// CI deploys this from main after the CI workflow passes
+// (.github/workflows/deploy.yml).
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "babel-bridge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "containers": [
+    {
+      "class_name": "Backend",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          // The same image used for local Docker runs.
+          "dockerfile": "../../Dockerfile",
+          "build_context": "../..",
+        },
+      },
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "BACKEND", "class_name": "Backend" }],
+  },
+  "exports": {
+    "Backend": { "type": "durable-object", "storage": "sqlite" },
+  },
+  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "babel-bridge-data" }],
+  // Wakes the Durable Object every minute so the container is always running.
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    // lite, standard-1, standard-2, standard-3 or standard-4.
+    "CONTAINER_INSTANCE": "standard-1",
+  },
+}
