@@ -3,7 +3,6 @@
 // CI deploys this from main after the CI workflow passes
 // (.github/workflows/deploy.yml).
 {
-  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "babel-bridge",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",

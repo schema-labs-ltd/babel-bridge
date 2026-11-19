@@ -10,8 +10,10 @@
 #    empty. If the restore fails, exit instead, so a new empty data directory
 #    can never replace the real backup.
 # 2. Run the server, and back up every WA_BACKUP_INTERVAL_SECONDS when a file
-#    in WA_DATA_DIR changed.
-# 3. On SIGTERM, stop the server, upload a final backup and exit.
+#    in WA_DATA_DIR was written, added or removed.
+# 3. When the server exits (on SIGTERM or otherwise), upload a final backup if
+#    anything changed, and exit. Unchanged data is never uploaded again, so a
+#    crash loop cannot push the last good backups out of R2.
 set -uo pipefail
 
 SERVER_BIN="${WA_SERVER_BIN:-/app/whatsapp-translator}"
@@ -29,6 +31,7 @@ PART_BYTES="${WA_BACKUP_PART_BYTES:-33554432}"
 
 WORK="$(mktemp -d)"
 MARKER="$WORK/last-backup"
+LISTING="$WORK/last-listing"
 STOP_FILE="$WORK/stop"
 SERVER_PID=""
 LOOP_PID=""
@@ -66,27 +69,41 @@ restore() {
 		;;
 	esac
 	rm -f "$archive"
+	listing >"$LISTING"
 	touch "$MARKER"
 }
 
-# Copies WA_DATA_DIR into $1, using SQLite's online backup for databases so the
-# copy is consistent while the server writes. WAL and journal files are left
-# out because each copy is a complete database.
+# The data files a backup holds, one per line. Voice-note scratch directories
+# (voice-tmp-*) and SQLite's WAL and journal files are left out.
+listing() {
+	find "$WA_DATA_DIR" -type f ! -path "$WA_DATA_DIR/voice-tmp-*" \
+		! -name '*-wal' ! -name '*-shm' ! -name '*-journal' -printf '%P\n' | LC_ALL=C sort
+}
+
+# Whether any data file was written, added or removed since the last backup.
+changed() {
+	[ -e "$MARKER" ] || return 0
+	[ -n "$(find "$WA_DATA_DIR" -type f ! -path "$WA_DATA_DIR/voice-tmp-*" -newer "$MARKER" -print -quit)" ] && return 0
+	! listing | cmp -s - "$LISTING"
+}
+
+# Copies the files listing() names into $1, using SQLite's online backup for
+# databases so the copy is consistent while the server writes; each copy is a
+# complete database, so no WAL file is needed. A file the server deletes while
+# this runs is skipped.
 snapshot() {
-	local dest="$1" file rel
+	local dest="$1" rel
 	mkdir -p "$dest"
-	while IFS= read -r -d '' file; do
-		rel="${file#"$WA_DATA_DIR"/}"
-		case "$rel" in
-		*-wal | *-shm | *-journal) continue ;;
-		esac
+	while IFS= read -r rel; do
 		mkdir -p "$dest/$(dirname "$rel")"
 		if [[ "$rel" == *.db ]]; then
-			sqlite3 -bail -cmd ".timeout 30000" "$file" ".backup '$dest/$rel'" || return 1
+			sqlite3 -bail -cmd ".timeout 30000" "$WA_DATA_DIR/$rel" ".backup '$dest/$rel'" ||
+				[ ! -e "$WA_DATA_DIR/$rel" ] || return 1
 		else
-			cp -p "$file" "$dest/$rel" || return 1
+			cp -p "$WA_DATA_DIR/$rel" "$dest/$rel" 2>/dev/null ||
+				[ ! -e "$WA_DATA_DIR/$rel" ] || return 1
 		fi
-	done < <(find "$WA_DATA_DIR" -type f -print0)
+	done <"$WORK/listing.new"
 }
 
 upload() {
@@ -113,15 +130,12 @@ upload() {
 		"$WA_BACKUP_URL/backup/uploads/$token/complete" >/dev/null
 }
 
-# Backs up WA_DATA_DIR when a file changed since the last backup. With
-# "force", backs up anyway (used on shutdown).
+# Backs up WA_DATA_DIR when it changed since the last backup.
 backup() {
 	local started="$WORK/started" snap="$WORK/snapshot" archive="$WORK/backup.tar.gz"
-	if [ "${1:-}" != "force" ] && [ -e "$MARKER" ] &&
-		[ -z "$(find "$WA_DATA_DIR" -type f -newer "$MARKER" -print -quit)" ]; then
-		return 0
-	fi
+	changed || return 0
 	touch "$started"
+	listing >"$WORK/listing.new"
 	rm -rf "$snap" "$archive"
 	if ! snapshot "$snap"; then
 		log "backup failed: could not copy the data directory"
@@ -143,6 +157,7 @@ backup() {
 	rm -f "$archive"
 	# Changes made while this backup ran are newer than the marker, so the
 	# next round picks them up.
+	mv "$WORK/listing.new" "$LISTING"
 	mv "$started" "$MARKER"
 }
 
@@ -188,7 +203,7 @@ log "server exited with status $status"
 
 touch "$STOP_FILE"
 wait "$LOOP_PID" 2>/dev/null
-if ! backup force; then
+if ! backup; then
 	log "final backup failed; changes since the last backup are lost"
 fi
 rm -rf "$WORK"

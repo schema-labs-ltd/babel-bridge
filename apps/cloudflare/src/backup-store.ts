@@ -20,6 +20,10 @@ export const CURRENT_POINTER = "wa-data/current";
 // Archives kept besides the current one, so a bad backup can be rolled back by
 // hand by pointing `current` at an older key.
 export const KEEP_PREVIOUS = 5;
+// Also kept: the newest archive at least this much older than the current one,
+// so a run of bad backups (for example after a bad release) cannot push out
+// every copy from before it.
+export const KEEP_ONE_OLDER_THAN_MS = 24 * 60 * 60 * 1000;
 
 const KEY_PATTERN = /^wa-data\/backups\/[0-9TZ-]+\.tar\.gz$/;
 const MAX_PARTS = 10_000;
@@ -72,6 +76,17 @@ const text = (body: string, status: number) =>
 export function backupKey(now: Date): string {
   // 2026-11-19T18:21:41.123Z -> 2026-11-19T18-21-41-123Z, which sorts by time.
   return `${BACKUP_PREFIX}${now.toISOString().replace(/[:.]/g, "-")}.tar.gz`;
+}
+
+// The time a backupKey() was made, or NaN for any other key.
+export function backupKeyTime(key: string): number {
+  const match =
+    /^wa-data\/backups\/(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.tar\.gz$/.exec(
+      key,
+    );
+  if (!match) return Number.NaN;
+  const [, date, hours, minutes, seconds, millis] = match;
+  return Date.parse(`${date}T${hours}:${minutes}:${seconds}.${millis}Z`);
 }
 
 export function encodeToken(token: UploadToken): string {
@@ -156,7 +171,11 @@ async function prune(bucket: BackupBucket, current: string): Promise<void> {
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   const older = keys.filter((key) => key < current).sort();
-  const stale = older.slice(0, Math.max(0, older.length - KEEP_PREVIOUS));
+  const keep = new Set(older.slice(-KEEP_PREVIOUS));
+  const cutoff = backupKeyTime(current) - KEEP_ONE_OLDER_THAN_MS;
+  const dayOld = older.filter((key) => backupKeyTime(key) <= cutoff).at(-1);
+  if (dayOld) keep.add(dayOld);
+  const stale = older.filter((key) => !keep.has(key));
   if (stale.length > 0) await bucket.delete(stale);
 }
 

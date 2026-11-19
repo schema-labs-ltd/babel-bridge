@@ -66,7 +66,10 @@ after(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-function run(name: string): {
+function run(
+  name: string,
+  server = FAKE_SERVER,
+): {
   child: ChildProcess;
   log: string;
   exited: Promise<number | null>;
@@ -77,7 +80,7 @@ function run(name: string): {
       PATH: process.env.PATH,
       WA_DATA_DIR: join(scratch, name),
       WA_BACKUP_URL: gatewayUrl,
-      WA_SERVER_BIN: FAKE_SERVER,
+      WA_SERVER_BIN: server,
       WA_BACKUP_INTERVAL_SECONDS: "1",
       // Small parts, so even a tiny archive is uploaded in several.
       WA_BACKUP_PART_BYTES: "512",
@@ -198,6 +201,21 @@ test(
     } finally {
       failRestore = false;
     }
+  },
+);
+
+test(
+  "does not upload again when a server exits without changing anything",
+  { skip: !hasSqlite && "needs sqlite3" },
+  async () => {
+    assert.ok(
+      bucket.objects.has(CURRENT_POINTER),
+      "runs after a backup exists",
+    );
+    requests.length = 0;
+    const crashed = run("crash", "/bin/false");
+    assert.equal(await crashed.exited, 1);
+    assert.deepEqual(requests, ["GET /backup"]);
   },
 );
 

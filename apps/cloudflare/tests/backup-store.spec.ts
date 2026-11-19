@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   CURRENT_POINTER,
+  backupKeyTime,
   KEEP_PREVIOUS,
   backupKey,
   decodeToken,
@@ -162,4 +163,29 @@ test("answers unknown paths and methods with errors", async () => {
   assert.equal((await call(bucket, "GET", "/other")).status, 404);
   assert.equal((await call(bucket, "POST", "/backup")).status, 405);
   assert.equal((await call(bucket, "GET", "/backup/uploads")).status, 405);
+});
+
+test("keeps one archive from a day before the current one", async () => {
+  const bucket = new FakeBucket();
+  const start = Date.UTC(2026, 10, 18, 12, 0);
+  await upload(bucket, ["day before"], new Date(start));
+  // A burst of backups a day later, more than KEEP_PREVIOUS of them.
+  for (let i = 0; i < KEEP_PREVIOUS + 4; i++) {
+    await upload(
+      bucket,
+      [`burst ${i}`],
+      new Date(start + 25 * 3600_000 + i * 60_000),
+    );
+  }
+  const kept = [...bucket.objects.keys()]
+    .filter((key) => key !== CURRENT_POINTER)
+    .sort();
+  assert.equal(kept.length, KEEP_PREVIOUS + 2);
+  assert.equal(backupKeyTime(kept[0]), start);
+});
+
+test("reads the time back from a backup key", () => {
+  const now = new Date("2026-11-19T18:21:41.123Z");
+  assert.equal(backupKeyTime(backupKey(now)), now.getTime());
+  assert.ok(Number.isNaN(backupKeyTime("wa-data/current")));
 });
