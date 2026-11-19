@@ -188,6 +188,7 @@ One-time setup, with [Wrangler](https://developers.cloudflare.com/workers/wrangl
    - optionally `WA_DEFAULT_LANGUAGE`, `WA_OPENAI_DETECTION_MODEL`, `WA_OPENAI_TRANSLATION_MODEL`, `WA_OPENAI_HIGH_END_MODEL`, `WA_VERBOSE` and `WA_BACKUP_INTERVAL_SECONDS`
 
    Only these names reach the server ([`container-env.ts`](apps/cloudflare/src/container-env.ts)). Secrets set before the first deploy need the Worker to exist; run step 4 first if Wrangler asks.
+
 3. In the GitHub repository, add the Actions secrets `CLOUDFLARE_API_TOKEN` (a token with Workers Scripts, Containers, Durable Objects and R2 edit rights for the account) and `CLOUDFLARE_ACCOUNT_ID`.
 4. Deploy. [`deploy.yml`](.github/workflows/deploy.yml) runs `npx nx run cloudflare:deploy` for each commit on `main` once the `CI` workflow has passed for it, skipping commits that `main` has already moved past. To deploy by hand, run the same command with Docker running. The Worker is served at `https://babel-bridge.<account>.workers.dev`; add a custom domain under the Worker's **Settings → Domains & Routes** if you want one.
 5. Open the site, sign in with `WA_PASSWORD` and scan the QR code.
