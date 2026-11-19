@@ -192,6 +192,17 @@ One-time setup, with [Wrangler](https://developers.cloudflare.com/workers/wrangl
 4. Deploy. [`deploy.yml`](.github/workflows/deploy.yml) runs `npx nx run cloudflare:deploy` for each commit on `main` once the `CI` workflow has passed for it, skipping commits that `main` has already moved past. To deploy by hand, run the same command with Docker running. The Worker is served at `https://babel-bridge.<account>.workers.dev`; add a custom domain under the Worker's **Settings → Domains & Routes** if you want one.
 5. Open the site, sign in with `WA_PASSWORD` and scan the QR code.
 
+To keep the chats and WhatsApp session from an existing server (for example a Railway volume) instead of scanning again, seed the bucket before the first deploy. Stop the old server so the SQLite files are consistent, copy its data directory, then from `apps/cloudflare/`:
+
+```bash
+tar -czf seed.tar.gz -C path/to/old-data .
+npx wrangler r2 object put --remote babel-bridge-data/wa-data/backups/2026-01-01T00-00-00-000Z.tar.gz --file seed.tar.gz
+printf 'wa-data/backups/2026-01-01T00-00-00-000Z.tar.gz' > current
+npx wrangler r2 object put --remote babel-bridge-data/wa-data/current --file current
+```
+
+Keep the key in the `wa-data/backups/<time>.tar.gz` form shown (any past time works); the container refuses to start from a pointer to any other key. Keep the old server stopped once the container has started, because one WhatsApp session cannot run in two places.
+
 `CONTAINER_INSTANCE` in [`wrangler.jsonc`](apps/cloudflare/wrangler.jsonc) sets the instance size (`standard-1` by default: half a vCPU, 4 GiB memory, 8 GB disk). Logs are in the Worker's **Observability** tab in the Cloudflare dashboard.
 
 ## Run With Docker
