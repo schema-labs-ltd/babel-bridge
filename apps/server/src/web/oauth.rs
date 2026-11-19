@@ -203,7 +203,7 @@ pub(super) fn validate_oauth_client_request(
 
 /// OAuth 2.0 Authorization Server Metadata (RFC 8414)
 pub(super) async fn oauth_metadata(Host(host): Host) -> impl IntoResponse {
-    // Assume HTTPS in production (Railway sets this)
+    // Assume HTTPS in production (behind the Cloudflare Worker)
     let is_https = !host.contains("localhost") && !host.contains("127.0.0.1");
     let base_url = get_base_url(&host, is_https);
 

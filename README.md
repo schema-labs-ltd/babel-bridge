@@ -2,9 +2,7 @@
 
 Small WhatsApp Web client with a local web UI, message history, translation, AI replies, and MCP access. Native apps for iPhone, iPad, Mac and Apple Watch live in [`apps/ios/`](apps/ios/README.md).
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/tGnsUG?referralCode=ov3_G4&utm_medium=integration&utm_source=template&utm_campaign=generic)
-
-Railway is the easiest hosted option because it supports long-running services and a persistent volume for WhatsApp session data.
+Production runs on [Cloudflare Containers](https://developers.cloudflare.com/containers/) behind a Worker, with the WhatsApp session and message history backed up to R2. See [Deploy on Cloudflare](#deploy-on-cloudflare). Any host that runs one long-lived Docker container with a persistent `/data` volume works too.
 
 ## Architecture
 
@@ -90,8 +88,8 @@ all currently registered iPhones.
 Hosted deploy recommendation:
 
 - `WA_PASSWORD` is required on non-loopback hosts; startup fails without it
-- attach a persistent volume at `/data`
-- if `WA_PORT` is not set, the app will use Railway's `PORT`
+- keep `/data` across restarts: a persistent volume, or the R2 backup the Cloudflare deploy uses
+- if `WA_PORT` is not set, the app uses the host's `PORT` when it sets one
 - MCP OAuth supports explicitly approved local clients and ChatGPT. Dynamic client
   registration accepts loopback HTTP/HTTPS callbacks and the documented HTTPS
   callbacks on `chatgpt.com`: `/connector/oauth/{callback_id}` and the legacy
@@ -160,7 +158,7 @@ cargo run
 
 ## Tests
 
-[Nx](https://nx.dev) runs the builds, tests and lint for every part of the repository, and caches the results so a rerun with unchanged inputs finishes in seconds. Deployable apps live in `apps/` (`server`, `wa-bridge`, `web`, `ios`), shared code in `libs/` (`web-extension`) and repository tooling in `tools/` (`tools-scripts`); each is an Nx project with its own `project.json`. The root holds the Cargo workspace and the npm workspaces, so one `npm ci` installs everything. CI runs the Go, Rust and web checks through Nx on every pull request (`.github/workflows/ci.yml`), and the `apple` workflow builds and tests the Apple apps when `apps/ios/` changes. Run the same steps locally with:
+[Nx](https://nx.dev) runs the builds, tests and lint for every part of the repository, and caches the results so a rerun with unchanged inputs finishes in seconds. Deployable apps live in `apps/` (`server`, `wa-bridge`, `web`, `ios`, `cloudflare`), shared code in `libs/` (`web-extension`) and repository tooling in `tools/` (`tools-scripts`); each is an Nx project with its own `project.json`. The root holds the Cargo workspace and the npm workspaces, so one `npm ci` installs everything. CI runs the Go, Rust and web checks through Nx on every pull request (`.github/workflows/ci.yml`), and the `apple` workflow builds and tests the Apple apps when `apps/ios/` changes. Run the same steps locally with:
 
 ```bash
 make check             # every project's checks, as CI's go, rust and web jobs run them
@@ -172,16 +170,41 @@ npx nx graph           # the project graph
 
 The targets are `format-check`, `lint`, `typecheck`, `test`, `check` (the committed `chats.html` drift check), `e2e` and `build`. `make help` lists the rest. The Rust targets set `SKIP_GO_BUILD=1`, which stops `build.rs` from rebuilding the bridge when only Rust changed.
 
-## Deploy on Railway
+## Deploy on Cloudflare
 
-1. Click the Railway button above.
-2. Attach a persistent volume mounted at `/data`.
-3. Set:
-   - `OPENAI_API_KEY` if you want AI features
+`apps/cloudflare/` runs the image from the root `Dockerfile` on Cloudflare Containers. A Worker passes every HTTP and websocket request, including `/api/health`, to one container, which holds the WhatsApp connection:
+
+- **One container, always on.** A Durable Object named `primary` owns the only container. A cron trigger wakes it every minute and its alarm starts the container again if it stops, so it never sleeps.
+- **Data in R2.** The container disk does not survive a restart. The image's entrypoint ([`apps/cloudflare/container/entrypoint.sh`](apps/cloudflare/container/entrypoint.sh)) restores `/data` from the `babel-bridge-data` R2 bucket before the server starts, backs it up every five minutes when a file was written, added or removed (SQLite's online backup, so copies are consistent), and takes a last backup when the server stops. A crash loses at most the changes since the last backup; after one, WhatsApp may need a moment to re-establish encryption with some contacts. If the restore fails, the container exits rather than start empty, so a failed restore never overwrites the real backup. Backups are kept under `wa-data/backups/`: the six newest, plus the newest from at least a day before the current one. `wa-data/current` names the one restored; point it at an older key to roll back.
+- **Updates.** After a deploy that changes the image, or a change to a secret, the Durable Object stops the container with `SIGTERM` (final backup included) and starts the new one. WhatsApp reconnects without a new QR scan.
+
+One-time setup, with [Wrangler](https://developers.cloudflare.com/workers/wrangler/) signed in to the account (`npx wrangler login`), from `apps/cloudflare/`:
+
+1. Create the bucket: `npx wrangler r2 bucket create babel-bridge-data`.
+2. Set the secrets, each with `npx wrangler secret put <NAME>`:
    - `WA_PASSWORD` (required)
-4. Deploy and open the generated Railway domain.
+   - `OPENAI_API_KEY` if you want AI features
+   - `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID` and `APNS_PRIVATE_KEY_BASE64` for iPhone push
+   - optionally `WA_DEFAULT_LANGUAGE`, `WA_OPENAI_DETECTION_MODEL`, `WA_OPENAI_TRANSLATION_MODEL`, `WA_OPENAI_HIGH_END_MODEL`, `WA_VERBOSE` and `WA_BACKUP_INTERVAL_SECONDS`
 
-The repo includes [railway.toml](railway.toml) for Dockerfile-based deploys and unauthenticated `/api/health` health checks.
+   Only these names reach the server ([`container-env.ts`](apps/cloudflare/src/container-env.ts)). Secrets set before the first deploy need the Worker to exist; run step 4 first if Wrangler asks.
+
+3. In the GitHub repository, add the Actions secrets `CLOUDFLARE_API_TOKEN` (a token with Workers Scripts, Containers, Durable Objects and R2 edit rights for the account) and `CLOUDFLARE_ACCOUNT_ID`.
+4. Deploy. [`deploy.yml`](.github/workflows/deploy.yml) runs `npx nx run cloudflare:deploy` for each commit on `main` once the `CI` workflow has passed for it, skipping commits that `main` has already moved past. To deploy by hand, run the same command with Docker running. The Worker is served at `https://babel-bridge.<account>.workers.dev`; add a custom domain under the Worker's **Settings → Domains & Routes** if you want one.
+5. Open the site, sign in with `WA_PASSWORD` and scan the QR code.
+
+To keep the chats and WhatsApp session from an existing server (for example a Railway volume) instead of scanning again, seed the bucket before the first deploy. Stop the old server so the SQLite files are consistent, copy its data directory, then from `apps/cloudflare/`:
+
+```bash
+tar -czf seed.tar.gz -C path/to/old-data .
+npx wrangler r2 object put --remote babel-bridge-data/wa-data/backups/2026-01-01T00-00-00-000Z.tar.gz --file seed.tar.gz
+printf 'wa-data/backups/2026-01-01T00-00-00-000Z.tar.gz' > current
+npx wrangler r2 object put --remote babel-bridge-data/wa-data/current --file current
+```
+
+Keep the key in the `wa-data/backups/<time>.tar.gz` form shown (any past time works); the container refuses to start from a pointer to any other key. Keep the old server stopped once the container has started, because one WhatsApp session cannot run in two places.
+
+`CONTAINER_INSTANCE` in [`wrangler.jsonc`](apps/cloudflare/wrangler.jsonc) sets the instance size (`standard-1` by default: half a vCPU, 4 GiB memory, 8 GB disk). Logs are in the Worker's **Observability** tab in the Cloudflare dashboard.
 
 ## Run With Docker
 
@@ -226,7 +249,7 @@ secrets.
 ## Diagnostics
 
 `GET /api/diagnostics` (behind the same password as the rest of the API) returns
-the server version, the Railway commit when deployed, the WhatsApp connection
+the server version, the deployed commit (`WA_GIT_COMMIT`) when deployed, the WhatsApp connection
 state, whether AI is configured, and the last 200 warning and error log lines.
 Those lines have already been through the log redaction, so they carry no chat
 ids, phone numbers or message text, URLs keep only their host, and the response leaves out the account's

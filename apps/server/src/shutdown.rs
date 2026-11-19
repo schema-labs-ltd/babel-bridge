@@ -1,6 +1,6 @@
 //! Signal handling and the ordered, bounded process shutdown.
 //!
-//! Railway delivers SIGTERM and then kills the container. The first signal is
+//! The host delivers SIGTERM and then kills the container. The first signal is
 //! logged by name. Open HTTP and MCP requests get a short chance to finish,
 //! then the WhatsApp bridge and SQLite are closed. A second signal or the hard
 //! backstop exits even if a step is stuck.

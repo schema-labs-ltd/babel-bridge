@@ -4,6 +4,7 @@
   "description": "Nx workspace for the Rust server, Go bridge, web app, MCP Apps extension and Apple apps",
   "workspaces": [
     "apps/web",
+    "apps/cloudflare",
     "libs/web-extension"
   ],
   "scripts": {

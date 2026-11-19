@@ -179,6 +179,13 @@ jobs:
       - name: Test the risk tier and merge health scripts
         run: npx nx run tools-scripts:test --outputStyle=stream
 
+      # The entrypoint test backs up real SQLite databases, so fail here
+      # rather than let it skip when the runner image lacks sqlite3.
+      - name: Check the Cloudflare Worker and container entrypoint
+        run: |
+          sqlite3 --version
+          npx nx run-many -t lint typecheck test -p cloudflare --outputStyle=stream
+
       # web-extension:check runs web-extension:lint and :typecheck first.
       - name: Check formatting, Extension types and committed resource
         run: npx nx run-many -t lint check -p web tools-scripts web-extension --outputStyle=stream

@@ -27,6 +27,8 @@ Thumbs.db
 # Local configuration
 .env
 .env.local
+.dev.vars
+.wrangler/
 
 # Build artifacts
 /dist/

@@ -37,7 +37,7 @@ export const HIGH_RISK_PATTERNS = [
   "**/Package.resolved",
   "**/Dockerfile",
   ".dockerignore",
-  "railway.toml",
+  "apps/cloudflare/**",
   "**/.env*",
   // Storage schema and migrations, which run on existing databases at start-up.
   "apps/server/src/storage/schema.rs",
