@@ -129,11 +129,14 @@ pub(crate) async fn handle_web_event(
                         .send(web::WebSocketEvent::MessageUpdated { message });
                 }
             } else {
-                state.broadcast_message(
-                    store
-                        .get_message_by_id(&stored_msg.id)?
-                        .unwrap_or(stored_msg),
-                );
+                let message = store
+                    .get_message_by_id(&stored_msg.id)?
+                    .unwrap_or(stored_msg);
+                if is_history {
+                    state.broadcast_history_message(message);
+                } else {
+                    state.broadcast_message(message);
+                }
             }
         }
 

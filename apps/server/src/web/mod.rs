@@ -161,6 +161,8 @@ pub struct AppState {
     /// bridge event waits for room in the command channel.
     pub presence: watch::Sender<Option<bool>>,
     pub presence_worker: std::sync::Once,
+    /// Incoming messages kept for MCP event subscribers, started on first use.
+    pub mcp_events: std::sync::OnceLock<Arc<crate::mcp::events::EventLog>>,
 }
 
 /// Bridge send result normalized for Rust/web consumers.
@@ -208,6 +210,10 @@ pub enum WebSocketEvent {
     Disconnected,
     Message {
         message: StoredMessage,
+        /// Set for history-sync messages, which the apps show like new ones
+        /// but which are not MCP events. Never sent to clients.
+        #[serde(skip)]
+        history: bool,
     },
     Reaction {
         message: StoredMessage,
@@ -266,11 +272,11 @@ pub enum WebSocketEvent {
     },
 }
 
-fn live_event_for_message(message: StoredMessage) -> WebSocketEvent {
+fn live_event_for_message(message: StoredMessage, history: bool) -> WebSocketEvent {
     if message.content_type.eq_ignore_ascii_case("reaction") {
         WebSocketEvent::Reaction { message }
     } else {
-        WebSocketEvent::Message { message }
+        WebSocketEvent::Message { message, history }
     }
 }
 

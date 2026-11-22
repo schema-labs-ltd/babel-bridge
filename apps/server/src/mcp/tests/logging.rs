@@ -92,3 +92,71 @@ impl std::io::Write for LogCapture {
         Ok(())
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn mcp_event_logs_carry_no_message_text_number_or_chat_id() {
+    const BODY: &str = "zz-event-body-5521";
+    const PHONE: &str = "15550002222";
+    let jid = format!("{PHONE}@s.whatsapp.net");
+    let (state, dir) = test_state();
+    feed_oauth_token(&state, "event-log-token", "whatsapp.read", i64::MAX);
+    let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(crate::log_privacy::logging_filter(true))
+        .with_ansi(false)
+        .without_time()
+        .with_target(false)
+        .with_writer({
+            let buf = buf.clone();
+            move || LogCapture(buf.clone())
+        })
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let poll = |cursor: Value| {
+        let state = state.clone();
+        let jid = jid.clone();
+        async move {
+            let params =
+                json!({"name":"message.received","arguments":{"contact_id":jid},"cursor":cursor});
+            let response = super::events_http::events_request(
+                state,
+                "Bearer event-log-token",
+                "events/poll",
+                params,
+                None,
+            )
+            .await;
+            feed_rpc_body(response).await["result"].clone()
+        }
+    };
+    let cursor = poll(Value::Null).await["cursor"].clone();
+    let mut message = extension_message("event-log-1", &jid, 10, true);
+    message.original_text = Some(BODY.into());
+    message.sender_phone = Some(PHONE.into());
+    state.broadcast_message(message);
+    let mut delivered = Value::Null;
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+        delivered = poll(cursor.clone()).await;
+        if !delivered["events"].as_array().unwrap().is_empty() {
+            break;
+        }
+    }
+    assert!(
+        delivered.to_string().contains(BODY),
+        "the event still carries the text"
+    );
+    let rejected = poll(json!(5)).await;
+    assert!(rejected.is_null());
+
+    let logs = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+    assert!(!logs.contains(BODY), "{logs}");
+    assert!(!logs.contains(PHONE), "{logs}");
+    assert!(logs.contains("method=\"events/poll\""), "{logs}");
+    assert!(logs.contains("tool=\"message.received\""), "{logs}");
+    assert!(logs.contains("count=1"), "{logs}");
+    assert!(logs.contains("error_code=-32602"), "{logs}");
+    drop(_guard);
+    let _ = std::fs::remove_dir_all(dir);
+}

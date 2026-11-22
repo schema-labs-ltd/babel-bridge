@@ -39,6 +39,9 @@ pub(super) async fn mcp_handler(
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
 
+    let bearer = auth_header
+        .and_then(|header| header.strip_prefix("Bearer "))
+        .map(str::to_owned);
     let access_token = if let Some(header) = auth_header {
         if let Some(token) = header.strip_prefix("Bearer ") {
             // Validate the OAuth access token
@@ -91,7 +94,50 @@ pub(super) async fn mcp_handler(
     };
 
     let permissions = McpPermissions::from_scope(&access_token.scope);
+    // Read the body once to route Events extension requests, which rmcp does
+    // not know, and to recognise `initialize`.
+    let (parts, body) = request.into_parts();
+    let bytes = match axum::body::to_bytes(body, MAX_MCP_REQUEST_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let too_large = std::iter::successors(
+                Some(&error as &(dyn std::error::Error + 'static)),
+                |error| error.source(),
+            )
+            .any(|error| error.to_string().contains("length limit exceeded"));
+            return if too_large {
+                (StatusCode::PAYLOAD_TOO_LARGE, "MCP request too large").into_response()
+            } else {
+                (StatusCode::BAD_REQUEST, "Could not read the MCP request").into_response()
+            };
+        }
+    };
+    let message = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+    if let (Some(message), Some(token)) = (&message, bearer) {
+        if crate::mcp::events::events_method(message).is_some() {
+            let caller = crate::mcp::events::Caller::new(
+                token,
+                access_token.client_id.clone(),
+                permissions,
+                access_token.expires_at,
+            );
+            return crate::mcp::events::handle(state, caller, &parts.headers, message).await;
+        }
+    }
+    let initialize = message
+        .as_ref()
+        .and_then(|message| message.get("method"))
+        .is_some_and(|method| method == "initialize");
+    let request = axum::http::Request::from_parts(parts, axum::body::Body::from(bytes));
     let service = create_mcp_service(state, permissions);
     // StreamableHttpService has an async handle method we can call directly
-    service.handle(request).await.into_response()
+    let response = service.handle(request).await.into_response();
+    if initialize {
+        crate::mcp::events::advertise(response).await
+    } else {
+        response
+    }
 }
+
+/// The largest MCP JSON-RPC request body accepted. MCP tools take text only.
+const MAX_MCP_REQUEST_BYTES: usize = 4 * 1024 * 1024;
