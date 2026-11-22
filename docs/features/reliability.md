@@ -54,6 +54,6 @@ snapshot beside `messages.db`, using SQLite's page backup API with a 4 MiB
 destination cache. Copy progress is logged every five seconds; interrupted starts
 reuse only the incomplete destination, while completed snapshots are retained.
 Keep completed snapshots for recovery and provide space for another copy of the
-database. Railway allows up to ten minutes for this one-time startup work. A failed
+database. The Cloudflare Worker waits up to ten minutes for this one-time startup work. A failed
 snapshot or merge stops startup without applying a partial repair. Successful startup logs the repaired conversation and
 message counts without logging phone numbers or message contents.

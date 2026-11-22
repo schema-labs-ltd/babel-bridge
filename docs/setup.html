@@ -62,7 +62,7 @@
       <section class="section section-setup" id="setup">
         <div class="section-heading" data-reveal>
           <p class="eyebrow">Setup</p>
-          <h2>Run it locally, host it on Railway, or drop it into a container.</h2>
+          <h2>Run it locally, host it on Cloudflare, or drop it into a container.</h2>
           <p>
             The docs below follow the current repository setup: `WA_WEB=true` enables the web UI,
             `OPENAI_API_KEY` turns on AI features, and persistent storage keeps your session alive.
@@ -86,12 +86,12 @@
               class="tab-button"
               type="button"
               role="tab"
-              id="tab-railway"
+              id="tab-cloudflare"
               aria-selected="false"
-              aria-controls="panel-railway"
-              data-tab="railway"
+              aria-controls="panel-cloudflare"
+              data-tab="cloudflare"
             >
-              Railway
+              Cloudflare
             </button>
             <button
               class="tab-button"
@@ -145,17 +145,18 @@ cargo run --release</code></pre>
 
             <section
               class="tab-panel"
-              id="panel-railway"
+              id="panel-cloudflare"
               role="tabpanel"
-              aria-labelledby="tab-railway"
-              data-panel="railway"
+              aria-labelledby="tab-cloudflare"
+              data-panel="cloudflare"
               hidden
             >
               <div class="tab-copy">
-                <h3>Deploy on Railway for the easiest hosted setup</h3>
+                <h3>Host it on Cloudflare Containers</h3>
                 <p>
-                  Use the repository template, mount a persistent volume at `/data`, and protect the
-                  UI with `WA_PASSWORD` if the deployment is public.
+                  A Worker sends every request to one always-on container built from the repository
+                  Dockerfile. The WhatsApp session and message history are backed up to R2 and
+                  restored when the container restarts.
                 </p>
               </div>
               <div class="command-block">
@@ -164,20 +165,21 @@ cargo run --release</code></pre>
                   <button
                     class="copy-button"
                     type="button"
-                    data-copy-target="railway-command"
-                    aria-label="Copy Railway checklist"
+                    data-copy-target="cloudflare-command"
+                    aria-label="Copy Cloudflare checklist"
                   >
                     Copy
                   </button>
                 </div>
-                <pre><code id="railway-command">1. Click Deploy on Railway
-2. Mount a persistent volume at /data
-3. Set OPENAI_API_KEY for AI features
-4. Set WA_PASSWORD if the UI is public
-5. Deploy and open the generated Railway domain</code></pre>
+                <pre><code id="cloudflare-command">cd apps/cloudflare
+npx wrangler r2 bucket create babel-bridge-data
+npx wrangler secret put WA_PASSWORD
+npx wrangler secret put OPENAI_API_KEY
+npx nx run cloudflare:deploy</code></pre>
               </div>
               <p class="tab-note">
-                If `WA_PORT` is not set, the app will use Railway's `PORT` automatically.
+                Deploying needs Docker running. CI deploys each commit on main once its checks pass;
+                the README lists the GitHub secrets it needs and the optional push and model settings.
               </p>
             </section>
 

@@ -1,0 +1,31 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "cloudflare",
+  "projectType": "application",
+  "sourceRoot": "apps/cloudflare/src",
+  "tags": ["type:app", "lang:ts"],
+  "targets": {
+    "lint": {
+      "command": "prettier --check \"apps/cloudflare/{src,tests}/**/*.ts\" \"apps/cloudflare/*.{json,jsonc}\"",
+      "inputs": ["default", "prettier"]
+    },
+    "format": {
+      "command": "prettier --write \"apps/cloudflare/{src,tests}/**/*.ts\" \"apps/cloudflare/*.{json,jsonc}\""
+    },
+    "typecheck": {
+      "command": "tsc -p tsconfig.json",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": ["default", { "externalDependencies": ["typescript"] }]
+    },
+    "test": {
+      "command": "node --test tests/*.spec.ts",
+      "options": { "cwd": "{projectRoot}" },
+      "inputs": ["node"]
+    },
+    "deploy": {
+      "command": "npx --yes wrangler@4.158.0 deploy",
+      "options": { "cwd": "{projectRoot}" },
+      "cache": false
+    }
+  }
+}

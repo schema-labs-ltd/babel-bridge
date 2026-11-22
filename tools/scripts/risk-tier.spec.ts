@@ -127,7 +127,7 @@ const HIGH_RISK_EXAMPLES = {
   "**/Package.resolved": "apps/ios/Package.resolved",
   "**/Dockerfile": "Dockerfile",
   ".dockerignore": ".dockerignore",
-  "railway.toml": "railway.toml",
+  "apps/cloudflare/**": "apps/cloudflare/wrangler.jsonc",
   "**/.env*": ".env.example",
   "apps/server/src/storage/schema.rs": "apps/server/src/storage/schema.rs",
   "apps/server/src/storage/schema/**":

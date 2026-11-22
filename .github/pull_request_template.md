@@ -22,4 +22,4 @@
 
 ## Migration and configuration
 
-<!-- Storage migrations, environment variables, secrets or Railway settings to set. "None" if there are none. -->
+<!-- Storage migrations, environment variables, secrets or Cloudflare settings to set. "None" if there are none. -->

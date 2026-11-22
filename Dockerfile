@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     ffmpeg \
     curl \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create data directory
@@ -51,8 +52,12 @@ COPY --from=rust-builder /build/target/release/whatsapp-translator /app/whatsapp
 # Copy web frontend
 COPY apps/web/public/ /app/web/public/
 
+# Runs the server. On Cloudflare Containers it also restores and backs up
+# /data through R2; elsewhere it starts the server directly.
+COPY apps/cloudflare/container/entrypoint.sh /app/entrypoint.sh
+
 # Make binaries executable
-RUN chmod +x /app/wa-bridge /app/whatsapp-translator
+RUN chmod +x /app/wa-bridge /app/whatsapp-translator /app/entrypoint.sh
 
 # Environment variables with defaults
 # WA_VERBOSE - Enable verbose logging (true/false)
@@ -79,7 +84,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD port="${WA_PORT:-${PORT:-3000}}"; curl -f "http://localhost:${port}/api/health" || exit 1
 
-# Note: For persistent data (WhatsApp session), mount a volume to /data
-# On Railway, use Railway Volumes: https://docs.railway.com/reference/volumes
+# Note: For persistent data (WhatsApp session), mount a volume to /data.
+# On Cloudflare, the entrypoint keeps /data in R2 instead.
 
-ENTRYPOINT ["/app/whatsapp-translator"]
+ENTRYPOINT ["/app/entrypoint.sh"]
