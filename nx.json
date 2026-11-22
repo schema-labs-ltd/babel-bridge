@@ -64,6 +64,20 @@
       {
         "runtime": "node --version"
       }
+    ],
+    "deploy": [
+      "{workspaceRoot}/Dockerfile",
+      "{workspaceRoot}/.dockerignore",
+      "{workspaceRoot}/railway.toml",
+      "{workspaceRoot}/Cargo.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/rust-toolchain.toml",
+      "{workspaceRoot}/.env.example"
+    ],
+    "verifyGlobals": [
+      "{workspaceRoot}/.github/workflows/verify.yml",
+      "{workspaceRoot}/tools/verify/**/*",
+      "{workspaceRoot}/tools/scripts/verify-affected.mjs"
     ]
   },
   "targetDefaults": {
@@ -89,6 +103,12 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"]
+    },
+    "verify": {
+      "cache": false
+    },
+    "verify-live": {
+      "cache": false
     }
   },
   "plugins": [

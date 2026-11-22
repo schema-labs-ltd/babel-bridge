@@ -107,6 +107,7 @@ const HIGH_RISK_EXAMPLES = {
   "**/CLAUDE.md": "CLAUDE.md",
   "REVIEW.md": "REVIEW.md",
   "tools/scripts/**": "tools/scripts/risk-tier.mjs",
+  "tools/verify/**": "tools/verify/smoke.mjs",
   "scripts/check-*": "scripts/check-file-size.sh",
   Makefile: "Makefile",
   "nx.json": "nx.json",
