@@ -334,7 +334,7 @@ fn reaction_messages_use_a_dedicated_live_event() {
         "target_message_id": "outgoing",
     }));
 
-    let event = live_event_for_message(reaction);
+    let event = live_event_for_message(reaction, false);
     assert!(matches!(event, WebSocketEvent::Reaction { .. }));
     assert_eq!(
         serde_json::to_value(event).expect("serialize event")["type"],

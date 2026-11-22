@@ -244,11 +244,12 @@ impl Subscription {
     }
 
     /// Whether an entry is older than the client's `maxAgeMs` replay bound.
+    /// The bound depends on the request alone, so it holds for every replay,
+    /// including a gap reset on a stream that started from now. A `null`
+    /// cursor starts at the head, where nothing older is replayed anyway.
     fn too_old(&self, entry: &log::Entry, now: i64) -> bool {
-        self.cursor.is_some()
-            && self
-                .max_age_ms
-                .is_some_and(|max| entry.arrived_at < now.saturating_sub(max as i64))
+        self.max_age_ms
+            .is_some_and(|max| entry.arrived_at < now.saturating_sub(max as i64))
     }
 
     /// Move a replay start past retained entries older than `maxAgeMs`, as
@@ -507,10 +508,11 @@ mod tests {
         assert_eq!(bounded.skip_expired(&entries, 3, now), (5, true));
         // Only entries after the position count, and fresh ones stop the skip.
         assert_eq!(bounded.skip_expired(&entries, 5, now), (5, false));
-        // maxAgeMs is ignored without a cursor or without a bound.
+        // The bound applies with or without a cursor (a gap reset on a stream
+        // that started from now), and only when the request sets one.
         assert_eq!(
             subscription(None, Some(5_000)).skip_expired(&entries, 3, now),
-            (3, false)
+            (5, true)
         );
         assert_eq!(
             subscription(Some("cursor"), None).skip_expired(&entries, 3, now),

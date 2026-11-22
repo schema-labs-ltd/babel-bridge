@@ -3,7 +3,17 @@ use super::*;
 impl AppState {
     /// Broadcast a new message
     pub fn broadcast_message(&self, message: StoredMessage) {
-        let _ = self.broadcast_tx.send(live_event_for_message(message));
+        let _ = self
+            .broadcast_tx
+            .send(live_event_for_message(message, false));
+    }
+
+    /// Broadcast a message from a WhatsApp history sync. The apps show it like
+    /// a new one; the flag travels with the event so MCP events skip it.
+    pub fn broadcast_history_message(&self, message: StoredMessage) {
+        let _ = self
+            .broadcast_tx
+            .send(live_event_for_message(message, true));
     }
 
     pub fn broadcast_receipt(&self, message_ids: Vec<String>, status: String) {

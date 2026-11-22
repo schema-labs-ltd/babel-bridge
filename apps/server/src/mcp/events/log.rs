@@ -10,7 +10,7 @@ use super::super::FeedMessage;
 use crate::storage::StoredMessage;
 use crate::web::{AppState, WebSocketEvent};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
 
@@ -21,8 +21,6 @@ const MAX_STREAMS: usize = 32;
 /// The most push streams one OAuth client can hold, so one client cannot
 /// take every slot.
 pub(super) const MAX_STREAMS_PER_CLIENT: usize = 8;
-/// History-sync message ids waiting to be skipped, bounded.
-const MAX_HISTORY_IDS: usize = 4096;
 
 pub(super) struct Entry {
     pub seq: u64,
@@ -56,8 +54,6 @@ pub struct EventLog {
     head: watch::Sender<u64>,
     /// Open push streams per OAuth client id.
     streams: Mutex<HashMap<String, usize>>,
-    /// Ids of history-sync messages, which are old and never events.
-    history: Mutex<(HashSet<String>, VecDeque<String>)>,
 }
 
 /// Holds one push stream's slot until the stream ends.
@@ -89,7 +85,6 @@ impl EventLog {
                     }),
                     head: watch::channel(0).0,
                     streams: Mutex::default(),
-                    history: Mutex::default(),
                 });
                 tokio::spawn(Self::listen(log.clone(), state.broadcast_tx.subscribe()));
                 log
@@ -100,41 +95,16 @@ impl EventLog {
     async fn listen(log: Arc<Self>, mut events: broadcast::Receiver<WebSocketEvent>) {
         loop {
             match events.recv().await {
-                Ok(WebSocketEvent::Message { message }) => log.record(message),
+                // History-sync messages are old, so never events.
+                Ok(WebSocketEvent::Message {
+                    message,
+                    history: false,
+                }) => log.record(message),
                 Ok(_) => {}
                 Err(broadcast::error::RecvError::Lagged(_)) => log.mark_gap(),
                 Err(broadcast::error::RecvError::Closed) => break,
             }
         }
-    }
-
-    /// Mark a history-sync message, which is broadcast like a new one, so that
-    /// it does not become an event. Call before broadcasting it. Does nothing
-    /// until an MCP client has used events.
-    pub fn note_history(state: &AppState, id: &str) {
-        let Some(log) = state.mcp_events.get() else {
-            return;
-        };
-        let mut history = log.history.lock().unwrap_or_else(|e| e.into_inner());
-        let (ids, order) = &mut *history;
-        if ids.insert(id.to_owned()) {
-            order.push_back(id.to_owned());
-            if order.len() > MAX_HISTORY_IDS {
-                if let Some(oldest) = order.pop_front() {
-                    ids.remove(&oldest);
-                }
-            }
-        }
-    }
-
-    fn is_history(&self, id: &str) -> bool {
-        let mut history = self.history.lock().unwrap_or_else(|e| e.into_inner());
-        let (ids, order) = &mut *history;
-        let found = ids.remove(id);
-        if found {
-            order.retain(|known| known != id);
-        }
-        found
     }
 
     /// Whether a live message is a new incoming message in a private or group
@@ -157,7 +127,7 @@ impl EventLog {
     }
 
     pub(crate) fn record(&self, message: StoredMessage) {
-        if self.is_history(&message.id) || !Self::is_incoming(&message) {
+        if !Self::is_incoming(&message) {
             return;
         }
         let chat = crate::identity::canonical_chat_id(&message.contact_id).into_owned();

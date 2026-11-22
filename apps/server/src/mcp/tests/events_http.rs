@@ -324,6 +324,18 @@ async fn poll_delivers_each_new_incoming_message_once_with_feed_fields() {
     let mut history = wire("history-a", CHAT_A, false, text("Months old"));
     history["is_history"] = json!(true);
     bridge_delivers(&state, history).await;
+    // The history flag travels with the live event itself, so no shared state
+    // can race with the first subscriber, and it never reaches app clients.
+    let synced = extension_message("history-direct", CHAT_A, 5, true);
+    let event = crate::web::WebSocketEvent::Message {
+        message: synced.clone(),
+        history: true,
+    };
+    assert!(serde_json::to_value(&event)
+        .unwrap()
+        .get("history")
+        .is_none());
+    state.broadcast_history_message(synced);
     // Broadcast lists are not private or group chats.
     let mut list = wire(
         "broadcast-list",

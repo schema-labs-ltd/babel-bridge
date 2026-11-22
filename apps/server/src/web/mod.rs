@@ -210,6 +210,10 @@ pub enum WebSocketEvent {
     Disconnected,
     Message {
         message: StoredMessage,
+        /// Set for history-sync messages, which the apps show like new ones
+        /// but which are not MCP events. Never sent to clients.
+        #[serde(skip)]
+        history: bool,
     },
     Reaction {
         message: StoredMessage,
@@ -268,11 +272,11 @@ pub enum WebSocketEvent {
     },
 }
 
-fn live_event_for_message(message: StoredMessage) -> WebSocketEvent {
+fn live_event_for_message(message: StoredMessage, history: bool) -> WebSocketEvent {
     if message.content_type.eq_ignore_ascii_case("reaction") {
         WebSocketEvent::Reaction { message }
     } else {
-        WebSocketEvent::Message { message }
+        WebSocketEvent::Message { message, history }
     }
 }
 

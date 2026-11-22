@@ -129,15 +129,14 @@ pub(crate) async fn handle_web_event(
                         .send(web::WebSocketEvent::MessageUpdated { message });
                 }
             } else {
+                let message = store
+                    .get_message_by_id(&stored_msg.id)?
+                    .unwrap_or(stored_msg);
                 if is_history {
-                    // Old messages from a history sync are not MCP events.
-                    crate::mcp::events::EventLog::note_history(state, &stored_msg.id);
+                    state.broadcast_history_message(message);
+                } else {
+                    state.broadcast_message(message);
                 }
-                state.broadcast_message(
-                    store
-                        .get_message_by_id(&stored_msg.id)?
-                        .unwrap_or(stored_msg),
-                );
             }
         }
 
