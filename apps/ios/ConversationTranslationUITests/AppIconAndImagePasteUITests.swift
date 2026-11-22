@@ -47,12 +47,16 @@ final class AppIconUITests: XCTestCase {
     private func choose(_ icon: String, in app: XCUIApplication) {
         let choice = app.buttons["app-icon-\(icon)"]
         choice.tap()
+        // iOS confirms the change in a SpringBoard alert, and the change only
+        // completes once it is dismissed. On iPad the alert can take several
+        // seconds to appear, so keep looking until the choice is selected.
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let confirmation = springboard.alerts.buttons["OK"].firstMatch
-        if confirmation.waitForExistence(timeout: 3) { confirmation.tap() }
-        let selected = NSPredicate(format: "value == %@", "Selected")
-        expectation(for: selected, evaluatedWith: choice)
-        waitForExpectations(timeout: 10)
+        let deadline = Date().addingTimeInterval(20)
+        while choice.value as? String != "Selected", Date() < deadline {
+            if confirmation.waitForExistence(timeout: 1) { confirmation.tap() }
+        }
+        XCTAssertEqual(choice.value as? String, "Selected", app.debugDescription)
         XCTAssertFalse(app.alerts["Couldn’t change icon"].exists)
     }
 }
@@ -65,7 +69,9 @@ final class ImagePasteUITests: XCTestCase {
         app.launch()
         let editor = app.textViews["message-composer-input"].firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        editor.tap()
+        // Tap where the caret goes, as paste(into:in:) does: on iPad a tap on
+        // the middle of the wide composer leaves it without keyboard focus.
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.5)).tap()
         editor.typeText("Keep my draft")
         paste(into: editor, in: app)
         XCTAssertTrue(app.navigationBars["Send 2 photos"].waitForExistence(timeout: 5), app.debugDescription)

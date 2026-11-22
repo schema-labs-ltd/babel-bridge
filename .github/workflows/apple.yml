@@ -1,6 +1,9 @@
-# Required-check pattern: `changes` detects Apple paths, `build` does the
-# expensive work, and `apple` always reports a status. Require `apple / apple`.
-# There is no workflow-level paths filter, because that leaves the check pending.
+# Required-check pattern: `changes` asks Nx which Apple tasks a change affects
+# (tools/scripts/verify-affected.mjs, as verify.yml does), `build` and `ios` do
+# the expensive work, and `apple` always reports a status. Require
+# `apple / apple`. There is no workflow-level paths filter, because that leaves
+# the check pending. A job for an Apple verify task is named by its task key
+# (`ios` for ios:verify) and listed in `apple.needs`.
 name: apple
 
 on:
@@ -18,7 +21,9 @@ permissions:
 
 concurrency:
   group: apple-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Each push to main keeps its own run, which runs every Apple job; a new
+  # push to a PR replaces the last.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -26,90 +31,39 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
-      apple: ${{ steps.filter.outputs.apple }}
+      tasks: ${{ steps.affected.outputs.tasks }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Detect Apple paths
-        id: filter
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      # Nx picks the Apple jobs from the ios project's target inputs, the same
+      # way verify.yml picks its jobs. tools/scripts/verify-affected.eval.ts
+      # (run by verify.yml) holds the path cases this job used to check. `ios`
+      # runs the build and unit tests below and ios:verify.
+      - name: Find affected Apple tasks
+        id: affected
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -eu
-          matches_apple() {
-            case "$1" in
-              apps/ios/*|apps/web/public/sounds/*|.github/workflows/apple.yml) return 0 ;;
-              *) return 1 ;;
-            esac
-          }
-          expect_match() {
-            if matches_apple "$1"; then
-              got=yes
-            else
-              got=no
-            fi
-            if [ "$got" != "$2" ]; then
-              echo "error: path filter mismatch for $1 (expected $2, got $got)"
-              exit 1
-            fi
-          }
-          expect_match "apps/ios/project.yml" yes
-          expect_match "apps/ios/WhatsAppTranslator/App/AppSession.swift" yes
-          expect_match "apps/web/public/sounds/tone.wav" yes
-          expect_match ".github/workflows/apple.yml" yes
-          expect_match "apps/server/src/main.rs" no
-          expect_match "apps/web/src/App.tsx" no
-          expect_match "AGENTS.md" no
-          expect_match ".github/workflows/ci.yml" no
-
-          case "$BASE_SHA" in
-            ""|0000000000000000000000000000000000000000)
-              echo "apple=true" >> "$GITHUB_OUTPUT"
-              echo "No base revision; running Apple jobs."
-              exit 0
-              ;;
-          esac
-          if ! printf '%s' "$BASE_SHA" | grep -Eq '^[0-9a-fA-F]{40}$'; then
-            echo "error: base revision is not a commit sha"
-            exit 1
-          fi
-          if ! printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-fA-F]{40}$'; then
-            echo "error: head revision is not a commit sha"
-            exit 1
-          fi
-          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            git fetch --no-tags origin "$BASE_SHA"
-          fi
-          if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
-            git fetch --no-tags origin "$HEAD_SHA"
-          fi
-
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            range="${BASE_SHA}...${HEAD_SHA}"
-          else
-            range="${BASE_SHA}..${HEAD_SHA}"
-          fi
-          git diff --name-only --no-renames "$range" > "$RUNNER_TEMP/changed-files.txt"
-          apple=false
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
-            if matches_apple "$file"; then
-              apple=true
-              echo "apple path: $file"
-            fi
-          done < "$RUNNER_TEMP/changed-files.txt"
-          echo "apple=${apple}" >> "$GITHUB_OUTPUT"
-          echo "Apple paths changed: ${apple}"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/scripts/verify-affected.mjs tasks --workflow=apple
 
   build:
     name: ${{ matrix.platform }}
     needs: changes
-    if: needs.changes.outputs.apple == 'true'
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'ios')
     runs-on: macos-26
     timeout-minutes: 90
     permissions:
@@ -426,42 +380,104 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # ios:verify (issue #138, section 6): the unsigned Release archives Xcode
+  # Cloud would build, and the UI test suites, one part per job.
+  ios:
+    name: ios (${{ matrix.part }})
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.tasks), 'ios')
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [archive-ios, archive-mac, ui-iphone, ui-ipad, ui-watch]
+    env:
+      VERIFY_IOS_PART: ${{ matrix.part }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Free disk if the runner is low on space
+        run: |
+          set -eu
+          avail_kb=$(df -Pk / | awk 'NR==2 { print $4 }')
+          echo "Disk available: $((avail_kb / 1024 / 1024)) GiB"
+          if [ "$avail_kb" -lt 26214400 ]; then
+            for app in /Applications/Xcode_*.app; do
+              [ -e "$app" ] || continue
+              case "$app" in
+                /Applications/Xcode_26.6.app) ;;
+                *) sudo -n rm -rf "$app" ;;
+              esac
+            done
+            avail_kb=$(df -Pk / | awk 'NR==2 { print $4 }')
+            echo "Disk available after cleanup: $((avail_kb / 1024 / 1024)) GiB"
+          fi
+
+      - name: Select Xcode 26.6
+        run: |
+          set -eu
+          xcode_app="/Applications/Xcode_26.6.app"
+          if [ ! -d "${xcode_app}/Contents/Developer" ]; then
+            echo "error: Xcode 26.6 is not installed at ${xcode_app}"
+            ls -d /Applications/Xcode*.app 2>/dev/null || echo "(none)"
+            exit 1
+          fi
+          sudo -n xcode-select -s "$xcode_app"
+          echo "DEVELOPER_DIR=${xcode_app}/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Nx
+        run: npm ci
+
+      # No DerivedData cache: four more caches of Release intermediates would
+      # push the build job's caches out of the repository's 10 GB, and the
+      # project has no Swift packages to cache.
+      - name: Run ios:verify
+        env:
+          # As the build job: tests that need real audio output skip on CI's
+          # cold simulators.
+          TEST_RUNNER_SKIP_AUDIO_PLAYBACK: "1"
+        run: npx nx run ios:verify --outputStyle=stream
+
+      - name: Upload evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-ios-${{ matrix.part }}
+          path: |
+            output/verify/ios/*.log
+            output/verify/ios/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 14
+
   apple:
     name: apple
-    needs: [changes, build]
+    needs: [changes, build, ios]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/scripts
+          sparse-checkout-cone-mode: true
+
+      # Every affected Apple task's job must pass and every other job must be
+      # skipped. `build` runs with `ios`, so it must succeed or be skipped.
       - name: Report Apple check
         env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-          NEEDED: ${{ needs.changes.outputs.apple }}
-          BUILD_RESULT: ${{ needs.build.result }}
-        run: |
-          set -eu
-          echo "changes=${CHANGES_RESULT} apple_paths=${NEEDED} build=${BUILD_RESULT}"
-          if [ "$CHANGES_RESULT" != "success" ]; then
-            echo "Changes detection did not succeed."
-            exit 1
-          fi
-          case "$NEEDED" in
-            true)
-              if [ "$BUILD_RESULT" != "success" ]; then
-                echo "Apple build or tests did not succeed (${BUILD_RESULT})."
-                exit 1
-              fi
-              echo "Apple build and unit tests passed."
-              ;;
-            false)
-              if [ "$BUILD_RESULT" != "skipped" ]; then
-                echo "Apple builds were not skipped for a non-Apple change (${BUILD_RESULT})."
-                exit 1
-              fi
-              echo "No Apple paths changed. Passed without a build."
-              ;;
-            *)
-              echo "Changes job did not report whether Apple paths changed."
-              exit 1
-              ;;
-          esac
+          TASKS: ${{ needs.changes.outputs.tasks || '[]' }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: node tools/scripts/verify-affected.mjs report

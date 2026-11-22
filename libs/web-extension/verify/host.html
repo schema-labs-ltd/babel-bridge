@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>MCP Apps host for web-extension:verify</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      iframe {
+        width: 100vw;
+        height: 100dvh;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      A minimal MCP Apps host, like tests/host.html but with no mocks: every
+      tool call goes to /proxy, which the test answers from the real server's
+      /mcp with its OAuth token. The page never sees the token.
+    -->
+    <iframe id="app" title="WhatsApp extension" src="/app.html"></iframe>
+    <script>
+      window.calls = [];
+      const frame = () => document.getElementById("app").contentWindow;
+      const send = (data) =>
+        frame().postMessage({ jsonrpc: "2.0", ...data }, "*");
+      async function callTool(name, args) {
+        window.calls.push({ name, args });
+        const response = await fetch("/proxy", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name, arguments: args || {} }),
+        });
+        const body = await response.json();
+        if (!response.ok) throw Error(body.error || "tool call failed");
+        return body;
+      }
+      window.addEventListener("message", async (event) => {
+        if (event.source !== frame()) return;
+        const request = event.data;
+        if (!request || request.jsonrpc !== "2.0") return;
+        if (request.method === "ui/notifications/initialized") {
+          // A host shows the app as the result of the tool that opened it.
+          const opened = await callTool("open_chats", {});
+          send({ method: "ui/notifications/tool-result", params: opened });
+          return;
+        }
+        if (request.id === undefined) return;
+        try {
+          let result = {};
+          if (request.method === "ui/initialize") {
+            result = {
+              protocolVersion: request.params.protocolVersion,
+              hostInfo: { name: "web-extension:verify", version: "1.0" },
+              hostCapabilities: { serverTools: {}, updateModelContext: {} },
+              hostContext: {
+                theme: "light",
+                displayMode: "fullscreen",
+                availableDisplayModes: ["inline", "fullscreen"],
+              },
+            };
+          } else if (request.method === "tools/call") {
+            result = await callTool(
+              request.params.name,
+              request.params.arguments,
+            );
+          } else if (request.method === "ui/request-display-mode") {
+            result = { mode: request.params.mode };
+          }
+          send({ id: request.id, result });
+        } catch (error) {
+          send({
+            id: request.id,
+            error: { code: -32000, message: error.message },
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

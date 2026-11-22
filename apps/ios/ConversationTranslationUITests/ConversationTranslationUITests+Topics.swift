@@ -31,7 +31,7 @@ extension ConversationTranslationUITests {
         XCTAssertFalse(label.isEnabled, "Saved topic is information, not a message action")
         let combined = XCTAttachment(screenshot: app.screenshot())
         combined.name = "Saved topic in combined message long press menu"; combined.lifetime = .keepAlways; add(combined)
-        app.buttons["React with ❤️"].firstMatch.tap()
+        app.named("React with ❤️").tap()
         app.buttons["Open chat: Family"].firstMatch.tap()
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         target.press(forDuration: 1)
@@ -47,8 +47,8 @@ extension ConversationTranslationUITests {
         app.buttons["Chats"].firstMatch.tap()
         let groups = app.buttons["Groups"].firstMatch
         XCTAssertTrue(groups.waitForExistence(timeout: 5))
-        let first = app.staticTexts["Community group 1"].firstMatch
-        let second = app.staticTexts["Community group 2"].firstMatch
+        let first = app.named("Community group 1")
+        let second = app.named("Community group 2")
         XCTAssertTrue(first.waitForExistence(timeout: 5))
         let initial = XCTAttachment(screenshot: app.screenshot())
         initial.name = "Chat list initial spacing"
@@ -62,11 +62,37 @@ extension ConversationTranslationUITests {
         let filterY = groups.frame.minY
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
         XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2, "Pulling the list must not expand a blank navigation title")
-        app.swipeUp()
-        let filtersSettled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: groups)
-        XCTAssertEqual(XCTWaiter.wait(for: [filtersSettled], timeout: 5), .completed)
-        XCTAssertTrue(groups.isHittable)
-        XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
+        // Scroll by a drag that stops before it lets go, so the list is at rest
+        // when the chip is tapped. A swipe leaves it coasting, and a tap on a
+        // coasting list only stops it, as anywhere in iOS.
+        // Drag on the list itself, which is a sidebar on iPad.
+        let row = first.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        row.withOffset(CGVector(dx: 0, dy: 500)).press(
+            forDuration: 0.1, thenDragTo: row, withVelocity: .default, thenHoldForDuration: 0.5)
+        XCTAssertFalse(first.exists && first.isHittable, "The drag must scroll the first chat out of view")
+        // After a scroll the iOS 26.5 simulator reports the chips as not
+        // hittable although they are drawn in place, so check what a person
+        // sees and does: the chips stay put and a tap on one still selects it.
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: groups)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed)
+        // On iPhone the chips stay exactly in place. The iPad sidebar collapses
+        // its large title as the list scrolls, so there they may only move up
+        // with it, and must stay on screen.
+        let pad = UIDevice.current.userInterfaceIdiom == .pad
+        let checkFilterPosition = {
+            if pad {
+                XCTAssertLessThanOrEqual(groups.frame.minY, filterY + 2)
+                XCTAssertGreaterThan(groups.frame.minY, 0)
+            } else {
+                XCTAssertEqual(groups.frame.minY, filterY, accuracy: 2)
+            }
+        }
+        checkFilterPosition()
+        let all = app.buttons["All"].firstMatch
+        all.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: all)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 5), .completed, "A tap on a chip after scrolling must still select it")
+        checkFilterPosition()
         let scrolled = XCTAttachment(screenshot: app.screenshot())
         scrolled.name = "Chat list after scrolling"
         scrolled.lifetime = .keepAlways
