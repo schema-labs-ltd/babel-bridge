@@ -137,14 +137,15 @@ impl EventLog {
         found
     }
 
-    /// Whether a live message is a new incoming chat message. Reactions,
-    /// deletions and protocol messages are not, as for unread counts, and
-    /// status updates are not, as in `read_unified_messages`.
+    /// Whether a live message is a new incoming message in a private or group
+    /// chat. Broadcast lists and status updates are not chats here; reactions,
+    /// deletions and protocol messages are not messages, as for unread counts.
     fn is_incoming(message: &StoredMessage) -> bool {
         let not_a_message =
             |kind: &str| ["reaction", "revoked", "protocol", "unknown"].contains(&kind);
         let content_type = message.content_type.to_lowercase();
         !message.is_from_me
+            && matches!(message.chat_type.as_str(), "private" | "group")
             && message.contact_id != "status@broadcast"
             && !not_a_message(&content_type)
             && !message

@@ -52,8 +52,8 @@ it in `capabilities.extensions`.
 - **Event type.** `events/list` returns one type, `message.received`. It fires
   once for each new incoming message in a private or group chat, from the same
   live updates the web app shows. It does not fire for your own sent messages,
-  receipts, typing, reactions, deletions, status updates or old messages from
-  a WhatsApp history sync.
+  receipts, typing, reactions, deletions, status updates, broadcast lists or
+  old messages from a WhatsApp history sync.
 - **Payload.** `data` has the same fields as a `read_unified_messages` message
   (`payloadSchema` is that schema). It carries whatever translation exists when
   the message arrives and does not wait for one; read the chat again for later
@@ -79,7 +79,9 @@ it in `capabilities.extensions`.
   or unknown token gets the usual `401` OAuth challenge. A push stream checks
   the token again before every delivery and heartbeat, and ends with
   `notifications/events/terminated` (`Forbidden`) once the token is revoked or
-  expires.
+  expires. If the check itself fails (a storage error), delivery continues
+  for at most 30 seconds after the last good check and never past the token's
+  expiry.
 - **No side effects.** Subscribing and receiving events never marks messages
   read, queues translation or writes to the database. Event logs record only
   the method, event name, status and counts, never message text, numbers or

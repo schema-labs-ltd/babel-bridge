@@ -324,6 +324,15 @@ async fn poll_delivers_each_new_incoming_message_once_with_feed_fields() {
     let mut history = wire("history-a", CHAT_A, false, text("Months old"));
     history["is_history"] = json!(true);
     bridge_delivers(&state, history).await;
+    // Broadcast lists are not private or group chats.
+    let mut list = wire(
+        "broadcast-list",
+        "1234567890@broadcast",
+        false,
+        text("To a list"),
+    );
+    list["chat"]["type"] = json!("broadcast");
+    bridge_delivers(&state, list).await;
     bridge_delivers(
         &state,
         wire("incoming-b", CHAT_B, false, text("Group hello")),
@@ -416,4 +425,18 @@ async fn poll_delivers_each_new_incoming_message_once_with_feed_fields() {
     let only_a = events_rpc(&state, "poll-read", "events/poll", only_a).await;
     assert_eq!(only_a["result"]["events"][0]["eventId"], "incoming-a");
     assert_eq!(only_a["result"]["hasMore"], false);
+}
+
+#[test]
+fn a_failing_token_check_fails_closed_after_expiry_or_a_short_grace() {
+    use crate::mcp::events::allowed_after_check_error as allowed;
+    use std::time::Duration;
+    let now = 1_800_000_000;
+    assert!(allowed(now + 60, Duration::from_secs(5), now));
+    assert!(!allowed(now, Duration::from_secs(5), now), "expired token");
+    assert!(!allowed(now - 1, Duration::ZERO, now), "expired token");
+    assert!(
+        !allowed(now + 3600, Duration::from_secs(31), now),
+        "error lasted too long"
+    );
 }

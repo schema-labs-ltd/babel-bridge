@@ -115,11 +115,12 @@ pub(super) async fn mcp_handler(
     let message = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
     if let (Some(message), Some(token)) = (&message, bearer) {
         if crate::mcp::events::events_method(message).is_some() {
-            let caller = crate::mcp::events::Caller {
+            let caller = crate::mcp::events::Caller::new(
                 token,
-                client_id: access_token.client_id.clone(),
+                access_token.client_id.clone(),
                 permissions,
-            };
+                access_token.expires_at,
+            );
             return crate::mcp::events::handle(state, caller, &parts.headers, message).await;
         }
     }

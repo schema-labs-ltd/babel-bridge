@@ -77,19 +77,61 @@ pub struct Caller {
     /// The OAuth client, for the per-client push stream limit.
     pub client_id: String,
     pub permissions: McpPermissions,
+    /// When the token expires, in Unix seconds, from the last successful check.
+    pub expires_at: i64,
+    /// When the token last passed a check.
+    verified_at: std::time::Instant,
+}
+
+/// How long a push stream keeps delivering while token checks fail with a
+/// storage error. After that, or once the token has expired, it fails closed.
+const CHECK_ERROR_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Whether delivery may continue when the token check itself failed: only
+/// briefly after the last successful check, and never past the token's expiry.
+pub(super) fn allowed_after_check_error(
+    expires_at: i64,
+    since_verified: std::time::Duration,
+    now: i64,
+) -> bool {
+    now < expires_at && since_verified < CHECK_ERROR_GRACE
 }
 
 impl Caller {
+    pub fn new(
+        token: String,
+        client_id: String,
+        permissions: McpPermissions,
+        expires_at: i64,
+    ) -> Self {
+        Self {
+            token,
+            client_id,
+            permissions,
+            expires_at,
+            verified_at: std::time::Instant::now(),
+        }
+    }
+
     /// Whether the token is still valid and still grants read access. Checked
     /// before each push delivery and heartbeat, so revocation stops delivery.
-    /// A storage error is not a revocation: the check is repeated later.
-    fn still_allowed(&self, state: &AppState) -> bool {
+    /// A storage error fails closed once the token expires or the error has
+    /// lasted longer than a short grace window.
+    fn still_allowed(&mut self, state: &AppState) -> bool {
         match state.store.oauth_validate_access_token(&self.token) {
-            Ok(Some(token)) => McpPermissions::from_scope(&token.scope).read,
+            Ok(Some(token)) => {
+                self.expires_at = token.expires_at;
+                self.verified_at = std::time::Instant::now();
+                McpPermissions::from_scope(&token.scope).read
+            }
             Ok(None) => false,
             Err(error) => {
                 tracing::warn!("MCP event access check failed: {error}");
-                true
+                allowed_after_check_error(
+                    self.expires_at,
+                    self.verified_at.elapsed(),
+                    chrono::Utc::now().timestamp(),
+                )
             }
         }
     }
