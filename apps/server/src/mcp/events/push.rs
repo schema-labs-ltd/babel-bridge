@@ -6,11 +6,10 @@ use super::{occurrence, optional_count, Caller, EventError, Subscription, RESOUR
 use crate::web::AppState;
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
-use futures::channel::mpsc;
-use futures::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
 
 const DEFAULT_HEARTBEAT_MS: u64 = 30_000;
@@ -41,9 +40,11 @@ pub(super) fn open(
         .unwrap_or(DEFAULT_HEARTBEAT_MS)
         .clamp(MIN_HEARTBEAT_MS, MAX_HEARTBEAT_MS);
     let log = EventLog::for_state(&state);
-    let slot = log.open_stream().ok_or_else(|| {
-        EventError::new(RESOURCE_EXHAUSTED, "ResourceExhausted")
-            .with_data(json!({"limit": "subscriptions", "max": super::log::MAX_STREAMS}))
+    let slot = log.open_stream(&caller.client_id).ok_or_else(|| {
+        EventError::new(RESOURCE_EXHAUSTED, "ResourceExhausted").with_data(json!({
+            "limit": "subscriptions",
+            "max": super::log::MAX_STREAMS_PER_CLIENT,
+        }))
     })?;
     let (tx, rx) = mpsc::channel(16);
     let stream = Stream {
@@ -57,8 +58,13 @@ pub(super) fn open(
         _slot: slot,
     };
     tokio::spawn(stream.run());
-    let frames =
-        rx.map(|message: Value| Ok::<_, Infallible>(Event::default().data(message.to_string())));
+    let frames = futures::stream::unfold(rx, |mut rx| async move {
+        let message: Value = rx.recv().await?;
+        Some((
+            Ok::<_, Infallible>(Event::default().data(message.to_string())),
+            rx,
+        ))
+    });
     Ok(Sse::new(frames).into_response())
 }
 
@@ -163,6 +169,8 @@ impl Stream {
                     }
                 }
                 _ = shutdown.changed() => {}
+                // The client went away: free the stream slot at once.
+                _ = self.tx.closed() => return,
                 _ = tokio::time::sleep_until(last_sent + self.heartbeat) => {
                     if !self.caller.still_allowed(&self.state) {
                         return self.terminate().await;

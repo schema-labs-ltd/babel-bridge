@@ -254,6 +254,18 @@ async fn events_capability_discovery_and_scope_checks() {
     )
     .await;
     assert!(feed_rpc_body(matched).await["result"]["cursor"].is_string());
+    let oversized = events_request(
+        state.clone(),
+        "Bearer events-read",
+        "events/poll",
+        json!({"name":"x".repeat(5 * 1024 * 1024)}),
+        None,
+    )
+    .await;
+    assert_eq!(
+        oversized.status(),
+        axum::http::StatusCode::PAYLOAD_TOO_LARGE
+    );
 }
 
 #[tokio::test]
@@ -303,6 +315,15 @@ async fn poll_delivers_each_new_incoming_message_once_with_feed_fields() {
     .await;
     state.broadcast_receipt(vec!["own-a".into()], "read".into());
     state.broadcast_typing(CHAT_A.into(), CHAT_A.into(), "composing".into());
+    // Deletions and old messages from a history sync are not new messages either.
+    bridge_delivers(
+        &state,
+        wire("deleted-a", CHAT_A, false, json!({"type":"revoked"})),
+    )
+    .await;
+    let mut history = wire("history-a", CHAT_A, false, text("Months old"));
+    history["is_history"] = json!(true);
+    bridge_delivers(&state, history).await;
     bridge_delivers(
         &state,
         wire("incoming-b", CHAT_B, false, text("Group hello")),
@@ -389,4 +410,10 @@ async fn poll_delivers_each_new_incoming_message_once_with_feed_fields() {
     let capped = events_rpc(&state, "poll-read", "events/poll", capped).await;
     assert_eq!(capped["result"]["events"].as_array().unwrap().len(), 1);
     assert_eq!(capped["result"]["hasMore"], true);
+    // hasMore counts only events the filter would deliver.
+    let mut only_a = poll_params(json!({"contact_id":CHAT_A}), &json!(stale));
+    only_a["maxEvents"] = json!(1);
+    let only_a = events_rpc(&state, "poll-read", "events/poll", only_a).await;
+    assert_eq!(only_a["result"]["events"][0]["eventId"], "incoming-a");
+    assert_eq!(only_a["result"]["hasMore"], false);
 }

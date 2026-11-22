@@ -97,13 +97,29 @@ pub(super) async fn mcp_handler(
     // Read the body once to route Events extension requests, which rmcp does
     // not know, and to recognise `initialize`.
     let (parts, body) = request.into_parts();
-    let Ok(bytes) = axum::body::to_bytes(body, MAX_MCP_REQUEST_BYTES).await else {
-        return (StatusCode::PAYLOAD_TOO_LARGE, "MCP request too large").into_response();
+    let bytes = match axum::body::to_bytes(body, MAX_MCP_REQUEST_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            let too_large = std::iter::successors(
+                Some(&error as &(dyn std::error::Error + 'static)),
+                |error| error.source(),
+            )
+            .any(|error| error.to_string().contains("length limit exceeded"));
+            return if too_large {
+                (StatusCode::PAYLOAD_TOO_LARGE, "MCP request too large").into_response()
+            } else {
+                (StatusCode::BAD_REQUEST, "Could not read the MCP request").into_response()
+            };
+        }
     };
     let message = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
     if let (Some(message), Some(token)) = (&message, bearer) {
         if crate::mcp::events::events_method(message).is_some() {
-            let caller = crate::mcp::events::Caller { token, permissions };
+            let caller = crate::mcp::events::Caller {
+                token,
+                client_id: access_token.client_id.clone(),
+                permissions,
+            };
             return crate::mcp::events::handle(state, caller, &parts.headers, message).await;
         }
     }

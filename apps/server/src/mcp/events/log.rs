@@ -10,15 +10,19 @@ use super::super::FeedMessage;
 use crate::storage::StoredMessage;
 use crate::web::{AppState, WebSocketEvent};
 use serde_json::Value;
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
 
 /// How many incoming messages are kept for poll and push resumption.
 const CAPACITY: usize = 500;
 /// The most push streams open at once, so idle subscribers cannot pile up.
-pub(super) const MAX_STREAMS: usize = 32;
+const MAX_STREAMS: usize = 32;
+/// The most push streams one OAuth client can hold, so one client cannot
+/// take every slot.
+pub(super) const MAX_STREAMS_PER_CLIENT: usize = 8;
+/// History-sync message ids waiting to be skipped, bounded.
+const MAX_HISTORY_IDS: usize = 4096;
 
 pub(super) struct Entry {
     pub seq: u64,
@@ -50,15 +54,24 @@ pub struct EventLog {
     boot: String,
     buffer: Mutex<Buffer>,
     head: watch::Sender<u64>,
-    streams: AtomicUsize,
+    /// Open push streams per OAuth client id.
+    streams: Mutex<HashMap<String, usize>>,
+    /// Ids of history-sync messages, which are old and never events.
+    history: Mutex<(HashSet<String>, VecDeque<String>)>,
 }
 
 /// Holds one push stream's slot until the stream ends.
-pub(super) struct StreamSlot(Arc<EventLog>);
+pub(super) struct StreamSlot(Arc<EventLog>, String);
 
 impl Drop for StreamSlot {
     fn drop(&mut self) {
-        self.0.streams.fetch_sub(1, Ordering::SeqCst);
+        let mut streams = self.0.streams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(open) = streams.get_mut(&self.1) {
+            *open -= 1;
+            if *open == 0 {
+                streams.remove(&self.1);
+            }
+        }
     }
 }
 
@@ -75,7 +88,8 @@ impl EventLog {
                         ..Default::default()
                     }),
                     head: watch::channel(0).0,
-                    streams: AtomicUsize::new(0),
+                    streams: Mutex::default(),
+                    history: Mutex::default(),
                 });
                 tokio::spawn(Self::listen(log.clone(), state.broadcast_tx.subscribe()));
                 log
@@ -94,23 +108,55 @@ impl EventLog {
         }
     }
 
-    /// Whether a live message is a new incoming chat message, using the same
-    /// exclusions as `read_unified_messages`.
+    /// Mark a history-sync message, which is broadcast like a new one, so that
+    /// it does not become an event. Call before broadcasting it. Does nothing
+    /// until an MCP client has used events.
+    pub fn note_history(state: &AppState, id: &str) {
+        let Some(log) = state.mcp_events.get() else {
+            return;
+        };
+        let mut history = log.history.lock().unwrap_or_else(|e| e.into_inner());
+        let (ids, order) = &mut *history;
+        if ids.insert(id.to_owned()) {
+            order.push_back(id.to_owned());
+            if order.len() > MAX_HISTORY_IDS {
+                if let Some(oldest) = order.pop_front() {
+                    ids.remove(&oldest);
+                }
+            }
+        }
+    }
+
+    fn is_history(&self, id: &str) -> bool {
+        let mut history = self.history.lock().unwrap_or_else(|e| e.into_inner());
+        let (ids, order) = &mut *history;
+        let found = ids.remove(id);
+        if found {
+            order.retain(|known| known != id);
+        }
+        found
+    }
+
+    /// Whether a live message is a new incoming chat message. Reactions,
+    /// deletions and protocol messages are not, as for unread counts, and
+    /// status updates are not, as in `read_unified_messages`.
     fn is_incoming(message: &StoredMessage) -> bool {
-        let reaction = |kind: &str| kind.eq_ignore_ascii_case("reaction");
+        let not_a_message =
+            |kind: &str| ["reaction", "revoked", "protocol", "unknown"].contains(&kind);
+        let content_type = message.content_type.to_lowercase();
         !message.is_from_me
             && message.contact_id != "status@broadcast"
-            && !reaction(&message.content_type)
+            && !not_a_message(&content_type)
             && !message
                 .content
                 .as_ref()
                 .and_then(|content| content.get("type"))
                 .and_then(Value::as_str)
-                .is_some_and(reaction)
+                .is_some_and(|kind| not_a_message(&kind.to_lowercase()))
     }
 
     pub(crate) fn record(&self, message: StoredMessage) {
-        if !Self::is_incoming(&message) {
+        if self.is_history(&message.id) || !Self::is_incoming(&message) {
             return;
         }
         let chat = crate::identity::canonical_chat_id(&message.contact_id).into_owned();
@@ -202,12 +248,14 @@ impl EventLog {
         (entries, gap, buffer.next_seq - 1)
     }
 
-    pub(super) fn open_stream(self: &Arc<Self>) -> Option<StreamSlot> {
-        self.streams
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |open| {
-                (open < MAX_STREAMS).then_some(open + 1)
-            })
-            .ok()
-            .map(|_| StreamSlot(self.clone()))
+    pub(super) fn open_stream(self: &Arc<Self>, client_id: &str) -> Option<StreamSlot> {
+        let mut streams = self.streams.lock().unwrap_or_else(|e| e.into_inner());
+        let total: usize = streams.values().sum();
+        let open = streams.get(client_id).copied().unwrap_or_default();
+        if total >= MAX_STREAMS || open >= MAX_STREAMS_PER_CLIENT {
+            return None;
+        }
+        streams.insert(client_id.to_owned(), open + 1);
+        Some(StreamSlot(self.clone(), client_id.to_owned()))
     }
 }

@@ -52,7 +52,8 @@ it in `capabilities.extensions`.
 - **Event type.** `events/list` returns one type, `message.received`. It fires
   once for each new incoming message in a private or group chat, from the same
   live updates the web app shows. It does not fire for your own sent messages,
-  receipts, typing, reactions or status updates.
+  receipts, typing, reactions, deletions, status updates or old messages from
+  a WhatsApp history sync.
 - **Payload.** `data` has the same fields as a `read_unified_messages` message
   (`payloadSchema` is that schema). It carries whatever translation exists when
   the message arrives and does not wait for one; read the chat again for later
@@ -65,7 +66,8 @@ it in `capabilities.extensions`.
   `notifications/events/active`, `.../event` and `.../heartbeat`; the default
   heartbeat is 30 seconds, clamped to 1–60 seconds). Webhook delivery
   (`events/subscribe`) is not offered and returns `Unsupported`. At most 32
-  push streams can be open at once.
+  push streams can be open at once, and at most 8 for one OAuth client;
+  beyond that `events/stream` returns `ResourceExhausted`.
 - **Cursors.** A `null` cursor starts from now. The server keeps the latest 500
   incoming messages in memory, so a client can resume from its last cursor
   after a short disconnect. A cursor from before a server restart, or older
@@ -82,6 +84,7 @@ it in `capabilities.extensions`.
   read, queues translation or writes to the database. Event logs record only
   the method, event name, status and counts, never message text, numbers or
   chat ids.
+- **Request size.** `/mcp` request bodies are limited to 4 MB.
 - **Protocol era.** The server speaks the `initialize`-based protocol revision
   (2025-11-25) through rmcp 0.13, so `server/discover` is not available. The
   `Mcp-Name` header is optional; when sent it must match the event name.

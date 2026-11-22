@@ -74,17 +74,24 @@ impl EventError {
 /// The caller of one `events/*` request.
 pub struct Caller {
     pub token: String,
+    /// The OAuth client, for the per-client push stream limit.
+    pub client_id: String,
     pub permissions: McpPermissions,
 }
 
 impl Caller {
     /// Whether the token is still valid and still grants read access. Checked
     /// before each push delivery and heartbeat, so revocation stops delivery.
+    /// A storage error is not a revocation: the check is repeated later.
     fn still_allowed(&self, state: &AppState) -> bool {
-        matches!(
-            state.store.oauth_validate_access_token(&self.token),
-            Ok(Some(token)) if McpPermissions::from_scope(&token.scope).read
-        )
+        match state.store.oauth_validate_access_token(&self.token) {
+            Ok(Some(token)) => McpPermissions::from_scope(&token.scope).read,
+            Ok(None) => false,
+            Err(error) => {
+                tracing::warn!("MCP event access check failed: {error}");
+                true
+            }
+        }
     }
 }
 
@@ -251,16 +258,16 @@ fn poll(state: &AppState, subscription: &Subscription) -> Result<(Value, usize),
         let (entries, gap, head) = log.after(position);
         truncated |= gap;
         for entry in entries {
-            if events.len() as u64 == max_events {
-                has_more = true;
-                break;
-            }
-            position = entry.seq;
             if subscription.too_old(&entry, now) {
                 truncated = true;
             } else if subscription.matches(&entry) {
+                if events.len() as u64 == max_events {
+                    has_more = true;
+                    break;
+                }
                 events.push(occurrence(&entry, None));
             }
+            position = entry.seq;
         }
         if !has_more {
             position = position.max(head);
@@ -289,7 +296,14 @@ pub async fn handle(
 ) -> Response {
     let started = Instant::now();
     let id = message.get("id").cloned().unwrap_or(Value::Null);
-    let method = events_method(message).unwrap_or_default().to_owned();
+    let method = events_method(message).unwrap_or_default();
+    // Only known method names reach the logs.
+    let method = match method {
+        "events/list" | "events/poll" | "events/stream" | "events/subscribe"
+        | "events/unsubscribe" => method,
+        _ => "events/unknown",
+    }
+    .to_owned();
     let params = message.get("params");
     let log_call = |status: &str, code: Option<i32>, count: usize| {
         crate::log_privacy::log_mcp_call(

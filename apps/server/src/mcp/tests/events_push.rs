@@ -194,3 +194,54 @@ async fn idle_push_stream_heartbeats_and_ends_when_the_token_expires_or_is_revok
     }
     expiring.expect_closed().await;
 }
+
+#[tokio::test]
+async fn one_client_cannot_hold_every_push_stream_and_closed_streams_free_slots() {
+    let fixture = FeedFixture::new();
+    let state = fixture.state.clone();
+    feed_oauth_token(&state, "greedy", "whatsapp.read", i64::MAX);
+    feed_oauth_token(&state, "other-client", "whatsapp.read", i64::MAX);
+    let mut streams = Vec::new();
+    for _ in 0..8 {
+        let mut stream = open_stream(&state, "greedy", json!({}), json!({})).await;
+        stream.expect("notifications/events/active").await;
+        streams.push(stream);
+    }
+    let params = json!({"name":"message.received","cursor":null});
+    let refused = feed_rpc_body(
+        events_request(
+            state.clone(),
+            "Bearer greedy",
+            "events/stream",
+            params.clone(),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32025);
+    let mut other = open_stream(&state, "other-client", json!({}), json!({})).await;
+    other.expect("notifications/events/active").await;
+
+    // A client that disconnects gives its slot back without waiting for a heartbeat.
+    drop(streams.pop());
+    for attempt in 0.. {
+        let response = events_request(
+            state.clone(),
+            "Bearer greedy",
+            "events/stream",
+            params.clone(),
+            None,
+        )
+        .await;
+        if response.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/event-stream")
+        {
+            break;
+        }
+        assert!(attempt < 100, "slot was not released");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
