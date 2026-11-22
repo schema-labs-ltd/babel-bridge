@@ -243,9 +243,12 @@ async fn feed_rpc_body(response: axum::response::Response) -> Value {
     })
 }
 
+mod events_http;
+mod events_push;
 mod extension;
 mod feed;
 mod feed_http;
+use feed_http::feed_database_snapshot;
 mod logging;
 mod prepare;
 mod tools;

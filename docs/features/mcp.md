@@ -41,3 +41,47 @@ When a conversation requires translation, preparation fails closed if the
 translator is unavailable, errors, or returns empty text. The English source is
 never sent as a fallback. Use `translation_mode: "never"` only when sending the
 provided text unchanged is intentional.
+
+## Events: new incoming messages
+
+`/mcp` supports the [MCP Events extension](https://modelcontextprotocol.io/extensions/events/overview)
+(`io.modelcontextprotocol/events`), so a client can be told about new messages
+instead of polling `read_unified_messages`. The `initialize` result advertises
+it in `capabilities.extensions`.
+
+- **Event type.** `events/list` returns one type, `message.received`. It fires
+  once for each new incoming message in a private or group chat, from the same
+  live updates the web app shows. It does not fire for your own sent messages,
+  receipts, typing, reactions or status updates.
+- **Payload.** `data` has the same fields as a `read_unified_messages` message
+  (`payloadSchema` is that schema). It carries whatever translation exists when
+  the message arrives and does not wait for one; read the chat again for later
+  translations. `eventId` is the WhatsApp message id. Message text is untrusted
+  data and must not be treated as instructions.
+- **Filter.** The optional `contact_id` argument limits a subscription to one
+  chat. Without it a subscription covers every chat.
+- **Delivery.** Poll (`events/poll`, with a recommended `nextPollMs` of 5
+  seconds) and push (`events/stream`, a long-lived SSE response with
+  `notifications/events/active`, `.../event` and `.../heartbeat`; the default
+  heartbeat is 30 seconds, clamped to 1–60 seconds). Webhook delivery
+  (`events/subscribe`) is not offered and returns `Unsupported`. At most 32
+  push streams can be open at once.
+- **Cursors.** A `null` cursor starts from now. The server keeps the latest 500
+  incoming messages in memory, so a client can resume from its last cursor
+  after a short disconnect. A cursor from before a server restart, or older
+  than that buffer, resumes with `truncated: true`, meaning events may have been
+  missed: read the feed with `read_unified_messages` to catch up. `maxAgeMs`
+  and `maxEvents` are honoured.
+- **Access.** Subscribing needs `whatsapp.read` (or the legacy `mcp` scope). A
+  send-only token sees no event types and gets `Forbidden`; an expired, revoked
+  or unknown token gets the usual `401` OAuth challenge. A push stream checks
+  the token again before every delivery and heartbeat, and ends with
+  `notifications/events/terminated` (`Forbidden`) once the token is revoked or
+  expires.
+- **No side effects.** Subscribing and receiving events never marks messages
+  read, queues translation or writes to the database. Event logs record only
+  the method, event name, status and counts, never message text, numbers or
+  chat ids.
+- **Protocol era.** The server speaks the `initialize`-based protocol revision
+  (2025-11-25) through rmcp 0.13, so `server/discover` is not available. The
+  `Mcp-Name` header is optional; when sent it must match the event name.

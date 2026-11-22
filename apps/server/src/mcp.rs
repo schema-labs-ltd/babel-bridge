@@ -24,6 +24,7 @@ use std::time::Instant;
 use tracing::{info, warn};
 
 mod chat_actions;
+pub mod events;
 mod read_tools;
 mod send_tools;
 mod server_handler;

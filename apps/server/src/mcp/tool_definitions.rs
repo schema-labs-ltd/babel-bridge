@@ -122,12 +122,14 @@ impl WhatsAppMcpServer {
             "properties":properties, "additionalProperties":false})
     }
 
-    pub(super) fn read_unified_messages_tool() -> Tool {
+    /// The `FeedMessage` schema, shared by `read_unified_messages` and the
+    /// `message.received` event payload.
+    pub(super) fn feed_message_schema() -> Value {
         let nullable_string = json!({"type":["string","null"]});
         let quote = Self::feed_object_schema(json!({
             "messageId":nullable_string, "senderName":nullable_string, "text":nullable_string
         }));
-        let message = Self::feed_object_schema(json!({
+        Self::feed_object_schema(json!({
             "id":{"type":"string"}, "contactId":{"type":"string"},
             "contactName":nullable_string, "contactPhone":nullable_string,
             "chatType":{"type":"string"}, "timestamp":{"type":"integer"},
@@ -138,7 +140,11 @@ impl WhatsAppMcpServer {
             "sourceLanguage":nullable_string, "contentType":{"type":"string"},
             "deliveryStatus":nullable_string,
             "replyContext":{"anyOf":[{"type":"null"},quote]}
-        }));
+        }))
+    }
+
+    pub(super) fn read_unified_messages_tool() -> Tool {
+        let message = Self::feed_message_schema();
         let cursor = Self::feed_object_schema(json!({
             "beforeTimestamp":{"type":"integer"}, "beforeMessageId":{"type":"string"}
         }));

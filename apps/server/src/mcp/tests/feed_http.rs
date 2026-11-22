@@ -3,7 +3,7 @@ use super::*;
 // Read only the disposable test database, never the service's session data.
 // Snapshot every persisted table so unexpected writes outside the message
 // and receipt tables are caught as well.
-fn feed_database_snapshot(
+pub(super) fn feed_database_snapshot(
     dir: &std::path::Path,
 ) -> std::collections::BTreeMap<String, Vec<String>> {
     use rusqlite::{types::ValueRef, Connection, OpenFlags};

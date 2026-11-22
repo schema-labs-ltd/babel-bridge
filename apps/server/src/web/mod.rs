@@ -161,6 +161,8 @@ pub struct AppState {
     /// bridge event waits for room in the command channel.
     pub presence: watch::Sender<Option<bool>>,
     pub presence_worker: std::sync::Once,
+    /// Incoming messages kept for MCP event subscribers, started on first use.
+    pub mcp_events: std::sync::OnceLock<Arc<crate::mcp::events::EventLog>>,
 }
 
 /// Bridge send result normalized for Rust/web consumers.
