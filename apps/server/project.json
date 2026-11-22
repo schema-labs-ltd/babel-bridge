@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/server/src",
   "tags": ["type:app", "lang:rust"],
-  "implicitDependencies": ["web", "web-extension"],
+  "implicitDependencies": ["web", "web-extension", "wa-bridge"],
   "targets": {
     "format-check": {
       "command": "cargo fmt --check",
@@ -39,6 +39,10 @@
     },
     "format": {
       "command": "cargo fmt"
+    },
+    "verify": {
+      "command": "node tools/verify/server.mjs",
+      "inputs": ["rust", "deploy", "verifyGlobals", "^production"]
     }
   }
 }
