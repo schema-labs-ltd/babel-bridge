@@ -251,7 +251,17 @@ mod tests {
 
     #[test]
     fn warnings_and_errors_are_kept_redacted_for_diagnostics() {
-        let marker = uuid::Uuid::new_v4().to_string();
+        // Letters only: a UUID whose first group is all digits looks like a
+        // phone number and is redacted, so the marker would never match.
+        let marker: String = uuid::Uuid::new_v4()
+            .simple()
+            .to_string()
+            .chars()
+            .map(|c| match c.to_digit(10) {
+                Some(digit) => (b'g' + digit as u8) as char,
+                None => c,
+            })
+            .collect();
         for line in [
             format!(" INFO kept-out {marker}\n"),
             format!(" WARN send failed {marker} for 447700900123@s.whatsapp.net\n"),
