@@ -114,30 +114,33 @@ impl Stream {
         );
     }
 
+    /// The position to replay from, past entries older than `maxAgeMs`.
+    fn replay_from(&self, position: u64) -> (u64, bool) {
+        let now = chrono::Utc::now().timestamp_millis();
+        let entries = self.log.after(position).0;
+        self.subscription.skip_expired(&entries, position, now)
+    }
+
     async fn run(mut self) {
         let mut head = self.log.subscribe_head();
         let mut shutdown = self.state.shutdown.subscribe();
         let start = self.log.start(self.subscription.cursor.as_deref());
-        let mut position = start.position;
-        let mut truncated = start.truncated;
         // Apply maxAgeMs to the replay before confirming the subscription.
-        let now = chrono::Utc::now().timestamp_millis();
-        for entry in self.log.after(position).0 {
-            if !self.subscription.too_old(&entry, now) {
-                break;
-            }
-            position = entry.seq;
-            truncated = true;
-        }
-        if self.active(position, truncated).await.is_err() {
+        let (mut position, skipped) = self.replay_from(start.position);
+        if self
+            .active(position, start.truncated || skipped)
+            .await
+            .is_err()
+        {
             return;
         }
         let mut last_sent = Instant::now();
         loop {
             let (entries, gap, snapshot_head) = self.log.after(position);
             if gap {
+                // A gap restarts the replay, so maxAgeMs applies again.
                 let restart = self.log.start(Some(&self.log.cursor(position)));
-                position = restart.position;
+                position = self.replay_from(restart.position).0;
                 if self.active(position, true).await.is_err() {
                     return;
                 }

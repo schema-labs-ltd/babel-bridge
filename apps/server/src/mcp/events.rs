@@ -250,6 +250,20 @@ impl Subscription {
                 .max_age_ms
                 .is_some_and(|max| entry.arrived_at < now.saturating_sub(max as i64))
     }
+
+    /// Move a replay start past retained entries older than `maxAgeMs`, as
+    /// every replay must: the first one and each reset after a gap. Returns
+    /// the new position and whether anything was skipped.
+    fn skip_expired(&self, entries: &[Arc<log::Entry>], position: u64, now: i64) -> (u64, bool) {
+        let mut skipped = (position, false);
+        for entry in entries.iter().filter(|entry| entry.seq > position) {
+            if !self.too_old(entry, now) {
+                break;
+            }
+            skipped = (entry.seq, true);
+        }
+        skipped
+    }
 }
 
 fn optional_count(
@@ -454,5 +468,53 @@ pub async fn advertise(response: Response) -> Response {
             Response::from_parts(parts, axum::body::Body::from(message.to_string()))
         }
         None => Response::from_parts(parts, axum::body::Body::from(bytes)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(seq: u64, arrived_at: i64) -> Arc<log::Entry> {
+        Arc::new(log::Entry {
+            seq,
+            chat: "synthetic@g.us".into(),
+            arrived_at,
+            timestamp: arrived_at,
+            id: format!("m{seq}"),
+            data: Arc::new(json!({})),
+        })
+    }
+
+    fn subscription(cursor: Option<&str>, max_age_ms: Option<u64>) -> Subscription {
+        Subscription {
+            chat: None,
+            cursor: cursor.map(str::to_owned),
+            max_age_ms,
+            params: Map::new(),
+        }
+    }
+
+    #[test]
+    fn replays_skip_entries_older_than_max_age() {
+        let now = 1_800_000_000_000;
+        let entries = [
+            entry(4, now - 9_000),
+            entry(5, now - 6_000),
+            entry(6, now - 100),
+        ];
+        let bounded = subscription(Some("cursor"), Some(5_000));
+        assert_eq!(bounded.skip_expired(&entries, 3, now), (5, true));
+        // Only entries after the position count, and fresh ones stop the skip.
+        assert_eq!(bounded.skip_expired(&entries, 5, now), (5, false));
+        // maxAgeMs is ignored without a cursor or without a bound.
+        assert_eq!(
+            subscription(None, Some(5_000)).skip_expired(&entries, 3, now),
+            (3, false)
+        );
+        assert_eq!(
+            subscription(Some("cursor"), None).skip_expired(&entries, 3, now),
+            (3, false)
+        );
     }
 }
