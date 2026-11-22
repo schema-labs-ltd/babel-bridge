@@ -5,6 +5,8 @@
 #   make check        CI's go, rust and web jobs: every project's checks
 #   make check-fast   only the checks for projects changed since origin/main (nx affected)
 #   make ci           `check` plus the `CI / container-build` job (needs Docker)
+#   make verify       every production-like verify target (verify.yml, issue #138)
+#   make verify-affected   only the verify targets affected since origin/main
 #
 # The Apple check (`apple / apple`) needs macOS and Xcode, so it is not here.
 # See AGENTS.md and apps/ios/README.md. Keep the project.json targets in step with
@@ -26,7 +28,7 @@ CHECK_FLAGS := --exclude=ios --outputStyle=stream
 	go-fmt-check go-vet go-test fmt-check rust-test clippy web-deps web-test web-lint \
 	extension-lint extension-check extension-browser extension-test \
 	check-go check-rust check-web container-check require-ffmpeg scripts-test scripts-lint \
-	api-contract graph
+	api-contract graph verify verify-affected verify-mapping
 
 help:
 	@echo "make check        run every project's checks through Nx (CI's go, rust and web jobs)"
@@ -36,6 +38,9 @@ help:
 	@echo "make test         Go, Rust, web and tools/scripts unit tests"
 	@echo "make lint         gofmt, go vet, rustfmt, clippy, prettier (web, extension, tools/scripts) and extension types"
 	@echo "make fmt          apply gofmt, rustfmt and prettier"
+	@echo "make verify       run every production-like verify target (verify.yml; Apple ones need macOS)"
+	@echo "make verify-affected   run the verify targets affected since $(BASE)"
+	@echo "make verify-mapping    check which verify jobs sample changes select"
 	@echo "make graph        open the Nx project graph"
 	@echo "Any task also runs directly: npx nx run <project>:<target>, e.g. npx nx test server"
 
@@ -64,6 +69,21 @@ fmt: web-deps
 
 graph: nx-deps
 	$(NX) graph
+
+# Production-like verification: each project's `verify` target runs the built
+# artefact the way production does. The ios targets need macOS and Xcode, so
+# they run only in apple.yml. VERIFY_FLAGS keeps them out here.
+VERIFY_FLAGS := --exclude=ios --outputStyle=stream --parallel=1
+
+verify: nx-deps
+	$(NX) run-many -t verify $(VERIFY_FLAGS)
+
+verify-affected: nx-deps
+	@git merge-base HEAD $(BASE) >/dev/null 2>&1 || { echo "Cannot find $(BASE); fetch it or pass BASE=<rev>."; exit 1; }
+	$(NX) affected -t verify --base=$(BASE) $(VERIFY_FLAGS)
+
+verify-mapping: nx-deps
+	node --test tools/scripts/verify-affected.eval.ts
 
 go-fmt-check: nx-deps
 	$(NX) run wa-bridge:format-check

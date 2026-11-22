@@ -502,3 +502,38 @@ test('incoming embedded quotes reach web rendering without an original history m
   assert.match(html, /data-message-id="reply"/);
   assert.equal(restored.replyContext.messageId, 'outside-history');
 });
+
+test('signing in again after the session expires binds the app once', () => {
+  const body = extractMethodBody(appJs, 'startApp');
+  const startApp = new Function(body);
+  const calls = { connect: 0, bind: 0 };
+  const app = {};
+  for (const [, name] of body.matchAll(/this\.(\w+)\(/g)) app[name] = () => {};
+  app.connectWebSocket = () => (calls.connect += 1);
+  app.bindEvents = () => (calls.bind += 1);
+  globalThis.document = { getElementById: () => null };
+  try {
+    startApp.call(app);
+    startApp.call(app);
+  } finally {
+    delete globalThis.document;
+  }
+  assert.equal(calls.bind, 1);
+  assert.equal(calls.connect, 2);
+});
+
+test('the password form is bound even when the app starts from a stored token', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const init = new AsyncFunction(extractMethodBody(appJs, 'init'));
+  let bound = 0;
+  const app = {
+    authToken: 'stored',
+    bindPasswordEvents: () => (bound += 1),
+    checkAuth: async () => true,
+    verifyToken: async () => true,
+    showPasswordOverlay: () => {},
+    startApp: () => {},
+  };
+  await init.call(app);
+  assert.equal(bound, 1);
+});
